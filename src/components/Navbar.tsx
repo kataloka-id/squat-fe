@@ -26,7 +26,7 @@ const Navbar: React.FC = () => {
         <div className="hidden md:flex items-center gap-8">
           {[
             { name: 'Proses Kerja', link: '#workflow' },
-              { name: 'Pendekatan', link: '#benefits' },
+              { name: 'Pendekatan', link: '#features' },
                         { name: 'Kerjasama', link: '#partnership' }
           ].map((item) => (
             <a key={item.name} href={item.link} className="text-gray-600 hover:text-sky-500 font-bold text-sm transition-colors">
@@ -54,7 +54,7 @@ const Navbar: React.FC = () => {
       {isOpen && (
         <div className="absolute top-full left-0 w-full md:hidden bg-white border-b border-gray-100 py-6 px-6 flex flex-col gap-4 shadow-xl animate-in slide-in-from-top-2">
           <a href="#workflow" className="text-gray-900 font-bold" onClick={() => setIsOpen(false)}>Proses Kerja</a>
-          <a href="#benefits" className="text-gray-900 font-bold" onClick={() => setIsOpen(false)}>Pendekatan</a>
+          <a href="#features" className="text-gray-900 font-bold" onClick={() => setIsOpen(false)}>Pendekatan</a>
                     <a href="#partnership" className="text-gray-900 font-bold" onClick={() => setIsOpen(false)}>Kerjasama</a>
           <a
             href="#"

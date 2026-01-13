@@ -15,9 +15,9 @@ const App: React.FC = () => {
       <Navbar />
       <main className="flex-grow">
         <Hero />
-        <Commitments />
-                <Benefits />
-                        <Workflow />
+                  <Commitments />
+          <Benefits />
+                <Workflow />
         <Features />
         <Pricing />
         <FinalCTA />
