@@ -27,7 +27,7 @@ const Pricing: React.FC = () => {
                 </h2>
                 
                 <p className="text-gray-500 text-lg leading-relaxed">
-                  Kami sedang membangun portofolio eksklusif. Kami memberikan akses penuh ke sistem kami tanpa biaya jasa selama 12 bulan pertama—Anda hanya menanggung biaya teknis (domain/hosting).
+                  Kami sedang membangun portofolio eksklusif. Kami memberikan akses penuh ke sistem kami tanpa biaya jasa selama 12 bulan pertama.
                 </p>
 
                 <div className="grid sm:grid-cols-2 gap-4">

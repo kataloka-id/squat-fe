@@ -23,9 +23,7 @@ const FinalCTA: React.FC = () => {
                 <MessageSquare size={24} />
                 Hubungi WhatsApp
               </button>
-              <button className="w-full sm:w-auto bg-transparent border border-white/20 hover:bg-white/5 text-white px-10 py-5 rounded-2xl font-bold text-lg transition-all">
-                Cek Ketersediaan Slot
-              </button>
+
             </div>
           </div>
         </div>

@@ -59,7 +59,7 @@ const Features: React.FC = () => {
   ];
 
   return (
-    <section id="benefits" className="py-16 lg:py-24 bg-white border-t border-gray-50">
+    <section id="features" className="py-16 lg:py-24 bg-white border-t border-gray-50">
       <div className="container mx-auto px-4 lg:px-20">
         <div className="max-w-3xl mb-12">
           <div className="text-sky-600 font-bold uppercase tracking-widest text-[10px] mb-2">Nilai Tambah Kami</div>

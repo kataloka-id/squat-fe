@@ -7,6 +7,7 @@ import Workflow from './components/Workflow';
 import Features from './components/Features';
 import Pricing from './components/Pricing';
 import FinalCTA from './components/FinalCTA';
+import Benefits from "@/src/components/Benefits.tsx";
 
 const App: React.FC = () => {
   return (
@@ -14,8 +15,9 @@ const App: React.FC = () => {
       <Navbar />
       <main className="flex-grow">
         <Hero />
-        <Commitments />
-        <Workflow />
+                  <Commitments />
+          <Benefits />
+                <Workflow />
         <Features />
         <Pricing />
         <FinalCTA />
