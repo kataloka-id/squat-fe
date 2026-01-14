@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Menu, X, ArrowRight } from 'lucide-react';
 
@@ -6,13 +5,9 @@ interface NavbarProps {
   onOpenModal: () => void;
 }
 
-const Navbar: React.FC<NavbarProps> = ({onOpenModal}) => {
+const Navbar: React.FC<NavbarProps> = ({ onOpenModal }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
-
-
-
-
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 10);
@@ -21,37 +16,45 @@ const Navbar: React.FC<NavbarProps> = ({onOpenModal}) => {
   }, []);
 
   return (
-    <nav className={`fixed w-full z-50 transition-all duration-300 ${
-      isScrolled ? 'bg-white/95 backdrop-blur-md border-b border-gray-100 py-3 shadow-sm' : 'bg-transparent py-5'
-    }`}>
-      <div className="container mx-auto px-4 lg:px-20 flex items-center justify-between">
-        <div className="flex items-center gap-1 group cursor-pointer">
+    <nav
+      className={`fixed z-50 w-full transition-all duration-300 ${
+        isScrolled
+          ? 'border-b border-gray-100 bg-white/95 py-3 shadow-sm backdrop-blur-md'
+          : 'bg-transparent py-5'
+      }`}
+    >
+      <div className="container mx-auto flex items-center justify-between px-4 lg:px-20">
+        <div className="group flex cursor-pointer items-center gap-1">
           <span className="text-2xl font-black tracking-tighter text-gray-900">
             Kata<span className="text-sky-500">loka</span>
           </span>
         </div>
 
-        <div className="hidden md:flex items-center gap-8">
+        <div className="hidden items-center gap-8 md:flex">
           {[
             { name: 'Proses Kerja', link: '#workflow' },
-              { name: 'Pendekatan', link: '#features' },
-                        { name: 'Kerjasama', link: '#partnership' }
+            { name: 'Pendekatan', link: '#features' },
+            { name: 'Kerjasama', link: '#partnership' },
           ].map((item) => (
-            <a key={item.name} href={item.link} className="text-gray-600 hover:text-sky-500 font-bold text-sm transition-colors">
+            <a
+              key={item.name}
+              href={item.link}
+              className="text-sm font-bold text-gray-600 transition-colors hover:text-sky-500"
+            >
               {item.name}
             </a>
           ))}
           <button
             onClick={onOpenModal}
-            className="bg-gray-900 hover:bg-sky-600 text-white px-6 py-2.5 rounded-full font-bold text-sm transition-all transform hover:scale-105 active:scale-95 flex items-center gap-2"
+            className="flex transform items-center gap-2 rounded-full bg-gray-900 px-6 py-2.5 text-sm font-bold text-white transition-all hover:scale-105 hover:bg-sky-600 active:scale-95"
           >
             Mulai Sekarang
             <ArrowRight size={16} />
           </button>
         </div>
 
-        <button 
-          className="md:hidden p-2 text-gray-900 bg-gray-50 rounded-full"
+        <button
+          className="rounded-full bg-gray-50 p-2 text-gray-900 md:hidden"
           onClick={() => setIsOpen(!isOpen)}
         >
           {isOpen ? <X size={20} /> : <Menu size={20} />}
@@ -60,17 +63,26 @@ const Navbar: React.FC<NavbarProps> = ({onOpenModal}) => {
 
       {/* Mobile Menu */}
       {isOpen && (
-        <div className="absolute top-full left-0 w-full md:hidden bg-white border-b border-gray-100 py-6 px-6 flex flex-col gap-4 shadow-xl animate-in slide-in-from-top-2">
-          <a href="#workflow" className="text-gray-900 font-bold" onClick={() => setIsOpen(false)}>Proses Kerja</a>
-          <a href="#features" className="text-gray-900 font-bold" onClick={() => setIsOpen(false)}>Pendekatan</a>
-                    <a href="#partnership" className="text-gray-900 font-bold" onClick={() => setIsOpen(false)}>Kerjasama</a>
+        <div className="animate-in slide-in-from-top-2 absolute left-0 top-full flex w-full flex-col gap-4 border-b border-gray-100 bg-white px-6 py-6 shadow-xl md:hidden">
+          <a href="#workflow" className="font-bold text-gray-900" onClick={() => setIsOpen(false)}>
+            Proses Kerja
+          </a>
+          <a href="#features" className="font-bold text-gray-900" onClick={() => setIsOpen(false)}>
+            Pendekatan
+          </a>
+          <a
+            href="#partnership"
+            className="font-bold text-gray-900"
+            onClick={() => setIsOpen(false)}
+          >
+            Kerjasama
+          </a>
           <button
-
-            className="bg-gray-900 text-white px-6 py-4 rounded-2xl font-bold text-center"
+            className="rounded-2xl bg-gray-900 px-6 py-4 text-center font-bold text-white"
             onClick={onOpenModal}
           >
             Mulai Sekarang
-                      </button>
+          </button>
         </div>
       )}
     </nav>
