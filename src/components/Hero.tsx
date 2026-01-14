@@ -2,7 +2,11 @@
 import React from 'react';
 import {ShieldCheck, ArrowRight, CheckCircle2, Terminal, Server, Activity, Lock, CheckCircle} from 'lucide-react';
 
-const Hero: React.FC = () => {
+interface HeroProps {
+  onOpenModal: () => void;
+}
+
+const Hero: React.FC<HeroProps> = ({onOpenModal}) => {
   return (
     <section className="relative pt-24 pb-12 lg:pt-40 lg:pb-24 bg-white overflow-hidden">
       {/* Background Ambience */}
@@ -31,7 +35,9 @@ const Hero: React.FC = () => {
           </p>
           
           <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3 pt-2">
-            <button className="w-full sm:w-auto bg-sky-500 hover:bg-sky-600 text-white px-8 py-4 rounded-xl font-bold text-base shadow-lg shadow-sky-100 transition-all flex items-center justify-center gap-2 group">
+            <button
+                onClick={onOpenModal}
+                className="w-full sm:w-auto bg-sky-500 hover:bg-sky-600 text-white px-8 py-4 rounded-xl font-bold text-base shadow-lg shadow-sky-100 transition-all flex items-center justify-center gap-2 group">
               Mulai Digitalkan Bisnismu Sekarang
               <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
             </button>

@@ -2,9 +2,17 @@
 import React, { useState, useEffect } from 'react';
 import { Menu, X, ArrowRight } from 'lucide-react';
 
-const Navbar: React.FC = () => {
+interface NavbarProps {
+  onOpenModal: () => void;
+}
+
+const Navbar: React.FC<NavbarProps> = ({onOpenModal}) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+
+
+
+
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 10);
@@ -33,13 +41,13 @@ const Navbar: React.FC = () => {
               {item.name}
             </a>
           ))}
-          <a
-            href="#"
+          <button
+            onClick={onOpenModal}
             className="bg-gray-900 hover:bg-sky-600 text-white px-6 py-2.5 rounded-full font-bold text-sm transition-all transform hover:scale-105 active:scale-95 flex items-center gap-2"
           >
             Mulai Sekarang
             <ArrowRight size={16} />
-          </a>
+          </button>
         </div>
 
         <button 
@@ -56,13 +64,13 @@ const Navbar: React.FC = () => {
           <a href="#workflow" className="text-gray-900 font-bold" onClick={() => setIsOpen(false)}>Proses Kerja</a>
           <a href="#features" className="text-gray-900 font-bold" onClick={() => setIsOpen(false)}>Pendekatan</a>
                     <a href="#partnership" className="text-gray-900 font-bold" onClick={() => setIsOpen(false)}>Kerjasama</a>
-          <a
-            href="#"
+          <button
+
             className="bg-gray-900 text-white px-6 py-4 rounded-2xl font-bold text-center"
-            onClick={() => setIsOpen(false)}
+            onClick={onOpenModal}
           >
             Mulai Sekarang
-                      </a>
+                      </button>
         </div>
       )}
     </nav>
