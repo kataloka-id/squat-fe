@@ -5,17 +5,14 @@ import CompleteData from './pages/CompleteData';
 const App = () => {
   return (
     <Routes>
-      {/* Redirect root */}
-      <Route path="/" element={<Navigate to="/landing" replace />} />
-
-      {/* Landing Page */}
-      <Route path="/landing" element={<LandingPage />} />
+      {/* Home */}
+      <Route path="/" element={<LandingPage />} />
 
       {/* Onboarding */}
       <Route path="/onboarding/complete-data" element={<CompleteData />} />
 
       {/* Fallback */}
-      <Route path="*" element={<Navigate to="/landing" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 };
