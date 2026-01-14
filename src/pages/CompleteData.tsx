@@ -7,6 +7,7 @@ import {
     Calendar, Lock, Shield
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import SuccessModal from "@/src/components/SuccessModal.tsx";
 
 // --- Types & Interfaces ---
 
@@ -27,8 +28,12 @@ interface FormData {
     businessType: string;
 }
 
+
+
 const CompleteData: React.FC = () => {
     const navigate = useNavigate();
+    const [isSuccessOpen, setIsSuccessOpen] = useState(false);
+
 
     // --- Form State (Initialized with data from "previous step") ---
     const [data, setData] = useState<FormData>({
@@ -513,12 +518,16 @@ const CompleteData: React.FC = () => {
                                     <button
                                         disabled={!isValid || isSubmitting}
                                         onClick={() => {
+                                            if (!isValid || isSubmitting) return;
                                             setIsSubmitting(true);
+
                                             setTimeout(() => {
                                                 setIsSubmitting(false);
-                                                alert("Pendaftaran Anda telah berhasil dikirim!");
+                                                setIsSuccessOpen(true);
+
                                             }, 2000);
                                         }}
+
                                         className={`w-full py-5 rounded-2xl font-black text-xl transition-all flex items-center justify-center gap-3 relative overflow-hidden group shadow-lg ${
                                             isValid
                                                 ? 'bg-sky-500 text-white hover:bg-sky-600 shadow-sky-200 hover:-translate-y-1 active:translate-y-0 active:scale-[0.98] scale-105'
@@ -561,6 +570,15 @@ const CompleteData: React.FC = () => {
                     </section>
                 </div>
             </main>
+
+            <SuccessModal
+                isOpen={isSuccessOpen}
+                onClose={() => {
+                    setIsSuccessOpen(false);
+                    navigate("/landing")
+                }}
+            />
+
 
             <style>{`
         select {
