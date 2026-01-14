@@ -2,7 +2,11 @@
 import React from 'react';
 import { Check, ArrowRight, Gift, ShieldAlert, Sparkles } from 'lucide-react';
 
-const Pricing: React.FC = () => {
+interface PricingProps {
+  onOpenModal: () => void;
+}
+
+const Pricing: React.FC<PricingProps> = ({onOpenModal}) => {
   return (
     <section id="partnership" className="py-20 bg-gray-50/50">
       <div className="container mx-auto px-4 lg:px-20">
@@ -56,7 +60,9 @@ const Pricing: React.FC = () => {
                 </div>
 
                 <div className="space-y-4">
-                  <button className="w-full bg-white text-sky-600 hover:bg-sky-50 px-8 py-5 rounded-2xl font-black text-lg transition-all transform hover:scale-105 shadow-xl flex items-center justify-center gap-2">
+                  <button
+                      onClick={onOpenModal}
+                      className="w-full bg-white text-sky-600 hover:bg-sky-50 px-8 py-5 rounded-2xl font-black text-lg transition-all transform hover:scale-105 shadow-xl flex items-center justify-center gap-2">
                     Ajukan Kemitraan
                     <ArrowRight size={20} />
                   </button>
