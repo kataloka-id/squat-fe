@@ -1,6 +1,10 @@
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from "react-router-dom";
 import { X, User, Phone, Mail, CheckCircle2, ArrowRight, ShieldCheck, Info, AlertCircle } from 'lucide-react';
+
+
+
 
 interface RegistrationModalProps {
     isOpen: boolean;
@@ -8,6 +12,7 @@ interface RegistrationModalProps {
 }
 
 const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }) => {
+    const navigate = useNavigate();
     const [formData, setFormData] = useState({
         fullName: '',
         phone: '+62',
@@ -278,6 +283,10 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
                             >
                                 <button
                                     disabled={!isFormValid}
+                                    onClick={() => {
+                                        if (!isFormValid) return;
+                                        navigate("/onboarding/complete-data");
+                                    }}
                                     className={`w-full py-4.5 sm:py-5 rounded-[1.25rem] font-black text-base sm:text-lg transition-all duration-500 flex items-center justify-center gap-3 relative overflow-hidden group ${
                                         isFormValid
                                             ? 'bg-sky-500 text-white hover:bg-sky-600 shadow-2xl shadow-sky-200 hover:-translate-y-1 active:translate-y-0'
