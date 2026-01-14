@@ -634,7 +634,7 @@ const CompleteData: React.FC = () => {
         isOpen={isSuccessOpen}
         onClose={() => {
           setIsSuccessOpen(false);
-          navigate('/landing');
+          navigate('/');
         }}
       />
 
