@@ -3,6 +3,8 @@ import LandingPage from "./pages/LandingPage";
 import CompleteData from "./pages/CompleteData";
 
 const App = () => {
+
+
     return (
         <Routes>
             {/* Redirect root */}
