@@ -16,19 +16,19 @@ interface HeroProps {
 
 const Hero: React.FC<HeroProps> = ({ onOpenModal }) => {
   return (
-    <section className="relative overflow-hidden bg-white pb-12 pt-24 lg:pb-24 lg:pt-40">
+    <section className="relative overflow-hidden bg-[#f6f6f6] pb-12 pt-24 lg:pb-24 lg:pt-40">
       {/* Background Ambience */}
       <div className="absolute right-0 top-0 h-[500px] w-[500px] -translate-y-1/2 translate-x-1/4 rounded-full bg-sky-50 opacity-40 blur-3xl" />
 
-      <div className="container relative z-10 mx-auto flex flex-col items-center gap-10 px-4 lg:flex-row lg:gap-20 lg:px-20">
+      <div className="container relative z-10 mx-auto flex flex-col items-center gap-10 px-4 lg:flex-row lg:gap-20 lg:px-[190px]">
         {/* Left: Value Proposition */}
         <div className="max-w-2xl flex-1 space-y-6 text-center lg:text-left">
-          <div className="inline-flex items-center gap-2 rounded-full border border-sky-100 bg-sky-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-sky-600">
+          <div className="mt-8 inline-flex items-center gap-2 rounded-full border border-sky-100 bg-sky-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-sky-600">
             <CheckCircle size={12} strokeWidth={3} />
             MITRA DIGITAL TERPERCAYA
           </div>
 
-          <h1 className="text-4xl font-black leading-[1.05] tracking-tight text-gray-900 md:text-5xl lg:text-[62px]">
+          <h1 className="text-4xl font-black leading-[1.05] tracking-tight text-gray-900 md:text-5xl lg:text-[72px]">
             Bawa Bisnis
             <br />
             Menuju ke
@@ -46,7 +46,7 @@ const Hero: React.FC<HeroProps> = ({ onOpenModal }) => {
           <div className="flex flex-col items-center justify-center gap-3 pt-2 sm:flex-row lg:justify-start">
             <button
               onClick={onOpenModal}
-              className="group flex w-full items-center justify-center gap-2 rounded-xl bg-sky-500 px-8 py-4 text-base font-bold text-white shadow-lg shadow-sky-100 transition-all hover:bg-sky-600 sm:w-auto"
+              className="group flex w-full items-center justify-center gap-2 rounded-xl bg-[#0697e0] px-8 py-4 text-base font-bold text-white shadow-lg shadow-sky-100 transition-all hover:bg-sky-600 sm:w-auto"
             >
               Mulai Digitalkan Bisnismu Sekarang
               <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" />

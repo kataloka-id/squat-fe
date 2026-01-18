@@ -14,8 +14,8 @@ const FeatureCard: React.FC<FeatureCardProps> = ({ icon, title, description }) =
         {icon}
       </div>
       <div className="space-y-2">
-        <h3 className="text-xl font-bold tracking-tight text-gray-900">{title}</h3>
-        <p className="text-sm leading-relaxed text-gray-500">{description}</p>
+        <h3 className="text-[24px] font-bold tracking-tight text-gray-900">{title}</h3>
+        <p className="text-[16px] leading-relaxed text-gray-500">{description}</p>
       </div>
     </div>
   );
@@ -25,52 +25,49 @@ const Features: React.FC = () => {
   const features = [
     {
       icon: <Zap size={22} />,
-      title: 'Arsitektur Performa',
+      title: 'Performa Maksimal',
       description:
-        'Sistem yang dibangun dengan clean-code untuk memastikan kecepatan akses maksimal di setiap halaman.',
+        'Sistem dibangun dengan clean-code untuk memastikan kecepatan akses maksimal di setiap halaman.',
     },
     {
       icon: <Target size={22} />,
-      title: 'Psikologi Konversi',
-      description:
-        'Tata letak yang disusun berdasarkan perilaku pengguna untuk memandu pengunjung menuju aksi nyata.',
+      title: 'Mudah Digunakan',
+      description: 'Antarmuka dirancang untuk memberikan kemudahan pengguna.',
     },
     {
       icon: <BarChart3 size={22} />,
-      title: 'Infrastruktur SEO',
+      title: 'Optimasi SEO',
       description:
-        'Optimasi teknis mendalam agar struktur website Anda dipahami dengan baik oleh mesin pencari.',
+        'Optimasi dilakukan dengan tujuan mempermudah pengunjung menemukan website anda.',
     },
     {
       icon: <Smartphone size={22} />,
-      title: 'Adaptibilitas Mobile',
-      description:
-        'User experience yang mulus tanpa kompromi, dioptimalkan khusus untuk pengguna smartphone.',
+      title: 'Kompatibel di Berbagai Platform',
+      description: 'User experience yang optimal di PC maupun di smartphone.',
     },
     {
       icon: <Layout size={22} />,
-      title: 'Automasi Kontak',
-      description:
-        'Menghubungkan pengunjung ke tim Anda secara instan melalui sistem integrasi WhatsApp terpadu.',
+      title: 'Akses Kontak',
+      description: 'Menghubungkan pelanggan ke tim anda melalui kontak yang terintegrasi.',
     },
     {
       icon: <Lock size={22} />,
-      title: 'Privasi Tingkat Tinggi',
+      title: 'Prioritaskan Keamanan',
       description:
-        'Standardisasi keamanan SSL dan enkripsi data untuk menjaga kredibilitas bisnis Anda di mata klien.',
+        'Standardisasi keamanan SSL dan enkripsi data untuk menjaga kredibilitas bisnis Anda.',
     },
   ];
 
   return (
-    <section id="features" className="border-t border-gray-50 bg-white py-16 lg:py-24">
+    <section id="features" className="border-t border-gray-50 bg-[#f6f6f6] py-16 lg:py-24">
       <div className="container mx-auto px-4 lg:px-20">
-        <div className="mb-12 max-w-3xl">
-          <div className="mb-2 text-[10px] font-bold uppercase tracking-widest text-sky-600">
-            Nilai Tambah Kami
+        <div className="mb-12 max-w-[1536px] text-center">
+          <div className="mb-2 text-[12px] font-bold uppercase tracking-widest text-[#0697e0]">
+            Kelebihan Kami
           </div>
-          <h2 className="text-3xl font-black leading-tight tracking-tight text-gray-900 lg:text-4xl">
-            Membangun Keunggulan <br />
-            <span className="text-sky-500">Kompetitif yang Berkelanjutan.</span>
+          <h2 className="text-3xl font-black leading-tight tracking-tight text-gray-900 lg:text-[48px]">
+            Produk Yang <br />
+            <span className="text-[#0697e0]">Kompetitif</span>
           </h2>
         </div>
 

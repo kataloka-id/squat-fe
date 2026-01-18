@@ -19,14 +19,14 @@ const Pricing: React.FC<PricingProps> = ({ onOpenModal }) => {
             <div className="grid gap-0 lg:grid-cols-5">
               {/* Offer Left */}
               <div className="space-y-8 p-8 lg:col-span-3 lg:p-14">
-                <div className="inline-flex items-center gap-2 rounded-full border border-green-100 bg-green-50 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-green-600">
+                <div className="inline-flex items-center gap-2 rounded-full border border-green-100 bg-green-50 px-3 py-1 text-[12px] font-bold uppercase tracking-widest text-green-600">
                   <Gift size={12} strokeWidth={3} />
                   Penawaran Kemitraan Awal
                 </div>
 
-                <h2 className="text-4xl font-black leading-tight text-gray-900 lg:text-5xl">
+                <h2 className="text-4xl font-black leading-[55px] text-gray-900 lg:text-[48px]">
                   Bebas Biaya Layanan <br />
-                  <span className="text-sky-500">Di Tahun Pertama.</span>
+                  <span className="text-sky-500">Di Tahun Pertama</span>
                 </h2>
 
                 <p className="text-lg leading-relaxed text-gray-500">
@@ -55,7 +55,7 @@ const Pricing: React.FC<PricingProps> = ({ onOpenModal }) => {
               </div>
 
               {/* Offer Right (CTA Box) */}
-              <div className="flex flex-col justify-center space-y-6 bg-sky-600 p-8 text-center text-white lg:col-span-2 lg:p-14 lg:text-left">
+              <div className="flex flex-col justify-center space-y-6 bg-[#0697e0] p-8 text-center text-white lg:col-span-2 lg:p-14 lg:text-left">
                 <div>
                   <div className="mb-2 text-xs font-bold uppercase tracking-widest text-sky-200">
                     Estimasi Investasi
@@ -67,7 +67,7 @@ const Pricing: React.FC<PricingProps> = ({ onOpenModal }) => {
                 <div className="space-y-4">
                   <button
                     onClick={onOpenModal}
-                    className="flex w-full transform items-center justify-center gap-2 rounded-2xl bg-white px-8 py-5 text-lg font-black text-sky-600 shadow-xl transition-all hover:scale-105 hover:bg-sky-50"
+                    className="flex w-full transform items-center justify-center gap-2 rounded-2xl bg-white px-8 py-5 text-lg font-black text-[#0697e0] shadow-xl transition-all hover:scale-105 hover:bg-sky-50"
                   >
                     Ajukan Kemitraan
                     <ArrowRight size={20} />

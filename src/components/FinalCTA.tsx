@@ -11,15 +11,15 @@ const FinalCTA: React.FC = () => {
 
           <div className="relative z-10 mx-auto max-w-2xl space-y-6">
             <h2 className="text-3xl font-black leading-tight lg:text-5xl">
-              Mulai Langkah Pertama <br />
-              Bisnis Digital Anda.
+              Awali Transformasi <br />
+              Bisnis Digital Anda
             </h2>
             <p className="text-base leading-relaxed text-gray-400 lg:text-lg">
-              Diskusikan visi Anda secara mendalam. Tidak ada tekanan penjualan, hanya sesi
-              konsultasi strategis untuk memetakan kebutuhan sistem bisnis Anda.
+              Diskusikan Kebutuhan bisnis anda dengan sesi konsultasi strategis untuk memetakan
+              kebutuhan sistem bisnis Anda.
             </p>
             <div className="flex flex-col items-center justify-center gap-4 pt-4 sm:flex-row">
-              <button className="flex w-full transform items-center justify-center gap-2 rounded-2xl bg-sky-500 px-10 py-5 text-lg font-black text-white transition-all hover:scale-105 hover:bg-sky-600 sm:w-auto">
+              <button className="flex w-full transform items-center justify-center gap-2 rounded-2xl bg-[#0697e0] px-10 py-5 text-lg font-black text-white transition-all hover:scale-105 hover:bg-sky-600 sm:w-auto">
                 <MessageSquare size={24} />
                 Hubungi WhatsApp
               </button>
