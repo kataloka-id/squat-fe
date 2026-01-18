@@ -19,20 +19,18 @@ const Navbar: React.FC<NavbarProps> = ({ onOpenModal }) => {
     <nav
       className={`fixed z-50 w-full transition-all duration-300 ${
         isScrolled
-          ? 'border-b border-gray-100 bg-white/95 py-3 shadow-sm backdrop-blur-md'
-          : 'bg-transparent py-5'
+          ? 'border-b border-gray-100 bg-white py-3 shadow-sm backdrop-blur-md'
+          : 'bg-white py-5'
       }`}
     >
       <div className="container mx-auto flex items-center justify-between px-4 lg:px-20">
         <div className="group flex cursor-pointer items-center gap-1">
-          <span className="text-2xl font-black tracking-tighter text-gray-900">
-            Kata<span className="text-sky-500">loka</span>
-          </span>
+          <img src="/kataloka.svg" alt="Kataloka" className="h-16 w-auto" />
         </div>
 
         <div className="hidden items-center gap-8 md:flex">
           {[
-            { name: 'Proses Kerja', link: '#workflow' },
+            // { name: 'Proses Kerja', link: '#workflow' },
             { name: 'Pendekatan', link: '#features' },
             { name: 'Kerjasama', link: '#partnership' },
           ].map((item) => (
@@ -46,7 +44,7 @@ const Navbar: React.FC<NavbarProps> = ({ onOpenModal }) => {
           ))}
           <button
             onClick={onOpenModal}
-            className="flex transform items-center gap-2 rounded-full bg-gray-900 px-6 py-2.5 text-sm font-bold text-white transition-all hover:scale-105 hover:bg-sky-600 active:scale-95"
+            className="flex transform items-center gap-2 rounded-full bg-[#0697e0] px-6 py-2.5 text-sm font-bold text-white transition-all hover:scale-105 hover:bg-sky-600 active:scale-95"
           >
             Mulai Sekarang
             <ArrowRight size={16} />

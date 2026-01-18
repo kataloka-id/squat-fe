@@ -21,9 +21,9 @@ const App: React.FC = () => {
       <Navbar onOpenModal={openModal} />
       <main className="flex-grow">
         <Hero onOpenModal={openModal} />
-        <Commitments />
+        {/*<Commitments />*/}
         <Benefits />
-        <Workflow />
+        {/*<Workflow />*/}
         <Features />
         <Pricing onOpenModal={openModal} />
         <FinalCTA />
