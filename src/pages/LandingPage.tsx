@@ -30,27 +30,28 @@ const App: React.FC = () => {
       </main>
       <footer className="border-t border-gray-100 bg-gray-50/50 py-16 text-sm text-gray-500">
         <div className="container mx-auto px-4 lg:px-20">
-          <div className="flex flex-col items-center justify-between gap-8 md:flex-row">
-            <div className="space-y-4 text-center md:text-left">
-              <span className="text-2xl font-extrabold tracking-tight text-gray-900">
-                Kata<span className="text-sky-500">loka</span>
-              </span>
+          <div className="flex flex-col items-center justify-between">
+            <div className="space-y-4 text-center">
+              <img src="/kataloka.svg" alt="Kataloka" className="mx-auto h-16 w-auto" />
+              {/*<span className="text-2xl font-extrabold tracking-tight text-gray-900">*/}
+              {/*  Kata<span className="text-sky-500">loka</span>*/}
+              {/*</span>*/}
               <p className="max-w-xs text-gray-500">
                 Partner strategis dalam membangun kehadiran digital yang profesional dan
                 berorientasi pada pertumbuhan.
               </p>
             </div>
-            <div className="flex gap-8 font-medium">
-              <a href="#" className="transition-colors hover:text-sky-500">
-                Tentang Kami
-              </a>
-              <a href="#" className="transition-colors hover:text-sky-500">
-                Kebijakan Privasi
-              </a>
-              <a href="#" className="transition-colors hover:text-sky-500">
-                Kontak
-              </a>
-            </div>
+            {/*<div className="flex gap-8 font-medium">*/}
+            {/*  <a href="#" className="transition-colors hover:text-sky-500">*/}
+            {/*    Tentang Kami*/}
+            {/*  </a>*/}
+            {/*  <a href="#" className="transition-colors hover:text-sky-500">*/}
+            {/*    Kebijakan Privasi*/}
+            {/*  </a>*/}
+            {/*  <a href="#" className="transition-colors hover:text-sky-500">*/}
+            {/*    Kontak*/}
+            {/*  </a>*/}
+            {/*</div>*/}
           </div>
           <div className="mt-12 border-t border-gray-200 pt-8 text-center">
             <p>
