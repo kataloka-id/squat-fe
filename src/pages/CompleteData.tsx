@@ -1093,8 +1093,11 @@ const AutocompleteSelect: React.FC<{
 }) => {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [isTyping, setIsTyping] = useState(false); // 🆕 ADDED
+
   const ref = useRef<HTMLDivElement>(null);
 
+  // 🆕 ADDED — close on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (!ref.current?.contains(e.target as Node)) setOpen(false);
@@ -1102,6 +1105,14 @@ const AutocompleteSelect: React.FC<{
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, []);
+
+  // 🔧 CHANGED — sync query ONLY when not typing
+  useEffect(() => {
+    if (isTyping) return;
+
+    const selected = options.find((o) => o.value === value);
+    setQuery(selected?.label ?? '');
+  }, [value, options, isTyping]);
 
   return (
     <div ref={ref} className="group relative space-y-3">
@@ -1124,10 +1135,12 @@ const AutocompleteSelect: React.FC<{
       <div className="relative">
         <input
           disabled={disabled}
-          value={query || value}
+          value={query}
           placeholder={placeholder}
           onFocus={() => setOpen(true)}
           onChange={(e) => {
+            setIsTyping(true); // 🆕 ADDED
+
             setQuery(e.target.value);
             onInputChange?.(e.target.value);
             setOpen(true);
@@ -1162,6 +1175,8 @@ const AutocompleteSelect: React.FC<{
                   onClick={() => {
                     onChange(o.value);
                     onSelect?.(o);
+                    setIsTyping(false); // 🆕 ADDED
+
                     setQuery(o.label);
                     setOpen(false);
                   }}
