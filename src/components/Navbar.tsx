@@ -31,7 +31,7 @@ const Navbar: React.FC<NavbarProps> = ({ onOpenModal }) => {
         <div className="hidden items-center gap-8 md:flex">
           {[
             // { name: 'Proses Kerja', link: '#workflow' },
-            { name: 'Pendekatan', link: '#features' },
+            { name: 'Keunggulan', link: '#features' },
             { name: 'Kerjasama', link: '#partnership' },
           ].map((item) => (
             <a
@@ -62,11 +62,11 @@ const Navbar: React.FC<NavbarProps> = ({ onOpenModal }) => {
       {/* Mobile Menu */}
       {isOpen && (
         <div className="animate-in slide-in-from-top-2 absolute left-0 top-full flex w-full flex-col gap-4 border-b border-gray-100 bg-white px-6 py-6 shadow-xl md:hidden">
-          <a href="#workflow" className="font-bold text-gray-900" onClick={() => setIsOpen(false)}>
-            Proses Kerja
-          </a>
+          {/*<a href="#workflow" className="font-bold text-gray-900" onClick={() => setIsOpen(false)}>*/}
+          {/*  Proses Kerja*/}
+          {/*</a>*/}
           <a href="#features" className="font-bold text-gray-900" onClick={() => setIsOpen(false)}>
-            Pendekatan
+            Keunggulan
           </a>
           <a
             href="#partnership"
@@ -76,7 +76,7 @@ const Navbar: React.FC<NavbarProps> = ({ onOpenModal }) => {
             Kerjasama
           </a>
           <button
-            className="rounded-2xl bg-gray-900 px-6 py-4 text-center font-bold text-white"
+            className="rounded-2xl bg-[#0697e0] px-6 py-4 text-center font-bold text-white"
             onClick={onOpenModal}
           >
             Mulai Sekarang
