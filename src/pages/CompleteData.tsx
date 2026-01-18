@@ -16,18 +16,18 @@ import {
   Sparkles,
   Calendar,
   Lock,
-  Shield,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import SuccessModal from '@/src/components/SuccessModal.tsx';
-
-// --- Types & Interfaces ---
+import { useOnboardingStore } from '@/src/store/onboardingStore.ts';
+import { EnterpriseService } from '@/src/api/enterprises.service.ts';
+import { ExternalService } from '@/src/api/external.service.ts';
 
 interface FormData {
   fullName: string;
   personalPhone: string;
   email: string;
-  dob: string; // YYYY-MM-DD
+  dob: string;
   personalAddress: string;
   personalPostalCode: string;
   businessName: string;
@@ -35,20 +35,166 @@ interface FormData {
   companyAddress: string;
   companyPostalCode: string;
   companyPhone: string;
-  industry: string;
-  scale: string;
-  businessType: string;
+  industry: string | null;
+  scale: number | null;
+  businessTypeId: number | null;
 }
 
 const CompleteData: React.FC = () => {
+  const registration = useOnboardingStore((state) => state.registration);
   const navigate = useNavigate();
   const [isSuccessOpen, setIsSuccessOpen] = useState(false);
 
-  // --- Form State (Initialized with data from "previous step") ---
+  type BusinessTypeOption = {
+    id: number;
+    label: string;
+  };
+
+  const [businessTypes, setBusinessTypes] = useState<BusinessTypeOption[]>([]);
+
+  const [, setIsLoadingBusinessType] = useState(false);
+
+  useEffect(() => {
+    EnterpriseService.getEnterpriseTypes()
+      .then((res) => {
+        const options = res.data
+          .filter((item: any) => item.is_active)
+          .map((item: any) => ({
+            id: item.id,
+            label: item.business_type,
+          }));
+
+        setBusinessTypes(options);
+      })
+      .catch(console.error)
+      .finally(() => setIsLoadingBusinessType(false));
+  }, []);
+
+  type EnterpriseCategoryOption = {
+    id: number;
+    label: string;
+  };
+
+  const [enterpriseCategories, setEnterpriseCategories] = useState<EnterpriseCategoryOption[]>([]);
+
+  const [, setIsLoadingEnterpriseCategory] = useState(true);
+
+  useEffect(() => {
+    EnterpriseService.getEnterpriseCategories()
+      .then((res) => {
+        const options = res.data
+          .filter((item: any) => item.is_active)
+          .map((item: any) => ({
+            id: item.id,
+            label: item.name,
+          }));
+
+        setEnterpriseCategories(options);
+      })
+      .catch(console.error)
+      .finally(() => setIsLoadingEnterpriseCategory(false));
+  }, []);
+
+  // ================== TYPES ==================
+  type ExternalOssOption = string;
+
+  // ================== STATE ==================
+  const [keyword, setKeyword] = useState('');
+  const [ossExternal, setExternalOss] = useState<ExternalOssOption[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [industryLabel, setIndustryLabel] = useState('');
+
+  // ================== EFFECT ==================
+  useEffect(() => {
+    if (!keyword || keyword.length < 2) {
+      setExternalOss([]);
+      return;
+    }
+
+    const delay = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const res = await ExternalService.getOss(keyword);
+
+        const list = Array.isArray(res?.data) ? res.data : [];
+
+        setExternalOss(list); // ✅ AMAN
+      } catch (err) {
+        console.error(err);
+        setExternalOss([]); // ✅ JANGAN BIARKAN undefined
+      } finally {
+        setLoading(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(delay);
+  }, [keyword]);
+
+  // ================== SUBMIT LOGIC ==================
+
+  const buildRegisterPayload = () => {
+    const selectedOss = ossExternal.find((item) => item.startsWith(`${data.industry} -`));
+
+    const fieldLabel = selectedOss ? selectedOss.split(' - ').slice(1).join(' - ') : '';
+
+    return {
+      owner: {
+        full_name: data.fullName,
+        dob: data.dob,
+        address: {
+          street: data.personalAddress,
+          postal_code: data.personalPostalCode,
+        },
+        contact: {
+          phone: data.personalPhone.replace('+', ''),
+          email: data.email,
+        },
+      },
+
+      business: {
+        name: data.companyName,
+        address: {
+          street: data.companyAddress,
+          postal_code: data.companyPostalCode,
+        },
+        contact: {
+          phone: data.companyPhone.replace('+', ''),
+          email: data.email,
+        },
+        classification: {
+          field: data.industry, // ✅ "07294" (APA ADANYA)
+          field_label: industryLabel, // ✅ "Pertambangan Bijih Tembaga"
+          business_type: data.businessTypeId,
+          category: data.scale,
+        },
+      },
+    };
+  };
+
+  const handleSubmit = async () => {
+    if (!isValid || isSubmitting) return;
+
+    setIsSubmitting(true);
+
+    try {
+      const payload = buildRegisterPayload();
+
+      await EnterpriseService.registerEnterprise(payload);
+
+      setIsSuccessOpen(true);
+    } catch (error: any) {
+      console.error('Register enterprise error:', error);
+
+      alert(error?.response?.data?.message || 'Terjadi kesalahan saat mendaftarkan usaha');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const [data, setData] = useState<FormData>({
-    fullName: 'Budi Magelang',
-    personalPhone: '+62812345678',
-    email: 'budimagelang@gmail.com',
+    fullName: registration.fullName,
+    personalPhone: registration.phone,
+    email: registration.email,
     dob: '',
     personalAddress: '',
     personalPostalCode: '',
@@ -56,10 +202,10 @@ const CompleteData: React.FC = () => {
     companyName: '',
     companyAddress: '',
     companyPostalCode: '',
-    companyPhone: '+62', // Start with prefix
-    industry: '',
-    scale: '',
-    businessType: '',
+    companyPhone: '+62',
+    industry: null,
+    scale: null,
+    businessTypeId: null,
   });
 
   const [toggles, setToggles] = useState({
@@ -70,7 +216,6 @@ const CompleteData: React.FC = () => {
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // --- Sync Logic ---
   useEffect(() => {
     if (toggles.sameAddress) {
       setData((prev) => ({
@@ -110,7 +255,7 @@ const CompleteData: React.FC = () => {
 
     if (!data.industry) err.industry = 'Wajib dipilih';
     if (!data.scale) err.scale = 'Wajib dipilih';
-    if (!data.businessType) err.businessType = 'Wajib dipilih';
+    if (!data.businessTypeId) err.businessType = 'Wajib dipilih';
 
     return err;
   }, [data]);
@@ -132,7 +277,7 @@ const CompleteData: React.FC = () => {
     'companyPhone',
     'industry',
     'scale',
-    'businessType',
+    'businessTypeId',
   ];
 
   const personalCompletedCount = personalFields.filter(
@@ -405,7 +550,6 @@ const CompleteData: React.FC = () => {
                   success={data.companyName.length >= 2 && !errors.companyName}
                 />
               </div>
-
               <div className="space-y-4">
                 <div className="flex items-center justify-between px-1">
                   <label className="flex items-center gap-2 text-sm font-bold text-slate-700">
@@ -509,42 +653,44 @@ const CompleteData: React.FC = () => {
                   </div>
                 </div>
               </div>
-
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <SelectGroup
                   label="Badan Usaha"
-                  value={data.businessType}
-                  onChange={(v) => setData({ ...data, businessType: v })}
-                  options={['PT', 'CV', 'Firma', 'Perorangan']}
-                  success={!!data.businessType && !errors.businessType}
+                  value={data.businessTypeId ? String(data.businessTypeId) : ''}
+                  onChange={(v) => setData({ ...data, businessTypeId: Number(v) })}
+                  options={businessTypes.map((bt) => ({
+                    value: String(bt.id),
+                    label: bt.label,
+                  }))}
+                  success={!!data.businessTypeId}
                 />
                 <SelectGroup
                   label="Skala Usaha"
-                  value={data.scale}
-                  onChange={(v) => setData({ ...data, scale: v })}
-                  options={[
-                    'Mikro (1-5 Karyawan)',
-                    'Kecil (6-20 Karyawan)',
-                    'Menengah (21-100 Karyawan)',
-                    'Besar (>100 Karyawan)',
-                  ]}
+                  value={data.scale ? String(data.scale) : ''}
+                  onChange={(v) => setData({ ...data, scale: Number(v) })}
+                  options={enterpriseCategories.map((ec) => ({
+                    value: String(ec.id),
+                    label: ec.label,
+                  }))}
                   success={!!data.scale && !errors.scale}
                 />
               </div>
 
-              <SelectGroup
+              <AutocompleteSelect
                 label="Bidang Usaha"
-                value={data.industry}
+                value={data.industry ? String(data.industry) : ''}
                 onChange={(v) => setData({ ...data, industry: v })}
-                options={[
-                  'Retail',
-                  'F&B',
-                  'Teknologi',
-                  'Kreatif',
-                  'Kesehatan',
-                  'Logistik',
-                  'Lainnya',
-                ]}
+                onSelect={(opt) => setIndustryLabel(opt.label)} // ✅ DI SINI
+                onInputChange={(v) => setKeyword(v)}
+                options={(ossExternal ?? []).map((item) => {
+                  const [code] = item.split(' - ');
+                  return {
+                    value: code,
+                    label: item,
+                  };
+                })}
+                placeholder="Cari bidang usaha"
+                loading={loading}
                 success={!!data.industry && !errors.industry}
               />
 
@@ -573,15 +719,7 @@ const CompleteData: React.FC = () => {
                 <div className="w-full space-y-4">
                   <button
                     disabled={!isValid || isSubmitting}
-                    onClick={() => {
-                      if (!isValid || isSubmitting) return;
-                      setIsSubmitting(true);
-
-                      setTimeout(() => {
-                        setIsSubmitting(false);
-                        setIsSuccessOpen(true);
-                      }, 2000);
-                    }}
+                    onClick={handleSubmit}
                     className={`group relative flex w-full items-center justify-center gap-3 overflow-hidden rounded-2xl py-5 text-xl font-black shadow-lg transition-all ${
                       isValid
                         ? 'scale-105 bg-sky-500 text-white shadow-sky-200 hover:-translate-y-1 hover:bg-sky-600 active:translate-y-0 active:scale-[0.98]'
@@ -817,7 +955,7 @@ const DOBSelector: React.FC<{
         {success && <CheckCircle2 size={16} className="animate-in zoom-in-50 text-emerald-500" />}
       </label>
       <div className="grid grid-cols-3 gap-3">
-        {['d', 'm', 'y'].map((type, i) => {
+        {['d', 'm', 'y'].map((type) => {
           const val = type === 'd' ? localDay : type === 'm' ? localMonth : localYear;
           const options = type === 'd' ? days : type === 'm' ? months : years;
           const placeholder = type === 'd' ? 'Tgl' : type === 'm' ? 'Bulan' : 'Tahun';
@@ -889,7 +1027,7 @@ const SelectGroup: React.FC<{
   label: string;
   value: string;
   onChange: (v: string) => void;
-  options: string[];
+  options: { value: string; label: string }[];
   success?: boolean;
 }> = ({ label, value, onChange, options, success }) => (
   <div className="group space-y-3">
@@ -915,8 +1053,8 @@ const SelectGroup: React.FC<{
           Pilih {label}
         </option>
         {options.map((o) => (
-          <option key={o} value={o}>
-            {o}
+          <option key={o.value} value={o.value}>
+            {o.label}
           </option>
         ))}
       </select>
@@ -927,5 +1065,116 @@ const SelectGroup: React.FC<{
     </div>
   </div>
 );
+
+type Option = { value: string; label: string };
+
+const AutocompleteSelect: React.FC<{
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  onSelect?: (option: Option) => void;
+  onInputChange?: (v: string) => void;
+  options: Option[];
+  placeholder?: string;
+  success?: boolean;
+  disabled?: boolean;
+  loading?: boolean;
+}> = ({
+  label,
+  value,
+  onChange,
+  onSelect,
+  onInputChange,
+  options,
+  placeholder,
+  success,
+  disabled,
+  loading,
+}) => {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  return (
+    <div ref={ref} className="group relative space-y-3">
+      {/* Label */}
+      <label className="flex items-center justify-between text-sm font-bold text-slate-700">
+        <div
+          className={`transition-colors ${
+            success ? 'text-emerald-500' : 'group-focus-within:text-sky-500'
+          }`}
+        >
+          {label}
+        </div>
+
+        {success && !disabled && (
+          <CheckCircle2 size={16} className="animate-in zoom-in-50 text-emerald-500" />
+        )}
+      </label>
+
+      {/* Input */}
+      <div className="relative">
+        <input
+          disabled={disabled}
+          value={query || value}
+          placeholder={placeholder}
+          onFocus={() => setOpen(true)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            onInputChange?.(e.target.value);
+            setOpen(true);
+          }}
+          className={`w-full rounded-2xl border-2 px-5 py-4 font-medium text-slate-900 shadow-sm outline-none transition-all placeholder:text-slate-300 ${
+            disabled
+              ? 'cursor-not-allowed border-slate-100 bg-slate-50 text-slate-500 opacity-90'
+              : success
+                ? 'success-animate border-emerald-500/30 bg-emerald-50/10 focus:border-emerald-500'
+                : 'border-slate-100 bg-white hover:border-slate-200 focus:border-sky-500 focus:ring-4 focus:ring-sky-500/10'
+          }`}
+        />
+
+        <ChevronDown
+          size={20}
+          className="pointer-events-none absolute right-5 top-1/2 -translate-y-1/2 text-slate-400"
+        />
+
+        {/* Dropdown */}
+        {open && !disabled && (
+          <ul className="animate-in fade-in slide-in-from-top-1 absolute z-20 mt-2 max-h-60 w-full overflow-auto rounded-2xl border border-slate-100 bg-white shadow-lg">
+            {loading && <li className="px-5 py-3 text-sm font-medium text-slate-400">Memuat...</li>}
+
+            {!loading && options.length === 0 && query.length >= 2 && (
+              <li className="px-5 py-3 text-sm font-medium text-slate-400">Tidak ditemukan</li>
+            )}
+
+            {!loading &&
+              options.map((o) => (
+                <li
+                  key={o.value}
+                  onClick={() => {
+                    onChange(o.value);
+                    onSelect?.(o);
+                    setQuery(o.label);
+                    setOpen(false);
+                  }}
+                  className="cursor-pointer px-5 py-3 text-sm font-medium text-slate-700 transition-colors hover:bg-sky-50"
+                >
+                  {o.label}
+                </li>
+              ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+};
 
 export default CompleteData;

@@ -11,6 +11,7 @@ import {
   Info,
   AlertCircle,
 } from 'lucide-react';
+import { useOnboardingStore } from '@/src/store/onboardingStore.ts';
 
 interface RegistrationModalProps {
   isOpen: boolean;
@@ -18,6 +19,8 @@ interface RegistrationModalProps {
 }
 
 const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }) => {
+  const setRegistration = useOnboardingStore((state) => state.setRegistration);
+
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
     fullName: '',
@@ -330,6 +333,13 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
                   disabled={!isFormValid}
                   onClick={() => {
                     if (!isFormValid) return;
+
+                    setRegistration({
+                      fullName: formData.fullName,
+                      phone: formData.phone,
+                      email: formData.email,
+                    });
+
                     navigate('/onboarding/complete-data');
                   }}
                   className={`py-4.5 group relative flex w-full items-center justify-center gap-3 overflow-hidden rounded-[1.25rem] text-base font-black transition-all duration-500 sm:py-5 sm:text-lg ${
