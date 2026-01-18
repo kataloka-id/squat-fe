@@ -20,7 +20,7 @@ const Hero: React.FC<HeroProps> = ({ onOpenModal }) => {
       {/* Background Ambience */}
       <div className="absolute right-0 top-0 h-[500px] w-[500px] -translate-y-1/2 translate-x-1/4 rounded-full bg-sky-50 opacity-40 blur-3xl" />
 
-      <div className="container relative z-10 mx-auto flex flex-col items-center gap-10 px-4 lg:flex-row lg:gap-20 lg:px-[190px]">
+      <div className="container relative z-10 mx-auto flex flex-col items-center gap-10 px-4 md:px-12 lg:flex-row lg:px-20 xl:px-[190px]">
         {/* Left: Value Proposition */}
         <div className="max-w-2xl flex-1 space-y-6 text-center lg:text-left">
           <div className="mt-8 inline-flex items-center gap-2 rounded-full border border-sky-100 bg-sky-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-sky-600">
@@ -69,7 +69,7 @@ const Hero: React.FC<HeroProps> = ({ onOpenModal }) => {
         </div>
 
         {/* Right: The "System Blueprint" - Mobile First */}
-        <div className="group relative w-full flex-1">
+        <div className="group relative w-full flex-1 md:mt-12 lg:mt-0">
           <div className="overflow-hidden rounded-[32px] border border-gray-800 bg-gray-900 p-1 shadow-2xl shadow-sky-900/20 transition-transform duration-500 hover:scale-[1.01]">
             {/* Header: Technical Status */}
             <div className="flex items-center justify-between border-b border-gray-700 bg-gray-800/50 px-5 py-3">
