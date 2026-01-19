@@ -337,9 +337,10 @@ const CompleteData: React.FC = () => {
           <span className="text-sm font-bold">Kembali</span>
         </button>
         <div className="flex items-center gap-2">
-          <span className="text-2xl font-black tracking-tight">
-            Kata<span className="text-sky-500">loka</span>
-          </span>
+          <img src="/kataloka.svg" alt="Kataloka" className="h-16 w-auto" />
+          {/*<span className="text-2xl font-black tracking-tight">*/}
+          {/*  Kata<span className="text-sky-500">loka</span>*/}
+          {/*</span>*/}
         </div>
       </header>
 
