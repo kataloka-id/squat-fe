@@ -360,7 +360,7 @@ const CompleteData: React.FC = () => {
                     )}
                   </h1>
                   <p className="text-sm font-medium text-slate-500 sm:text-base">
-                    Sedikit lagi! Lengkapi data berikut untuk melanjutkan 🚀
+                    Lengkapi data berikut untuk melanjutkan 🚀
                   </p>
                 </div>
                 <div className="shrink-0 pt-1">
@@ -723,7 +723,7 @@ const CompleteData: React.FC = () => {
                     onClick={handleSubmit}
                     className={`group relative flex w-full items-center justify-center gap-3 overflow-hidden rounded-2xl py-5 text-xl font-black shadow-lg transition-all ${
                       isValid
-                        ? 'scale-105 bg-sky-500 text-white shadow-sky-200 hover:-translate-y-1 hover:bg-sky-600 active:translate-y-0 active:scale-[0.98]'
+                        ? 'scale-105 bg-[#0697E0] text-white shadow-sky-200 hover:-translate-y-1 hover:bg-sky-600 active:translate-y-0 active:scale-[0.98]'
                         : 'cursor-not-allowed bg-slate-200 text-slate-400'
                     }`}
                   >
