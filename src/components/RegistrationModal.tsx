@@ -198,7 +198,7 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
               <div className="relative">
                 <input
                   type="text"
-                  placeholder="e.g. John Doe"
+                  placeholder="Rizky Aditya"
                   value={formData.fullName}
                   onFocus={() => setActiveField('fullName')}
                   onBlur={() => {
@@ -345,7 +345,7 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
                   className={`py-4.5 group relative flex w-full items-center justify-center gap-3 overflow-hidden rounded-[1.25rem] text-base font-black transition-all duration-500 sm:py-5 sm:text-lg ${
                     isFormValid
                       ? 'bg-sky-500 text-white shadow-2xl shadow-sky-200 hover:-translate-y-1 hover:bg-sky-600 active:translate-y-0'
-                      : 'cursor-not-allowed border border-sky-100 bg-sky-500/10 text-sky-400'
+                      : 'cursor-not-allowed border border-sky-100 bg-sky-500/10 text-[#0697E0]'
                   }`}
                 >
                   {/* Subtle shine for active state */}
