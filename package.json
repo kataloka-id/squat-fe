@@ -13,6 +13,7 @@
     "format:check": "prettier --check ."
   },
   "dependencies": {
+    "@microsoft/clarity": "^1.0.2",
     "axios": "^1.13.2",
     "lucide-react": "^0.562.0",
     "react": "^19.2.3",
