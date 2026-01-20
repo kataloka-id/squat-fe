@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Menu, X, ArrowRight } from 'lucide-react';
+import { trackEvent } from '@/src/analytics/clarity.ts';
 
 interface NavbarProps {
   onOpenModal: () => void;
@@ -43,7 +44,10 @@ const Navbar: React.FC<NavbarProps> = ({ onOpenModal }) => {
             </a>
           ))}
           <button
-            onClick={onOpenModal}
+            onClick={() => {
+              onOpenModal();
+              trackEvent('click_mulai_sekarang_navbar');
+            }}
             className="flex transform items-center gap-2 rounded-full bg-[#0697e0] px-6 py-2.5 text-sm font-bold text-white transition-all hover:scale-105 hover:bg-sky-600 active:scale-95"
           >
             Mulai Sekarang
@@ -77,7 +81,10 @@ const Navbar: React.FC<NavbarProps> = ({ onOpenModal }) => {
           </a>
           <button
             className="rounded-2xl bg-[#0697e0] px-6 py-4 text-center font-bold text-white"
-            onClick={onOpenModal}
+            onClick={() => {
+              onOpenModal();
+              trackEvent('click_mulai_sekarang_navbar_mobile');
+            }}
           >
             Mulai Sekarang
           </button>
