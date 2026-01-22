@@ -53,9 +53,10 @@ const CompleteData: React.FC = () => {
 
   const [businessTypes, setBusinessTypes] = useState<BusinessTypeOption[]>([]);
 
-  const [, setIsLoadingBusinessType] = useState(false);
+  const [isLoadingBusinessType, setIsLoadingBusinessType] = useState(false);
 
   useEffect(() => {
+    setIsLoadingBusinessType(true);
     EnterpriseService.getEnterpriseTypes()
       .then((res) => {
         const options = res.data
@@ -78,7 +79,7 @@ const CompleteData: React.FC = () => {
 
   const [enterpriseCategories, setEnterpriseCategories] = useState<EnterpriseCategoryOption[]>([]);
 
-  const [, setIsLoadingEnterpriseCategory] = useState(true);
+  const [isLoadingEnterpriseCategory, setIsLoadingEnterpriseCategory] = useState(true);
 
   useEffect(() => {
     EnterpriseService.getEnterpriseCategories()
