@@ -12,6 +12,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { useOnboardingStore } from '@/src/store/onboardingStore.ts';
+import { trackEvent } from '@/src/analytics/clarity.ts';
 
 interface RegistrationModalProps {
   isOpen: boolean;
@@ -333,6 +334,8 @@ const RegistrationModal: React.FC<RegistrationModalProps> = ({ isOpen, onClose }
                   disabled={!isFormValid}
                   onClick={() => {
                     if (!isFormValid) return;
+
+                    trackEvent('click_lanjutkan_daftarkan_dirimu');
 
                     setRegistration({
                       fullName: formData.fullName,

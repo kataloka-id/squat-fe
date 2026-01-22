@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { CheckCircle2, ArrowRight, Info } from 'lucide-react';
+import { trackEvent } from '@/src/analytics/clarity.ts';
 
 interface SuccessModalProps {
   isOpen: boolean;
@@ -90,7 +91,10 @@ const SuccessModal: React.FC<SuccessModalProps> = ({
             {/* Final Action */}
             <div className="w-full">
               <button
-                onClick={onClose}
+                onClick={() => {
+                  onClose();
+                  trackEvent('click_selesai_pendaftaran_berhasil');
+                }}
                 className="py-4.5 group flex w-full items-center justify-center gap-2 rounded-2xl bg-[#0697E0] px-8 text-base font-extrabold text-white shadow-xl shadow-sky-500/20 transition-all duration-200 hover:bg-sky-600 focus:outline-none focus:ring-4 focus:ring-sky-500/10 active:scale-[0.98]"
               >
                 Selesai
