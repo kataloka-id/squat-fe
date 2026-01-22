@@ -1,7 +1,7 @@
 export async function withRetry<T>(
   fn: () => Promise<T>,
   retries: number = 3,
-  delay: number = 2000,
+  delay: number = 5000,
 ): Promise<T> {
   try {
     return await fn();
