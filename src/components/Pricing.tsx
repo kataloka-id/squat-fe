@@ -1,5 +1,6 @@
 import React from 'react';
 import { Check, ArrowRight, Gift, ShieldAlert, Sparkles } from 'lucide-react';
+import { trackEvent } from '@/src/analytics/clarity.ts';
 
 interface PricingProps {
   onOpenModal: () => void;
@@ -66,7 +67,10 @@ const Pricing: React.FC<PricingProps> = ({ onOpenModal }) => {
 
                 <div className="space-y-4">
                   <button
-                    onClick={onOpenModal}
+                    onClick={() => {
+                      onOpenModal();
+                      trackEvent('click_ajukan_kemitraan');
+                    }}
                     className="flex w-full transform items-center justify-center gap-2 rounded-2xl bg-white px-8 py-5 text-lg font-black text-[#0697e0] shadow-xl transition-all hover:scale-105 hover:bg-sky-50"
                   >
                     Ajukan Kemitraan

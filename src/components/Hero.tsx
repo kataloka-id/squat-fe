@@ -9,6 +9,7 @@ import {
   Lock,
   CheckCircle,
 } from 'lucide-react';
+import { trackEvent } from '@/src/analytics/clarity.ts';
 
 interface HeroProps {
   onOpenModal: () => void;
@@ -45,7 +46,10 @@ const Hero: React.FC<HeroProps> = ({ onOpenModal }) => {
 
           <div className="flex flex-col items-center justify-center gap-3 pt-2 sm:flex-row lg:justify-start">
             <button
-              onClick={onOpenModal}
+              onClick={() => {
+                onOpenModal();
+                trackEvent('click_mulai_digitalkan_bisnismu_sekarang');
+              }}
               className="group flex w-full items-center justify-center gap-2 rounded-xl bg-[#0697e0] px-8 py-4 text-base font-bold text-white shadow-lg shadow-sky-100 transition-all hover:bg-sky-600 sm:w-auto"
             >
               Mulai Digitalkan Bisnismu Sekarang

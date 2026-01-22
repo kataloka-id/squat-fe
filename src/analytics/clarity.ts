@@ -16,7 +16,7 @@ export const initClarity = () => {
   Clarity.init(CLARITY_ID);
 };
 
-export const trackEvent = (name: string, data?: Record<string, string | number | boolean>) => {
+export const trackEvent = (name: string) => {
   if (import.meta.env.MODE !== 'production') return;
   Clarity.event(name);
 };

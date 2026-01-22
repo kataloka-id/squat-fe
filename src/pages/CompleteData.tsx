@@ -22,6 +22,7 @@ import SuccessModal from '@/src/components/SuccessModal.tsx';
 import { useOnboardingStore } from '@/src/store/onboardingStore.ts';
 import { EnterpriseService } from '@/src/api/enterprises.service.ts';
 import { ExternalService } from '@/src/api/external.service.ts';
+import { trackEvent } from '@/src/analytics/clarity.ts';
 
 interface FormData {
   fullName: string;
@@ -173,6 +174,8 @@ const CompleteData: React.FC = () => {
 
   const handleSubmit = async () => {
     if (!isValid || isSubmitting) return;
+
+    trackEvent('click_selesaikan_onboarding_data');
 
     setIsSubmitting(true);
 

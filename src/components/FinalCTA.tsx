@@ -1,5 +1,6 @@
 import React from 'react';
 import { MessageSquare, ArrowRight } from 'lucide-react';
+import { trackEvent } from '@/src/analytics/clarity.ts';
 
 const FinalCTA: React.FC = () => {
   return (
@@ -25,7 +26,12 @@ const FinalCTA: React.FC = () => {
                 rel="noopener noreferrer"
                 className="w-full sm:w-auto"
               >
-                <button className="flex w-full transform items-center justify-center gap-2 rounded-2xl bg-[#0697e0] px-10 py-5 text-lg font-black text-white transition-all hover:scale-105 hover:bg-sky-600 sm:w-auto">
+                <button
+                  onClick={() => {
+                    trackEvent('click_hubungi_whatsapp');
+                  }}
+                  className="flex w-full transform items-center justify-center gap-2 rounded-2xl bg-[#0697e0] px-10 py-5 text-lg font-black text-white transition-all hover:scale-105 hover:bg-sky-600 sm:w-auto"
+                >
                   <MessageSquare size={24} />
                   Hubungi WhatsApp
                 </button>
