@@ -1,18 +1,16 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
-import LandingPage from './pages/LandingPage';
-import CompleteData from './pages/CompleteData';
+import LoginPage from '@/src/pages/LoginPage.tsx';
+import ProjectsTestCasesPage from '@/src/pages/ProjectsTestCasesPage.tsx';
+
 
 const App = () => {
   return (
     <Routes>
-      {/* Home */}
-      <Route path="/" element={<LandingPage />} />
+      <Route path="/" element={<Navigate to="/login" replace />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/workspace" element={<ProjectsTestCasesPage />} />
 
-      {/* Onboarding */}
-      <Route path="/onboarding/complete-data" element={<CompleteData />} />
-
-      {/* Fallback */}
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );
 };
