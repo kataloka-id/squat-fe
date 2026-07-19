@@ -82,7 +82,7 @@ Lint penuh masih dapat memuat temuan legacy di luar scope RBAC. Tidak ada suite 
 ## Creds
 
     "email": "admin.local@example.test",
-    "password": "LocalOnly-Admin-2026!",
+    "password": "admin123456",
 
     "email": "qa.local@example.test"
-    "password": "admin123"
+    "password": "qa123456"
