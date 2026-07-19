@@ -9,16 +9,17 @@ interface ProjectFormProps {
   initialData?: Project | null;
   onClose: () => void;
   onSave: (data: Partial<Project>) => void;
+  createdBy: string;
 }
 
-export const ProjectForm: React.FC<ProjectFormProps> = ({ isOpen, initialData, onClose, onSave }) => {
+export const ProjectForm: React.FC<ProjectFormProps> = ({ isOpen, initialData, onClose, onSave, createdBy }) => {
   const [formData, setFormData] = useState<Partial<Project>>({
     name: '',
     key: '',
     description: '',
     status: 'Active',
     externalLink: '',
-    createdBy: 'System',
+    createdBy,
     members: []
   });
 
@@ -32,11 +33,11 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ isOpen, initialData, o
         description: '',
         status: 'Active',
         externalLink: '',
-        createdBy: 'Alex Morgan', // Default user
+        createdBy,
         members: []
       });
     }
-  }, [initialData, isOpen]);
+  }, [initialData, isOpen, createdBy]);
 
   const generateKey = (name: string) => {
     // Generate simple key: remove non-alphanumeric, uppercase, take first 4 chars
@@ -63,6 +64,7 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ isOpen, initialData, o
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (formData.key && formData.key.length > 4) return;
     onSave(formData);
   };
 
@@ -119,13 +121,15 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ isOpen, initialData, o
                         type="text"
                         name="key"
                         required
-                        disabled
+                        maxLength={4}
+                        pattern="[A-Za-z0-9]{1,4}"
                         value={formData.key}
-                        className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg shadow-sm text-slate-500 text-sm font-mono uppercase cursor-not-allowed"
+                        onChange={(event) => setFormData((previous) => ({ ...previous, key: event.target.value.toUpperCase() }))}
+                        className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg shadow-sm text-slate-900 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
                     />
                     <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                 </div>
-                <p className="text-[10px] text-slate-400 mt-1">Auto-generated from project name</p>
+                <p className="text-[10px] text-slate-400 mt-1">Unique, up to 4 letters or numbers. Suggested from project name.</p>
             </div>
             
             <div>
@@ -135,9 +139,7 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ isOpen, initialData, o
                   onChange={(val) => setFormData(prev => ({ ...prev, status: val as any }))}
                   options={[
                     { label: 'Active', value: 'Active' },
-                    { label: 'On Hold', value: 'On Hold' },
                     { label: 'Completed', value: 'Completed' },
-                    { label: 'Review', value: 'Review' }
                   ]}
                   className="w-full"
                   size="md"
@@ -168,7 +170,7 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ isOpen, initialData, o
                      type="text"
                      name="createdBy"
                      disabled
-                     value={formData.createdBy || 'System'}
+                     value={formData.createdBy || createdBy}
                      className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg shadow-sm text-slate-500 text-sm cursor-not-allowed"
                  />
                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />

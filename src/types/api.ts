@@ -64,6 +64,11 @@ export interface RoleRecord {
   description?: string;
 }
 
+export interface SectionRecord {
+  id: string;
+  name: string;
+}
+
 export interface ApiResponse<T> {
   success: boolean;
   code: string;
@@ -82,6 +87,7 @@ export interface ProjectAssignmentRecord {
   externalLink?: string;
   createdBy?: string;
   updatedAt?: string;
+  testCasesCount?: number;
 }
 
 export interface ProjectMemberRecord {
@@ -106,6 +112,8 @@ export interface ProjectPayload {
 
 export interface ProjectTestCaseRecord {
   id: string;
+  tcNumber?: number;
+  projectKey?: string;
   title: string;
   projectId?: string;
   section: string;
