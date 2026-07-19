@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { 
+import {
   FileText, 
   PlayCircle, 
   BarChart2, 
@@ -37,7 +37,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
     } catch (error) {
       console.error('Logout API failed', error);
     } finally {
-      localStorage.removeItem('access_token');
       navigate('/login');
     }
   };

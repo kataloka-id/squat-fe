@@ -1,38 +1,62 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Logo } from './Logo';
 import { Input } from './Input';
 import { Button } from './Button';
-import {AuthService} from '@/src/api/auth.service.ts';
-import {useNavigate} from 'react-router-dom';
+import { AuthService } from '@/src/api/auth.service.ts';
+import { useNavigate } from 'react-router-dom';
 
 export const LoginForm: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const isSubmitting = useRef(false);
 
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) return;
+    const normalizedEmail = email.trim();
+
+    if (isSubmitting.current) return;
+
+    if (!normalizedEmail || !password) {
+      setErrorMessage('Email dan password wajib diisi.');
+      return;
+    }
 
     try {
+      isSubmitting.current = true;
       setIsLoading(true);
+      setErrorMessage('');
 
       const response = await AuthService.postAuthLogin({
-        email,
+        email: normalizedEmail,
         password,
       });
 
-      localStorage.setItem('access_token', response.data.access_token);
+      if (!response.success) {
+        throw new Error('Login tidak dapat diproses. Silakan coba lagi.');
+      }
 
-      // alert('Login success!');
+      navigate('/workspace', { replace: true });
+    } catch (error: unknown) {
+      const status =
+        typeof error === 'object' && error !== null && 'status' in error
+          ? Number(error.status)
+          : undefined;
 
-
-      navigate('/workspace');
-    } catch (error: any) {
-      alert(error.message || 'Login failed');
+      if (status === 400 || status === 401) {
+        setErrorMessage('Email atau password tidak valid.');
+      } else if (status === 429) {
+        setErrorMessage('Terlalu banyak percobaan login. Silakan coba lagi nanti.');
+      } else if (error instanceof Error && error.message) {
+        setErrorMessage(error.message);
+      } else {
+        setErrorMessage('Login gagal. Silakan coba lagi.');
+      }
     } finally {
+      isSubmitting.current = false;
       setIsLoading(false);
     }
   };
@@ -82,6 +106,7 @@ setIsLoading(true);
         {/* Form Section */}
         <form
           onSubmit={handleSubmit}
+          noValidate
           className="animate-fade-in-up space-y-6 opacity-0 lg:space-y-7"
           style={{ animationDelay: '200ms' }}
         >
@@ -92,7 +117,10 @@ setIsLoading(true);
               label="Email"
               placeholder="user@squathub.com"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setErrorMessage('');
+              }}
               required
               autoComplete="email"
               icon={
@@ -114,7 +142,10 @@ setIsLoading(true);
               label="Password"
               placeholder="••••••••"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setErrorMessage('');
+              }}
               required
               autoComplete="current-password"
               icon={
@@ -134,8 +165,22 @@ setIsLoading(true);
             />
           </div>
 
+          {errorMessage && (
+            <p
+              className="rounded-sm border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+              role="alert"
+            >
+              {errorMessage}
+            </p>
+          )}
+
           <div className="pt-2 lg:pt-4">
-            <Button type="submit" isLoading={isLoading} disabled={!isFormValid}>
+            <Button
+              type="submit"
+              isLoading={isLoading}
+              disabled={!isFormValid}
+              aria-busy={isLoading}
+            >
               Sign In
             </Button>
           </div>

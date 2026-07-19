@@ -3,23 +3,11 @@ import axios from 'axios';
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
   timeout: 15000,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 });
-
-api.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('access_token');
-
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-
-    return config;
-  },
-  (error) => Promise.reject(error),
-);
 
 api.interceptors.response.use(
   (response) => response.data,
@@ -32,9 +20,10 @@ api.interceptors.response.use(
 
     const { status, data } = error.response;
 
-    if (status === 401) {
-      localStorage.removeItem('access_token');
-      window.location.href = '/login';
+    const isSessionCheck = error.config?.url?.endsWith('/auth/session');
+
+    if (status === 401 && !isSessionCheck && window.location.pathname !== '/login') {
+      window.location.assign('/login');
     }
 
     return Promise.reject({

@@ -6,6 +6,10 @@ export async function withRetry<T>(
   try {
     return await fn();
   } catch (error: any) {
+    if (typeof error?.status === 'number') {
+      throw error;
+    }
+
     const isTimeout =
       error.code === 'ECONNABORTED' ||
       error.message?.toLowerCase().includes('timeout') ||
