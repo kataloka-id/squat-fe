@@ -1,7 +1,8 @@
 import { Fragment, FormEvent, type InputHTMLAttributes, useCallback, useEffect, useRef, useState } from 'react';
-import { AlertCircle, Pencil, Plus, RefreshCw, Save, Shield, Trash2, UserCog, Users } from 'lucide-react';
+import { AlertCircle, Pencil, Plus, RefreshCw, Save, Shield, Trash2, UserCog, Users, X } from 'lucide-react';
 import { RolesService, UsersService, type UserPayload } from '@/src/api/users.service.ts';
-import type { RoleRecord, UserRecord } from '@/src/types/api.ts';
+import { ProjectsService } from '@/src/api/projects.service.ts';
+import type { ProjectAssignmentRecord, RoleRecord, UserRecord } from '@/src/types/api.ts';
 import { useSessionUser } from '@/src/auth/SessionContext.tsx';
 import { Button } from '@/src/components/projectsTestCases/ui/Button.tsx';
 
@@ -27,6 +28,7 @@ export const SettingsPage = () => {
   const [me, setMe] = useState<UserRecord | null>(null);
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [roles, setRoles] = useState<RoleRecord[]>([]);
+  const [projects, setProjects] = useState<ProjectAssignmentRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
@@ -34,9 +36,12 @@ export const SettingsPage = () => {
   const [newUser, setNewUser] = useState({ email: '', username: '', password: '', roleSlug: 'qa' });
   const [newRole, setNewRole] = useState({ slug: '', name: '', description: '' });
   const [editingUser, setEditingUser] = useState<UserEditor | null>(null);
+  const [assignmentUser, setAssignmentUser] = useState<UserRecord | null>(null);
+  const [assignedProjectIds, setAssignedProjectIds] = useState<string[]>([]);
+  const [assignmentLoading, setAssignmentLoading] = useState(false);
   const loadGeneration = useRef(0);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = false) => {
     const generation = ++loadGeneration.current;
     const isCurrentLoad = () => loadGeneration.current === generation;
     if (!sessionUserId) return;
@@ -45,23 +50,27 @@ export const SettingsPage = () => {
     try {
       // User data is fetched only for administrators. Client-side hiding is not
       // an authorization boundary; the API also enforces this restriction.
-      const meResponse = await UsersService.getMe();
+      const options = force ? { force: true } : undefined;
+      const meResponse = await UsersService.getMe(options);
       if (!isCurrentLoad()) return;
       setMe(meResponse.data);
       setProfile({ email: meResponse.data.email, username: meResponse.data.username ?? '', password: '' });
       if (isAdmin) {
-        const [rolesResponse, usersResponse] = await Promise.all([
-          RolesService.list(),
-          UsersService.list(),
+        const [rolesResponse, usersResponse, projectsResponse] = await Promise.all([
+          RolesService.list(options),
+          UsersService.list(options),
+          ProjectsService.list(options),
         ]);
         if (!isCurrentLoad()) return;
         setRoles(rolesResponse.data);
         setUsers(usersResponse.data);
+        setProjects(projectsResponse.data);
       } else {
         // Non-admin Settings is strictly self-service: do not request data
         // about roles or other accounts, even though those sections are hidden.
         setRoles([]);
         setUsers([]);
+        setProjects([]);
       }
     } catch (error) {
       if (isCurrentLoad()) setNotice({ type: 'error', message: errorMessage(error) });
@@ -114,6 +123,26 @@ export const SettingsPage = () => {
       isActive: user.isActive,
       password: '',
     });
+  };
+
+  const openAssignments = async (user: UserRecord) => {
+    setAssignmentUser(user); setAssignedProjectIds([]); setAssignmentLoading(true); setNotice(null);
+    try {
+      const response = await UsersService.getProjectAssignments(user.id);
+      setAssignedProjectIds(response.data.projectIds);
+    } catch (error) { setNotice({ type: 'error', message: errorMessage(error) }); }
+    finally { setAssignmentLoading(false); }
+  };
+
+  const saveAssignments = async () => {
+    if (!assignmentUser) return;
+    setSaving(true);
+    try {
+      await UsersService.updateProjectAssignments(assignmentUser.id, { projectIds: assignedProjectIds });
+      setAssignmentUser(null);
+      setNotice({ type: 'success', message: `Assignment project ${assignmentUser.username || assignmentUser.email} diperbarui.` });
+    } catch (error) { setNotice({ type: 'error', message: errorMessage(error) }); }
+    finally { setSaving(false); }
   };
 
   const saveUserEdit = async (event: FormEvent) => {
@@ -188,7 +217,7 @@ export const SettingsPage = () => {
   return <div className="mx-auto w-full max-w-6xl space-y-6 animate-in fade-in duration-300">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div><h1 className="text-2xl font-bold text-slate-900">Settings</h1><p className="mt-1 text-sm text-slate-500">Kelola profil dan akses workspace.</p></div>
-      <Button variant="secondary" onClick={() => void load()} disabled={loading || saving} icon={<RefreshCw size={16} />}>Muat ulang</Button>
+      <Button variant="secondary" onClick={() => void load(true)} disabled={loading || saving} icon={<RefreshCw size={16} />}>Muat ulang</Button>
     </div>
     {notice && <div role="alert" className={`flex gap-2 rounded-lg border p-3 text-sm ${notice.type === 'error' ? 'border-red-200 bg-red-50 text-red-800' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}><AlertCircle size={18} />{notice.message}</div>}
     {loading ? <div className="rounded-xl border border-slate-200 bg-white p-8 text-sm text-slate-500">Memuat pengaturan…</div> : <>
@@ -199,12 +228,15 @@ export const SettingsPage = () => {
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm"><div className="mb-5 flex items-center gap-3"><div className="rounded-lg bg-brand-50 p-2 text-brand-600"><Users size={20} /></div><div><h2 className="font-semibold text-slate-900">Akun pengguna</h2><p className="text-sm text-slate-500">Buat dan kelola akses anggota workspace.</p></div></div>
           <form onSubmit={createUser} className="mb-6 grid gap-3 rounded-lg bg-slate-50 p-4 md:grid-cols-5"><Field label="Email" type="email" required autoComplete="email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} /><Field label="Username" required autoComplete="username" value={newUser.username} onChange={(e) => setNewUser({ ...newUser, username: e.target.value })} /><Field label="Kata sandi" type="password" required minLength={8} autoComplete="new-password" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} /><label className="block text-sm font-medium text-slate-700">Role<select className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={newUser.roleSlug} onChange={(e) => setNewUser({ ...newUser, roleSlug: e.target.value })}>{roles.map((role) => <option key={role.slug} value={role.slug}>{role.name ?? role.slug}</option>)}</select></label><div className="flex items-end"><Button type="submit" disabled={saving} icon={<Plus size={16} />}>Tambah</Button></div></form>
           <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="border-b text-slate-500"><tr><th className="p-3">Pengguna</th><th className="p-3">Role</th><th className="p-3">Status</th><th className="p-3"><span className="sr-only">Aksi</span></th></tr></thead><tbody>{users.map((user) => <Fragment key={user.id}>
-            <tr key={user.id} className="border-b"><td className="p-3"><div className="font-medium text-slate-800">{user.username}</div><div className="text-slate-500">{user.email}</div></td><td className="p-3">{user.roleSlug}</td><td className="p-3">{user.isActive ? 'Aktif' : 'Nonaktif'}</td><td className="p-3 text-right"><div className="flex justify-end gap-2"><Button variant="secondary" size="sm" disabled={saving} onClick={() => beginUserEdit(user)} icon={<Pencil size={15} />}>Ubah</Button><Button variant="danger" size="sm" disabled={saving || user.id === me?.id} onClick={() => void deleteUser(user)} icon={<Trash2 size={15} />}>Hapus</Button></div></td></tr>
+            <tr key={user.id} className="border-b"><td className="p-3"><div className="font-medium text-slate-800">{user.username}</div><div className="text-slate-500">{user.email}</div></td><td className="p-3">{user.roleSlug}</td><td className="p-3">{user.isActive ? 'Aktif' : 'Nonaktif'}</td><td className="p-3 text-right"><div className="flex justify-end gap-2">{user.roleSlug.toLowerCase() !== 'admin' && <Button variant="secondary" size="sm" disabled={saving} onClick={() => void openAssignments(user)}>Project</Button>}<Button variant="secondary" size="sm" disabled={saving} onClick={() => beginUserEdit(user)} icon={<Pencil size={15} />}>Ubah</Button><Button variant="danger" size="sm" disabled={saving || user.id === me?.id} onClick={() => void deleteUser(user)} icon={<Trash2 size={15} />}>Hapus</Button></div></td></tr>
             {editingUser?.id === user.id && <tr key={`${user.id}-editor`} className="border-b bg-slate-50"><td colSpan={4} className="p-4"><form onSubmit={saveUserEdit} className="grid gap-3 md:grid-cols-2"><Field label="Email" type="email" required autoComplete="email" value={editingUser.email} onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })} /><Field label="Username" required autoComplete="username" value={editingUser.username} onChange={(e) => setEditingUser({ ...editingUser, username: e.target.value })} /><Field label="Kata sandi baru (opsional)" type="password" minLength={8} autoComplete="new-password" value={editingUser.password} onChange={(e) => setEditingUser({ ...editingUser, password: e.target.value })} /><label className="block text-sm font-medium text-slate-700">Role<select className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" value={editingUser.roleSlug} onChange={(e) => setEditingUser({ ...editingUser, roleSlug: e.target.value })}>{roles.map((role) => <option key={role.slug} value={role.slug}>{role.name ?? role.slug}</option>)}</select></label><label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={editingUser.isActive} onChange={(e) => setEditingUser({ ...editingUser, isActive: e.target.checked })} />Akun aktif</label><div className="flex items-end justify-end gap-2"><Button type="button" variant="secondary" disabled={saving} onClick={() => setEditingUser(null)}>Batal</Button><Button type="submit" disabled={saving} icon={<Save size={16} />}>Simpan akun</Button></div></form></td></tr>}
           </Fragment>)}</tbody></table></div>
         </section>
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm"><div className="mb-5 flex items-center gap-3"><div className="rounded-lg bg-violet-50 p-2 text-violet-600"><Shield size={20} /></div><div><h2 className="font-semibold text-slate-900">Role</h2><p className="text-sm text-slate-500">Tambahkan role untuk penugasan akun mendatang.</p></div></div><form onSubmit={createRole} className="mb-4 grid gap-3 md:grid-cols-4"><Field label="Slug" required pattern="[a-z0-9-]+" title="Gunakan huruf kecil, angka, atau tanda hubung" value={newRole.slug} onChange={(e) => setNewRole({ ...newRole, slug: e.target.value })} /><Field label="Nama" required value={newRole.name} onChange={(e) => setNewRole({ ...newRole, name: e.target.value })} /><Field label="Deskripsi" value={newRole.description} onChange={(e) => setNewRole({ ...newRole, description: e.target.value })} /><div className="flex items-end"><Button type="submit" disabled={saving} icon={<Plus size={16} />}>Tambah role</Button></div></form><ul className="divide-y rounded-lg border border-slate-200">{roles.map((role) => <li key={role.slug} className="flex items-center justify-between gap-4 p-3"><div><span className="font-medium text-slate-800">{role.name ?? role.slug}</span><span className="ml-2 text-xs text-slate-500">{role.slug}</span>{role.description && <p className="text-sm text-slate-500">{role.description}</p>}</div><div className="flex gap-2"><Button variant="secondary" size="sm" disabled={saving} onClick={() => void editRole(role)}>Ubah</Button><Button variant="danger" size="sm" disabled={saving || role.slug === 'admin'} onClick={() => void deleteRole(role)} icon={<Trash2 size={15} />}>Hapus</Button></div></li>)}</ul></section>
       </>}
     </>}
+    {assignmentUser && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" role="dialog" aria-modal="true" aria-labelledby="assignment-title">
+      <div className="w-full max-w-lg rounded-xl bg-white shadow-xl"><div className="flex items-start justify-between border-b border-slate-200 p-5"><div><h2 id="assignment-title" className="font-semibold text-slate-900">Assignment project</h2><p className="mt-1 text-sm text-slate-500">Pilih project yang dapat diakses oleh {assignmentUser.username || assignmentUser.email}.</p></div><button aria-label="Tutup dialog" className="rounded p-1 text-slate-500 hover:bg-slate-100" onClick={() => setAssignmentUser(null)} disabled={saving}><X size={20}/></button></div><div className="max-h-[55vh] space-y-2 overflow-y-auto p-5">{assignmentLoading ? <p className="text-sm text-slate-500">Memuat assignment…</p> : projects.length === 0 ? <p className="text-sm text-slate-500">Belum ada project untuk di-assign.</p> : projects.map((project) => <label key={project.id} className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 p-3 hover:bg-slate-50"><input type="checkbox" checked={assignedProjectIds.includes(project.id)} onChange={(event) => setAssignedProjectIds((current) => event.target.checked ? [...current, project.id] : current.filter((id) => id !== project.id))}/><span><span className="block text-sm font-medium text-slate-800">{project.name}</span>{project.key && <span className="text-xs text-slate-500">{project.key}</span>}</span></label>)}</div><div className="flex justify-end gap-2 border-t border-slate-200 p-4"><Button variant="secondary" onClick={() => setAssignmentUser(null)} disabled={saving}>Batal</Button><Button onClick={() => void saveAssignments()} disabled={saving || assignmentLoading} icon={<Save size={16}/>}>Simpan assignment</Button></div></div>
+    </div>}
   </div>;
 };

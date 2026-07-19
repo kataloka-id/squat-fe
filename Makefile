@@ -7,7 +7,7 @@ BACKEND_PORT ?= 3000
 BACKEND_DIR := ../kataloka-main-be
 BACKEND_DIR_ABS := $(abspath $(BACKEND_DIR))
 FRONTEND_DIR_ABS := $(CURDIR)
-RUN_DIR ?= /tmp/kataloka-local
+RUN_DIR ?= /tmp/kataloka-local-$(shell id -u)
 
 .PHONY: help install build local restart-local orchestrator stop
 
@@ -17,7 +17,7 @@ help:
 	@printf '%s\n' 'make install Install dependencies for both projects.'
 	@printf '%s\n' 'make build   Build backend, then frontend.'
 	@printf '%s\n' 'make orchestrator [ARGS="..."]  Start Codex with access to both workspaces.'
-	@printf '%s\n' 'make stop    Stop the service process trees started by make local.'
+	@printf '%s\n' 'make stop    Stop verified local Kataloka service process trees.'
 
 install:
 	@test -d "$(BACKEND_DIR)" || { echo "Backend directory not found: $(BACKEND_DIR)"; exit 1; }
@@ -62,7 +62,7 @@ local: build
 		attempt=0; \
 		while [ "$$attempt" -lt 30 ]; do \
 			started_at="$$(ps -p "$$service_pid" -o lstart= 2>/dev/null | tr -s ' ' | sed 's/^ //')"; \
-			actual_cwd="$$(lsof -a -p "$$service_pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p')"; \
+			actual_cwd="$$(lsof -p"$$service_pid" -a -d cwd -Fn 2>/dev/null | sed -n 's/^n//p')"; \
 			if [ -n "$$started_at" ] && [ "$$actual_cwd" = "$$expected_cwd" ]; then \
 				printf '%s\n%s\n%s\n' "$$service_pid" "$$started_at" "$$expected_cwd" > "$(RUN_DIR)/$$service.pid"; \
 				return 0; \
@@ -108,36 +108,88 @@ stop:
 		for child_pid in $$(pgrep -P "$$1" 2>/dev/null || true); do kill_tree "$$child_pid"; done; \
 		kill -TERM "$$1" 2>/dev/null || true; \
 	}; \
-	process_cwd() { lsof -a -p "$$1" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p'; }; \
-	stopped=""; still_exiting=""; \
+	process_cwd() { lsof -p"$$1" -a -d cwd -Fn 2>/dev/null | sed -n 's/^n//p'; }; \
+	process_started_at() { ps -p "$$1" -o lstart= 2>/dev/null | tr -s ' ' | sed 's/^ //'; }; \
+	pid_listens_on_port() { \
+		listener_pid="$$1"; port="$$2"; listener_pids="$$(lsof -nP -tiTCP:"$$port" -sTCP:LISTEN 2>/dev/null || true)"; \
+		case " $$listener_pids " in *" $$listener_pid "*) return 0 ;; *) return 1 ;; esac; \
+	}; \
+	stop_recorded_tree() { \
+		service="$$1"; service_pid="$$2"; expected_cwd="$$3"; expected_started_at="$$4"; source="$$5"; \
+		if [ "$$(process_started_at "$$service_pid")" != "$$expected_started_at" ] || [ "$$(process_cwd "$$service_pid")" != "$$expected_cwd" ]; then \
+			echo "Skipped $$service ($$source): process identity changed before it could be stopped."; \
+			skipped="$$skipped $$service"; \
+			return 1; \
+		fi; \
+		kill_tree "$$service_pid"; \
+		attempt=0; \
+		while kill -0 "$$service_pid" 2>/dev/null && [ "$$attempt" -lt 30 ]; do sleep 0.1; attempt=$$((attempt + 1)); done; \
+		if kill -0 "$$service_pid" 2>/dev/null; then \
+			echo "Sent stop to $$service ($$source), but PID $$service_pid is still exiting after 3 seconds."; \
+			still_exiting="$$still_exiting $$service"; \
+			return 1; \
+		fi; \
+		stopped="$$stopped $$service"; \
+		return 0; \
+	}; \
+	stop_untracked_listener() { \
+		service="$$1"; listener_pid="$$2"; expected_cwd="$$3"; port="$$4"; listener_started_at="$$5"; \
+		if [ "$$(process_started_at "$$listener_pid")" != "$$listener_started_at" ] || [ "$$(process_cwd "$$listener_pid")" != "$$expected_cwd" ] || ! pid_listens_on_port "$$listener_pid" "$$port"; then \
+			echo "Skipped $$service listener PID $$listener_pid: process identity or port ownership changed before it could be stopped."; \
+			skipped="$$skipped $$service"; \
+			return 1; \
+		fi; \
+		kill -TERM "$$listener_pid" 2>/dev/null || true; \
+		attempt=0; \
+		while kill -0 "$$listener_pid" 2>/dev/null && [ "$$attempt" -lt 30 ]; do sleep 0.1; attempt=$$((attempt + 1)); done; \
+		if kill -0 "$$listener_pid" 2>/dev/null; then \
+			echo "Sent stop to $$service listener PID $$listener_pid, but it is still exiting after 3 seconds."; \
+			still_exiting="$$still_exiting $$service"; \
+			return 1; \
+		fi; \
+		stopped="$$stopped $$service"; \
+		return 0; \
+	}; \
+	stopped=""; still_exiting=""; skipped=""; checked_pids=" "; \
 	for service in backend frontend; do \
+		case "$$service" in \
+			backend) expected_cwd="$(BACKEND_DIR_ABS)"; port="$(BACKEND_PORT)" ;; \
+			frontend) expected_cwd="$(FRONTEND_DIR_ABS)"; port="$(FRONTEND_PORT)" ;; \
+		esac; \
 		pid_file="$(RUN_DIR)/$$service.pid"; \
 		if [ -f "$$pid_file" ]; then \
 			service_pid="$$(sed -n '1p' "$$pid_file")"; \
 			expected_started_at="$$(sed -n '2p' "$$pid_file")"; \
-			expected_cwd="$$(sed -n '3p' "$$pid_file")"; \
-			actual_started_at="$$(ps -p "$$service_pid" -o lstart= 2>/dev/null | tr -s ' ' | sed 's/^ //')"; \
+			recorded_cwd="$$(sed -n '3p' "$$pid_file")"; \
+			actual_started_at="$$(process_started_at "$$service_pid")"; \
 			actual_cwd="$$(process_cwd "$$service_pid")"; \
-			if [ -n "$$expected_started_at" ] && [ "$$actual_started_at" = "$$expected_started_at" ] && [ "$$actual_cwd" = "$$expected_cwd" ]; then \
-				kill_tree "$$service_pid"; \
-				attempt=0; \
-				while kill -0 "$$service_pid" 2>/dev/null && [ "$$attempt" -lt 30 ]; do sleep 0.1; attempt=$$((attempt + 1)); done; \
-				if kill -0 "$$service_pid" 2>/dev/null; then \
-					echo "Sent stop to $$service, but PID $$service_pid is still exiting after 3 seconds."; \
-					still_exiting="$$still_exiting $$service"; \
-				else \
-					stopped="$$stopped $$service"; \
-					rm -f "$$pid_file"; \
-				fi; \
+			case "$$service_pid" in *[!0-9]*|'') actual_started_at="" ;; esac; \
+			if [ "$$recorded_cwd" = "$$expected_cwd" ] && [ -n "$$expected_started_at" ] && [ "$$actual_started_at" = "$$expected_started_at" ] && [ "$$actual_cwd" = "$$recorded_cwd" ]; then \
+				checked_pids="$$checked_pids$$service_pid "; \
+				if stop_recorded_tree "$$service" "$$service_pid" "$$recorded_cwd" "$$expected_started_at" "recorded process"; then rm -f "$$pid_file"; fi; \
 			elif [ -n "$$actual_started_at" ]; then \
 				echo "Skipped $$service: its recorded PID no longer matches the local service identity."; \
+				skipped="$$skipped $$service"; \
 				rm -f "$$pid_file"; \
 			else \
 				echo "Removed stale $$service process record."; \
 				rm -f "$$pid_file"; \
 			fi; \
 		fi; \
+		for listener_pid in $$(lsof -nP -tiTCP:"$$port" -sTCP:LISTEN 2>/dev/null || true); do \
+			case "$$listener_pid" in *[!0-9]*|'') echo "Skipped untracked $$service listener with an invalid PID on port $$port."; skipped="$$skipped $$service"; continue ;; esac; \
+			case "$$checked_pids" in *" $$listener_pid "*) continue ;; esac; \
+			listener_cwd="$$(process_cwd "$$listener_pid")"; \
+			listener_started_at="$$(process_started_at "$$listener_pid")"; \
+			if [ -n "$$listener_started_at" ] && [ "$$listener_cwd" = "$$expected_cwd" ] && pid_listens_on_port "$$listener_pid" "$$port"; then \
+				checked_pids="$$checked_pids$$listener_pid "; \
+				stop_untracked_listener "$$service" "$$listener_pid" "$$expected_cwd" "$$port" "$$listener_started_at"; \
+			else \
+				echo "Skipped untracked $$service listener PID $$listener_pid on port $$port: expected working directory $$expected_cwd."; \
+				skipped="$$skipped $$service"; \
+			fi; \
+		done; \
 	done; \
 	if [ -n "$$stopped" ]; then echo "Stopped process tree(s):$$stopped"; fi; \
 	if [ -n "$$still_exiting" ]; then echo "Service process tree(s) still exiting:$$still_exiting"; exit 1; fi; \
-	if [ -z "$$stopped" ] && [ -z "$$still_exiting" ]; then echo "No local service process is running."; fi
+	if [ -z "$$stopped" ] && [ -z "$$still_exiting" ] && [ -z "$$skipped" ]; then echo "No local service process is running."; fi
