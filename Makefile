@@ -3,11 +3,12 @@ SHELL := /bin/sh
 FRONTEND_PORT ?= 3001
 BACKEND_DIR := ../kataloka-main-be
 
-.PHONY: help install local stop
+.PHONY: help install local orchestrator stop
 
 help:
 	@printf '%s\n' 'make local   Run backend (3000) and frontend (3001) in one terminal.'
 	@printf '%s\n' 'make install Install dependencies for both projects.'
+	@printf '%s\n' 'make orchestrator [ARGS="..."]  Start Codex with access to both workspaces.'
 	@printf '%s\n' 'make stop    Stop processes listening on ports 3000 and 3001.'
 
 install:
@@ -25,6 +26,9 @@ local:
 		echo "Starting frontend at http://localhost:$(FRONTEND_PORT) ..."; \
 		echo "Press Ctrl+C to stop both services."; \
 		npm run dev -- --port $(FRONTEND_PORT)
+
+orchestrator:
+	@./scripts/kataloka-orchestrator $(ARGS)
 
 stop:
 	@pids="$$(lsof -tiTCP:3000 -sTCP:LISTEN; lsof -tiTCP:$(FRONTEND_PORT) -sTCP:LISTEN)"; \
