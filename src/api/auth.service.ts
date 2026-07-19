@@ -6,6 +6,7 @@ import {
   AuthSessionResponse,
 } from '@/src/types/api.ts';
 import { withRetry } from '@/src/utils/retry';
+import { invalidateSettingsReadRequests } from '@/src/api/users.service.ts';
 
 // React Strict Mode intentionally remounts effects in development. Reuse an
 // active session check so that route guards from that remount do not make a
@@ -19,10 +20,12 @@ const invalidateActiveSessionRequest = () => {
 export const AuthService = {
   postAuthLogin(payload: AuthLoginPayload): Promise<AuthLoginResponse> {
     invalidateActiveSessionRequest();
+    invalidateSettingsReadRequests();
     return withRetry(() => api.post('/v1/auth/login', payload));
   },
   postAuthLogout(): Promise<AuthLogoutResponse> {
     invalidateActiveSessionRequest();
+    invalidateSettingsReadRequests();
     return withRetry(() => api.post('/v1/auth/logout'));
   },
   getAuthSession(): Promise<AuthSessionResponse> {

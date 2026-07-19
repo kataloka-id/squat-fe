@@ -3,17 +3,30 @@ import { useEffect, useState, type ReactNode } from 'react';
 import LoginPage from '@/src/pages/LoginPage.tsx';
 import ProjectsTestCasesPage from '@/src/pages/ProjectsTestCasesPage.tsx';
 import { AuthService } from '@/src/api/auth.service.ts';
+import { SessionContext } from '@/src/auth/SessionContext.tsx';
+import type { UserRecord } from '@/src/types/api.ts';
 
 const RequireSession = ({ children }: { children: ReactNode }) => {
   const [isChecking, setIsChecking] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState<UserRecord | null>(null);
 
   useEffect(() => {
     let isMounted = true;
 
     AuthService.getAuthSession()
-      .then(() => {
-        if (isMounted) setIsAuthenticated(true);
+      .then((response) => {
+        if (isMounted) {
+          const sessionUser = response.data.user;
+          setUser({
+            id: sessionUser.id,
+            email: sessionUser.email,
+            username: sessionUser.username ?? '',
+            roleSlug: sessionUser.role,
+            isActive: true,
+          });
+          setIsAuthenticated(true);
+        }
       })
       .catch(() => {
         if (isMounted) setIsAuthenticated(false);
@@ -35,7 +48,7 @@ const RequireSession = ({ children }: { children: ReactNode }) => {
     );
   }
 
-  return isAuthenticated ? children : <Navigate to="/login" replace />;
+  return isAuthenticated ? <SessionContext.Provider value={user}>{children}</SessionContext.Provider> : <Navigate to="/login" replace />;
 };
 
 const App = () => {

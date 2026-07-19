@@ -6,8 +6,11 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
   return {
     server: {
-      port: 3000,
-      host: '0.0.0.0',
+      port: 3001,
+      // Local orchestration is loopback-only so the browser origin stays
+      // canonical and does not alternate between localhost and 127.0.0.1.
+      host: 'localhost',
+      strictPort: true,
     },
     plugins: [react()],
     define: {

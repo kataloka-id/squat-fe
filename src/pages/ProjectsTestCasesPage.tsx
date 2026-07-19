@@ -11,6 +11,7 @@ import { Button } from '@/src/components/projectsTestCases/ui/Button.tsx';
 import { MultiSelect } from '@/src/components/projectsTestCases/ui/MultiSelect.tsx';
 import { Select } from '@/src/components/projectsTestCases/ui/Select.tsx';
 import { Toast,ToastType } from '@/src/components/projectsTestCases/ui/Toast.tsx';
+import { SettingsPage } from '@/src/components/settings/SettingsPage.tsx';
 import { Plus, Filter, Trash2, Search, Briefcase, Zap, Check, X } from 'lucide-react';
 import {
   TestCase,
@@ -701,7 +702,8 @@ const App: React.FC = () => {
           )}
 
           {/* Under Development Views */}
-          {['runs', 'reports', 'team', 'settings'].includes(currentView) && <UnderDevelopment />}
+          {['runs', 'reports', 'team'].includes(currentView) && <UnderDevelopment />}
+          {currentView === 'settings' && <SettingsPage />}
         </main>
       </div>
 

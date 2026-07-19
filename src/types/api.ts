@@ -39,6 +39,7 @@ export interface AuthSessionResponse {
     user: {
       id: string;
       email: string;
+      username?: string;
       role: string;
     };
   };
@@ -46,4 +47,26 @@ export interface AuthSessionResponse {
     request_id: string;
     timestamp: string;
   };
+}
+
+export interface UserRecord {
+  id: string;
+  email: string;
+  username: string;
+  roleSlug: string;
+  isActive: boolean;
+}
+
+export interface RoleRecord {
+  id?: string;
+  slug: string;
+  name?: string;
+  description?: string;
+}
+
+export interface ApiResponse<T> {
+  success: boolean;
+  code: string;
+  message: string;
+  data: T;
 }
