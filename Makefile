@@ -1,9 +1,11 @@
 SHELL := /bin/sh
 
-FRONTEND_HOST ?= localhost
-FRONTEND_PORT ?= 3001
-BACKEND_HOST ?= localhost
-BACKEND_PORT ?= 3000
+# Canonical local origins. Keep these coupled with .env.local and the backend
+# local CORS configuration; `make local` must never silently switch to 127.0.0.1.
+override FRONTEND_HOST := localhost
+override FRONTEND_PORT := 3001
+override BACKEND_HOST := localhost
+override BACKEND_PORT := 3000
 BACKEND_DIR := ../kataloka-main-be
 BACKEND_DIR_ABS := $(abspath $(BACKEND_DIR))
 FRONTEND_DIR_ABS := $(CURDIR)
@@ -52,6 +54,8 @@ local: build
 		for child_pid in $$(pgrep -P "$$1" 2>/dev/null || true); do terminate_tree "$$child_pid"; done; \
 		kill -TERM "$$1" 2>/dev/null || true; \
 	}; \
+	cleanup() { make --no-print-directory stop >/dev/null || true; }; \
+	on_interrupt() { trap - INT TERM; cleanup; exit 0; }; \
 	wait_for_exit() { \
 		service_pid="$$1"; attempt=0; \
 		while kill -0 "$$service_pid" 2>/dev/null && [ "$$attempt" -lt 30 ]; do sleep 0.1; attempt=$$((attempt + 1)); done; \
@@ -84,7 +88,8 @@ local: build
 	}; \
 	cd "$(BACKEND_DIR)" && PORT=$(BACKEND_PORT) NODE_ENV=local exec npm run dev & backend_pid=$$!; \
 	if ! record_service backend "$$backend_pid" "$(BACKEND_DIR_ABS)"; then exit 1; fi; \
-	trap 'make --no-print-directory stop >/dev/null || true' EXIT INT TERM; \
+	trap cleanup EXIT; \
+	trap on_interrupt INT TERM; \
 	if ! wait_for_listener "$(BACKEND_PORT)"; then \
 		echo "Backend did not begin listening on http://$(BACKEND_HOST):$(BACKEND_PORT) within 5 seconds."; \
 		terminate_tree "$$backend_pid"; \
@@ -95,7 +100,9 @@ local: build
 		echo "Press Ctrl+C to stop both services."; \
 		VITE_API_URL=http://$(BACKEND_HOST):$(BACKEND_PORT) npm run dev -- --host $(FRONTEND_HOST) --port $(FRONTEND_PORT) --strictPort & frontend_pid=$$!; \
 	if ! record_service frontend "$$frontend_pid" "$(FRONTEND_DIR_ABS)"; then exit 1; fi; \
-		wait "$$frontend_pid"
+		wait "$$frontend_pid"; frontend_status=$$?; \
+	if [ "$$frontend_status" -eq 130 ]; then exit 0; fi; \
+	exit "$$frontend_status"
 
 restart-local:
 	@$(MAKE) --no-print-directory local
