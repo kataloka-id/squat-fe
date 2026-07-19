@@ -10,11 +10,18 @@ BACKEND_DIR := ../kataloka-main-be
 BACKEND_DIR_ABS := $(abspath $(BACKEND_DIR))
 FRONTEND_DIR_ABS := $(CURDIR)
 RUN_DIR ?= /tmp/kataloka-local-$(shell id -u)
+# Backend owns database configuration. `neon-dev` sets this to `neon`, which
+# makes the backend load its ignored .env.neon file.
+BACKEND_NODE_ENV ?= local
 
-.PHONY: help install build local restart-local orchestrator stop
+.PHONY: help install build local neon-dev local-neon-dev db-neon-dev-migrate db-neon-dev-seed db-neon-dev-provision-admin restart-local orchestrator stop
 
 help:
 	@printf '%s\n' 'make local   Run backend (localhost:3000) and frontend (localhost:3001) in one terminal.'
+	@printf '%s\n' 'make neon-dev (or make local-neon-dev)  Run local frontend/backend using backend Neon configuration for branch dev.'
+	@printf '%s\n' 'make db-neon-dev-migrate NEON_DEV_CONFIRM=...  Apply approved schema migrations to Neon branch dev.'
+	@printf '%s\n' 'make db-neon-dev-seed NEON_DEV_CONFIRM=...  Run the approved Neon branch dev seed.'
+	@printf '%s\n' 'make db-neon-dev-provision-admin NEON_DEV_CONFIRM=...  Provision one Neon branch dev admin account.'
 	@printf '%s\n' 'make restart-local Stop tracked local services, then start the canonical localhost workflow.'
 	@printf '%s\n' 'make install Install dependencies for both projects.'
 	@printf '%s\n' 'make build   Build backend, then frontend.'
@@ -86,7 +93,7 @@ local: build
 		done; \
 		return 1; \
 	}; \
-	cd "$(BACKEND_DIR)" && PORT=$(BACKEND_PORT) NODE_ENV=local exec npm run dev & backend_pid=$$!; \
+	cd "$(BACKEND_DIR)" && PORT=$(BACKEND_PORT) NODE_ENV=$(BACKEND_NODE_ENV) exec npm run dev & backend_pid=$$!; \
 	if ! record_service backend "$$backend_pid" "$(BACKEND_DIR_ABS)"; then exit 1; fi; \
 	trap cleanup EXIT; \
 	trap on_interrupt INT TERM; \
@@ -103,6 +110,27 @@ local: build
 		wait "$$frontend_pid"; frontend_status=$$?; \
 	if [ "$$frontend_status" -eq 130 ]; then exit 0; fi; \
 	exit "$$frontend_status"
+
+# The Neon URL is loaded only by the backend from its ignored .env.neon file.
+# This target does not run migrations; it starts the same local API and browser
+# workflow as `make local`.
+local-neon-dev:
+	@$(MAKE) --no-print-directory local BACKEND_NODE_ENV=neon
+
+# Short alias for the documented local-Neon workflow.
+neon-dev: local-neon-dev
+
+# Database writes are implemented and guarded by the backend workspace. These
+# wrappers keep the developer entrypoint in this repository without exposing
+# the Neon URL to the frontend.
+db-neon-dev-migrate:
+	@$(MAKE) --no-print-directory -C "$(BACKEND_DIR)" db-neon-dev-migrate NEON_DEV_CONFIRM="$(NEON_DEV_CONFIRM)"
+
+db-neon-dev-seed:
+	@$(MAKE) --no-print-directory -C "$(BACKEND_DIR)" db-neon-dev-seed NEON_DEV_CONFIRM="$(NEON_DEV_CONFIRM)"
+
+db-neon-dev-provision-admin:
+	@$(MAKE) --no-print-directory -C "$(BACKEND_DIR)" db-neon-dev-provision-admin NEON_DEV_CONFIRM="$(NEON_DEV_CONFIRM)"
 
 restart-local:
 	@$(MAKE) --no-print-directory local
