@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { TestCase, SortField, SortOrder, Project, Priority, Status } from '../projectsTestCases/types.ts';
 import { Badge } from './ui/Badge';
+import { formatTestCaseDisplayId } from '@/src/utils/testCaseDisplayId.ts';
 import { Button } from './ui/Button';
 import { Select } from './ui/Select';
 
@@ -192,7 +193,7 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
                   disabled={loading || testCases.length === 0}
                 />
               </th>}
-              <TableHead field="id" label="ID" className="w-24" />
+              <TableHead field="id" label="TC Number" className="w-24" />
               <TableHead field="projectId" label="Project" className="w-24 hidden sm:table-cell" sortable={false} />
               <TableHead field="title" label="Title" />
               <TableHead field="section" label="Section" className="hidden md:table-cell" />
@@ -247,7 +248,7 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
                         className="font-mono text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded cursor-pointer hover:bg-brand-100 hover:text-brand-700 transition-colors border border-slate-200"
                         onClick={() => canManage && onEdit(tc)}
                       >
-                        {tc.id}
+                        {formatTestCaseDisplayId(tc, project?.key)}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap hidden sm:table-cell align-middle">
@@ -258,7 +259,7 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
                       </div>
                     </td>
                     <td className="px-6 py-4 align-middle">
-                      <div className="text-sm text-slate-900 font-medium line-clamp-1 group-hover:text-brand-600 transition-colors cursor-pointer" onClick={() => onEdit(tc)}>{tc.title}</div>
+                      <div className="text-sm text-slate-900 font-medium line-clamp-1 group-hover:text-brand-600 transition-colors cursor-pointer" onClick={() => canManage && onEdit(tc)}>{tc.title}</div>
                       <div className="text-xs text-slate-500 mt-1 line-clamp-1 md:hidden">{tc.section}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 hidden md:table-cell align-middle">
@@ -305,7 +306,7 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
       {/* Pagination Footer */}
       {(hasProjectSelected && !loading && pagination) && (
         <div className="bg-white px-6 py-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4 sticky bottom-0 z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4">
             {/* Rows Per Page Dropdown */}
             <div className="flex items-center gap-2">
               <span className="text-sm text-slate-500">Rows:</span>
@@ -316,7 +317,7 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
                   { label: '20', value: 20 },
                   { label: 'All', value: -1 }
                 ]}
-                className="w-20"
+                className="w-24 shrink-0"
               />
             </div>
             {/* Showing Count */}

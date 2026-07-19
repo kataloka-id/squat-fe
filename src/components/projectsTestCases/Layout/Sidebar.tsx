@@ -60,7 +60,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
           <span
             className={`overflow-hidden whitespace-nowrap text-lg font-bold tracking-tight text-white transition-all duration-300 ${collapsed ? 'max-w-0 opacity-0' : 'ml-3 max-w-[200px] opacity-100'}`}
           >
-            QAMaster
+            SQUAT
           </span>
         </div>
       </div>

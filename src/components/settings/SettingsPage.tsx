@@ -1,8 +1,8 @@
 import { Fragment, FormEvent, type InputHTMLAttributes, useCallback, useEffect, useRef, useState } from 'react';
 import { AlertCircle, Pencil, Plus, RefreshCw, Save, Shield, Trash2, UserCog, Users, X } from 'lucide-react';
 import { RolesService, UsersService, type UserPayload } from '@/src/api/users.service.ts';
-import { ProjectsService } from '@/src/api/projects.service.ts';
-import type { ProjectAssignmentRecord, RoleRecord, UserRecord } from '@/src/types/api.ts';
+import { ProjectsService, SectionsService } from '@/src/api/projects.service.ts';
+import type { ProjectAssignmentRecord, RoleRecord, SectionRecord, UserRecord } from '@/src/types/api.ts';
 import { useSessionUser } from '@/src/auth/SessionContext.tsx';
 import { Button } from '@/src/components/projectsTestCases/ui/Button.tsx';
 
@@ -29,6 +29,8 @@ export const SettingsPage = () => {
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [roles, setRoles] = useState<RoleRecord[]>([]);
   const [projects, setProjects] = useState<ProjectAssignmentRecord[]>([]);
+  const [sections, setSections] = useState<SectionRecord[]>([]);
+  const [newSectionName, setNewSectionName] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
@@ -56,21 +58,24 @@ export const SettingsPage = () => {
       setMe(meResponse.data);
       setProfile({ email: meResponse.data.email, username: meResponse.data.username ?? '', password: '' });
       if (isAdmin) {
-        const [rolesResponse, usersResponse, projectsResponse] = await Promise.all([
+        const [rolesResponse, usersResponse, projectsResponse, sectionsResponse] = await Promise.all([
           RolesService.list(options),
           UsersService.list(options),
           ProjectsService.list(options),
+          SectionsService.list(options),
         ]);
         if (!isCurrentLoad()) return;
         setRoles(rolesResponse.data);
         setUsers(usersResponse.data);
         setProjects(projectsResponse.data);
+        setSections(sectionsResponse.data);
       } else {
         // Non-admin Settings is strictly self-service: do not request data
         // about roles or other accounts, even though those sections are hidden.
         setRoles([]);
         setUsers([]);
         setProjects([]);
+        setSections([]);
       }
     } catch (error) {
       if (isCurrentLoad()) setNotice({ type: 'error', message: errorMessage(error) });
@@ -214,6 +219,48 @@ export const SettingsPage = () => {
     finally { setSaving(false); }
   };
 
+  const refreshSections = async () => {
+    const response = await SectionsService.list({ force: true });
+    setSections(response.data);
+    window.dispatchEvent(new Event('sections-catalog-updated'));
+  };
+
+  const createSection = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!newSectionName.trim()) return;
+    setSaving(true);
+    try {
+      await SectionsService.create({ name: newSectionName.trim() });
+      setNewSectionName('');
+      await refreshSections();
+      setNotice({ type: 'success', message: 'Section ditambahkan.' });
+    } catch (error) { setNotice({ type: 'error', message: errorMessage(error) }); }
+    finally { setSaving(false); }
+  };
+
+  const editSection = async (section: SectionRecord) => {
+    const name = window.prompt('Nama Section', section.name);
+    if (name === null || !name.trim() || name.trim() === section.name) return;
+    setSaving(true);
+    try {
+      await SectionsService.update(section.id, { name: name.trim() });
+      await refreshSections();
+      setNotice({ type: 'success', message: 'Section diperbarui.' });
+    } catch (error) { setNotice({ type: 'error', message: errorMessage(error) }); }
+    finally { setSaving(false); }
+  };
+
+  const deleteSection = async (section: SectionRecord) => {
+    if (!window.confirm(`Hapus Section ${section.name}?`)) return;
+    setSaving(true);
+    try {
+      await SectionsService.remove(section.id);
+      await refreshSections();
+      setNotice({ type: 'success', message: 'Section dihapus.' });
+    } catch (error) { setNotice({ type: 'error', message: errorMessage(error) }); }
+    finally { setSaving(false); }
+  };
+
   return <div className="mx-auto w-full max-w-6xl space-y-6 animate-in fade-in duration-300">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div><h1 className="text-2xl font-bold text-slate-900">Settings</h1><p className="mt-1 text-sm text-slate-500">Kelola profil dan akses workspace.</p></div>
@@ -233,6 +280,7 @@ export const SettingsPage = () => {
           </Fragment>)}</tbody></table></div>
         </section>
         <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm"><div className="mb-5 flex items-center gap-3"><div className="rounded-lg bg-violet-50 p-2 text-violet-600"><Shield size={20} /></div><div><h2 className="font-semibold text-slate-900">Role</h2><p className="text-sm text-slate-500">Tambahkan role untuk penugasan akun mendatang.</p></div></div><form onSubmit={createRole} className="mb-4 grid gap-3 md:grid-cols-4"><Field label="Slug" required pattern="[a-z0-9-]+" title="Gunakan huruf kecil, angka, atau tanda hubung" value={newRole.slug} onChange={(e) => setNewRole({ ...newRole, slug: e.target.value })} /><Field label="Nama" required value={newRole.name} onChange={(e) => setNewRole({ ...newRole, name: e.target.value })} /><Field label="Deskripsi" value={newRole.description} onChange={(e) => setNewRole({ ...newRole, description: e.target.value })} /><div className="flex items-end"><Button type="submit" disabled={saving} icon={<Plus size={16} />}>Tambah role</Button></div></form><ul className="divide-y rounded-lg border border-slate-200">{roles.map((role) => <li key={role.slug} className="flex items-center justify-between gap-4 p-3"><div><span className="font-medium text-slate-800">{role.name ?? role.slug}</span><span className="ml-2 text-xs text-slate-500">{role.slug}</span>{role.description && <p className="text-sm text-slate-500">{role.description}</p>}</div><div className="flex gap-2"><Button variant="secondary" size="sm" disabled={saving} onClick={() => void editRole(role)}>Ubah</Button><Button variant="danger" size="sm" disabled={saving || role.slug === 'admin'} onClick={() => void deleteRole(role)} icon={<Trash2 size={15} />}>Hapus</Button></div></li>)}</ul></section>
+        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm"><div className="mb-5 flex items-center gap-3"><div className="rounded-lg bg-amber-50 p-2 text-amber-600"><Shield size={20} /></div><div><h2 className="font-semibold text-slate-900">Katalog Section Test Case</h2><p className="text-sm text-slate-500">Hanya Admin dapat menambah, mengubah, atau menghapus pilihan Section.</p></div></div><form onSubmit={createSection} className="mb-4 flex max-w-xl gap-3"><input required maxLength={150} value={newSectionName} onChange={(event) => setNewSectionName(event.target.value)} placeholder="Nama Section" className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20" /><Button type="submit" disabled={saving} icon={<Plus size={16} />}>Tambah Section</Button></form><ul className="divide-y rounded-lg border border-slate-200">{sections.length === 0 ? <li className="p-3 text-sm text-slate-500">Belum ada Section.</li> : sections.map((section) => <li key={section.id} className="flex items-center justify-between gap-4 p-3"><span className="text-sm font-medium text-slate-800">{section.name}</span><div className="flex gap-2"><Button variant="secondary" size="sm" disabled={saving} onClick={() => void editSection(section)}>Ubah</Button><Button variant="danger" size="sm" disabled={saving} onClick={() => void deleteSection(section)} icon={<Trash2 size={15} />}>Hapus</Button></div></li>)}</ul></section>
       </>}
     </>}
     {assignmentUser && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" role="dialog" aria-modal="true" aria-labelledby="assignment-title">

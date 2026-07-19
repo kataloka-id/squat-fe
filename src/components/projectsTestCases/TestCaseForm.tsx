@@ -2,21 +2,25 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Plus, Trash2, GripVertical, Save, ChevronDown, Check } from 'lucide-react';
 import { Button } from './ui/Button';
 import { TestCase, Priority, Status, TestStep, Project, AutomationType } from '../projectsTestCases/types.ts';
-import { SECTIONS } from '../projectsTestCases/constants.ts';
+import { formatTestCaseDisplayId } from '@/src/utils/testCaseDisplayId.ts';
 
 interface TestCaseFormProps {
   isOpen: boolean;
   initialData?: TestCase | null;
   projects: Project[];
+  sectionsByProject: Record<string, string[]>;
+  preselectedProjectId?: string;
   onClose: () => void;
   onSave: (data: Partial<TestCase>) => void;
 }
 
-export const TestCaseForm: React.FC<TestCaseFormProps> = ({ isOpen, initialData, projects, onClose, onSave }) => {
+export const TestCaseForm: React.FC<TestCaseFormProps> = ({ isOpen, initialData, projects, sectionsByProject, preselectedProjectId, onClose, onSave }) => {
+  const selectedInitialProjectId = initialData?.projectId ?? preselectedProjectId ?? projects[0]?.id ?? '';
+  const initialSections = sectionsByProject[selectedInitialProjectId] ?? [];
   const [formData, setFormData] = useState<Partial<TestCase>>({
     title: '',
-    projectId: projects[0]?.id || '',
-    section: SECTIONS[0],
+    projectId: selectedInitialProjectId,
+    section: initialSections[0] || '',
     priority: Priority.Medium,
     status: Status.Draft,
     automationType: AutomationType.Manual,
@@ -26,13 +30,6 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({ isOpen, initialData,
   });
 
   const [steps, setSteps] = useState<TestStep[]>([]);
-  
-  // Custom Dropdown State
-  const [isProjectOpen, setIsProjectOpen] = useState(false);
-  const projectContainerRef = useRef<HTMLDivElement>(null);
-
-  const [isSectionOpen, setIsSectionOpen] = useState(false);
-  const sectionContainerRef = useRef<HTMLDivElement>(null);
 
   const [isPriorityOpen, setIsPriorityOpen] = useState(false);
   const priorityContainerRef = useRef<HTMLDivElement>(null);
@@ -45,8 +42,8 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({ isOpen, initialData,
       // Reset form
       setFormData({
         title: '',
-        projectId: projects[0]?.id || '',
-        section: SECTIONS[0],
+        projectId: selectedInitialProjectId,
+        section: (sectionsByProject[selectedInitialProjectId] ?? [])[0] || '',
         priority: Priority.Medium,
         status: Status.Draft,
         automationType: AutomationType.Manual,
@@ -55,16 +52,10 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({ isOpen, initialData,
       });
       setSteps([{ id: Date.now().toString(), action: '', expectedResult: '' }]);
     }
-  }, [initialData, isOpen, projects]);
+  }, [initialData, isOpen, projects, sectionsByProject, selectedInitialProjectId]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (projectContainerRef.current && !projectContainerRef.current.contains(event.target as Node)) {
-        setIsProjectOpen(false);
-      }
-      if (sectionContainerRef.current && !sectionContainerRef.current.contains(event.target as Node)) {
-        setIsSectionOpen(false);
-      }
       if (priorityContainerRef.current && !priorityContainerRef.current.contains(event.target as Node)) {
         setIsPriorityOpen(false);
       }
@@ -95,7 +86,8 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({ isOpen, initialData,
     onSave({ ...formData, steps });
   };
 
-  const selectedProject = projects.find(p => p.id === formData.projectId);
+  const availableSections = sectionsByProject[formData.projectId ?? ''] ?? [];
+  const editingProjectKey = projects.find((project) => project.id === initialData?.projectId)?.key;
 
   if (!isOpen) return null;
 
@@ -114,7 +106,7 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({ isOpen, initialData,
                  {initialData ? 'Update' : 'New'}
                </span>
                <span className="text-sm text-slate-400 font-mono">
-                  {initialData?.id || 'TC-NEW'}
+                  {initialData ? formatTestCaseDisplayId(initialData, editingProjectKey) : 'TC-NEW'}
                </span>
             </div>
             <h2 className="text-xl font-bold text-slate-900">
@@ -134,63 +126,22 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({ isOpen, initialData,
             {/* Project Selection */}
             <div>
               <label className="block text-sm font-semibold text-slate-700 mb-2">Project</label>
-              <div className="relative" ref={projectContainerRef}>
-                <div
-                    onClick={() => {
-                        if (projects.length > 1) setIsProjectOpen(!isProjectOpen);
-                    }}
-                    className={`
-                        w-full px-4 py-2.5 bg-white border rounded-lg shadow-sm flex items-center justify-between transition-all
-                        ${projects.length > 1 ? 'cursor-pointer hover:border-brand-300' : 'cursor-not-allowed bg-slate-50 text-slate-500'}
-                        ${isProjectOpen ? 'ring-2 ring-brand-500/20 border-brand-500' : 'border-slate-200'}
-                    `}
+              <div>
+                <select
+                  name="projectId"
+                  value={formData.projectId ?? ''}
+                  disabled={projects.length <= 1}
+                  onChange={(event) => {
+                    const projectId = event.target.value;
+                    const projectSections = sectionsByProject[projectId] ?? [];
+                    setFormData((previous) => ({ ...previous, projectId, section: projectSections.includes(previous.section ?? '') ? previous.section : projectSections[0] ?? '' }));
+                  }}
+                  className={`w-full rounded-lg border px-4 py-2.5 text-sm font-medium shadow-sm transition-all focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 ${projects.length > 1 ? 'cursor-pointer border-slate-200 bg-white text-slate-900' : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-500'}`}
+                  aria-describedby="project-assignment-help"
                 >
-                    <div className="flex items-center gap-2 overflow-hidden">
-                         {selectedProject ? (
-                             <>
-                                <span className="font-mono text-xs font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                                    {selectedProject.key}
-                                </span>
-                                <span className="truncate text-sm text-slate-900 font-medium">
-                                    {selectedProject.name}
-                                </span>
-                             </>
-                         ) : (
-                             <span className="text-slate-400 text-sm">Select a project...</span>
-                         )}
-                    </div>
-                    {projects.length > 1 && (
-                         <ChevronDown size={16} className={`text-slate-400 transition-transform ${isProjectOpen ? 'rotate-180' : ''}`} />
-                    )}
-                </div>
-                
-                {isProjectOpen && (
-                    <div className="absolute top-full left-0 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto animate-in fade-in zoom-in-95 duration-100">
-                         {projects.map(p => (
-                             <div 
-                                key={p.id}
-                                onClick={() => {
-                                    setFormData(prev => ({ ...prev, projectId: p.id }));
-                                    setIsProjectOpen(false);
-                                }}
-                                className={`
-                                    px-3 py-2.5 flex items-center gap-3 cursor-pointer transition-colors text-sm
-                                    ${p.id === formData.projectId ? 'bg-brand-50' : 'hover:bg-slate-50'}
-                                `}
-                             >
-                                <div className="flex-1 flex items-center gap-2">
-                                    <span className="font-mono text-xs font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 w-12 text-center shrink-0">
-                                        {p.key}
-                                    </span>
-                                    <span className={`truncate font-medium ${p.id === formData.projectId ? 'text-brand-700' : 'text-slate-700'}`}>
-                                        {p.name}
-                                    </span>
-                                </div>
-                                {p.id === formData.projectId && <Check size={16} className="text-brand-600" />}
-                             </div>
-                         ))}
-                    </div>
-                )}
+                  {projects.map((project) => <option key={project.id} value={project.id}>{project.key} — {project.name}</option>)}
+                </select>
+                <p id="project-assignment-help" className="mt-1 text-[10px] text-slate-400">Only projects assigned to you are available.</p>
               </div>
             </div>
 
@@ -209,64 +160,12 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({ isOpen, initialData,
 
             <div className="grid grid-cols-2 gap-6">
               
-              {/* Section Field with Custom Combobox */}
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">Section</label>
-                <div className="relative" ref={sectionContainerRef}>
-                    <div className="relative">
-                        <input
-                            type="text"
-                            name="section"
-                            value={formData.section}
-                            onChange={(e) => {
-                                handleChange(e);
-                                setIsSectionOpen(true);
-                            }}
-                            onFocus={() => setIsSectionOpen(true)}
-                            placeholder="Select or type..."
-                            className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-sm text-slate-900 transition-all"
-                            autoComplete="off"
-                        />
-                        <div 
-                            className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer p-1 rounded hover:bg-slate-100 text-slate-400 transition-colors"
-                            onClick={() => setIsSectionOpen(!isSectionOpen)}
-                        >
-                             <ChevronDown size={16} className={`transition-transform ${isSectionOpen ? 'rotate-180' : ''}`} />
-                        </div>
-                    </div>
-
-                    {isSectionOpen && (
-                        <div className="absolute top-full left-0 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto animate-in fade-in zoom-in-95 duration-100 custom-scrollbar">
-                             {(() => {
-                                 const filteredSections = SECTIONS.filter(s => 
-                                    s.toLowerCase().includes((formData.section || '').toLowerCase())
-                                 );
-                                 
-                                 return filteredSections.length > 0 ? (
-                                     filteredSections.map(s => (
-                                         <div 
-                                            key={s}
-                                            onClick={() => {
-                                                setFormData(prev => ({ ...prev, section: s }));
-                                                setIsSectionOpen(false);
-                                            }}
-                                            className={`
-                                                px-4 py-2.5 text-sm cursor-pointer transition-colors
-                                                ${s === formData.section ? 'bg-brand-50 text-brand-700 font-medium' : 'hover:bg-slate-50 text-slate-700'}
-                                            `}
-                                         >
-                                            {s}
-                                         </div>
-                                     ))
-                                 ) : (
-                                     <div className="px-4 py-3 text-sm text-slate-500 italic bg-slate-50">
-                                        Press Enter to create new section: <span className="font-semibold text-slate-700">{formData.section}</span>
-                                     </div>
-                                 );
-                             })()}
-                        </div>
-                    )}
-                </div>
+                <select name="section" required value={formData.section ?? ''} onChange={handleChange} className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 shadow-sm transition-all focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20" disabled={availableSections.length === 0}>
+                  {availableSections.length === 0 ? <option value="">No sections available</option> : availableSections.map((section) => <option key={section} value={section}>{section}</option>)}
+                </select>
+                <p className="mt-1 text-[10px] text-slate-400">Choose a section from the project catalog.</p>
               </div>
 
               <div>

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Sidebar } from '@/src/components/projectsTestCases/Layout/Sidebar.tsx';
 import { TestCaseList } from '@/src/components/projectsTestCases/TestCaseList.tsx';
 import { TestCaseForm } from '@/src/components/projectsTestCases/TestCaseForm.tsx';
@@ -14,8 +14,9 @@ import { Toast,ToastType } from '@/src/components/projectsTestCases/ui/Toast.tsx
 import { SettingsPage } from '@/src/components/settings/SettingsPage.tsx';
 import { TeamPage } from '@/src/components/team/TeamPage.tsx';
 import { ProjectsService } from '@/src/api/projects.service.ts';
-import type { ProjectTestCaseRecord } from '@/src/types/api.ts';
+import type { ProjectAssignmentRecord, ProjectTestCaseRecord } from '@/src/types/api.ts';
 import { useSessionUser } from '@/src/auth/SessionContext.tsx';
+import { isCurrentProjectRequest } from '@/src/utils/projectStats.ts';
 import { Plus, Filter, Trash2, Search, Briefcase, Zap, Check, X } from 'lucide-react';
 import {
   TestCase,
@@ -27,13 +28,25 @@ import {
   AutomationType,
   Project,
 } from '../components/projectsTestCases/types.ts';
-import {
-  SECTIONS,
-} from '../components/projectsTestCases/constants.ts';
+
+const toProject = (project: ProjectAssignmentRecord): Project => ({
+  id: project.id,
+  name: project.name,
+  key: project.key ?? project.name.slice(0, 4).toUpperCase(),
+  description: project.description ?? '',
+  lead: project.lead ?? 'Unassigned',
+  externalLink: project.externalLink,
+  status: project.status === 'Completed' ? 'Completed' : 'Active',
+  createdBy: project.createdBy,
+  dueDate: project.dueDate ? new Date(project.dueDate) : new Date(),
+  updatedAt: project.updatedAt ? new Date(project.updatedAt) : new Date(),
+  members: [],
+  stats: { testCasesCount: project.testCasesCount ?? 0, passRate: 0 },
+});
 
 const App: React.FC = () => {
   const sessionUser = useSessionUser();
-  const isAdmin = sessionUser?.roleSlug.toLowerCase() === 'admin';
+  const currentUserLabel = sessionUser?.username || sessionUser?.email || 'Current user';
   // --- View State ---
   // Default landing page is now 'projects'
   const [currentView, setCurrentView] = useState<
@@ -45,9 +58,11 @@ const App: React.FC = () => {
   // this avoids a transient render of a global/mock collection for non-admins.
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsError, setProjectsError] = useState<string | null>(null);
+  const projectRequestVersion = useRef(0);
 
   // Displayed Test Cases (Filtered View)
   const [testCases, setTestCases] = useState<TestCase[]>([]);
+  const [sectionsByProject, setSectionsByProject] = useState<Record<string, string[]>>({});
 
   const [isLoading, setIsLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -59,9 +74,23 @@ const App: React.FC = () => {
   // --- Toast State ---
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
 
-  const showToast = (message: string, type: ToastType = 'success') => {
+  const showToast = useCallback((message: string, type: ToastType = 'success') => {
     setToast({ message, type });
-  };
+  }, []);
+
+  const refreshProjects = useCallback(async () => {
+    const requestVersion = ++projectRequestVersion.current;
+    try {
+      const response = await ProjectsService.list({ force: true });
+      if (!isCurrentProjectRequest(requestVersion, projectRequestVersion.current)) return;
+      setProjects(response.data.map(toProject));
+      setProjectsError(null);
+    } catch (error) {
+      if (!isCurrentProjectRequest(requestVersion, projectRequestVersion.current)) return;
+      setProjects([]);
+      setProjectsError(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Project tidak dapat dimuat.');
+    }
+  }, []);
 
   // Modals
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -110,7 +139,8 @@ const App: React.FC = () => {
     () => projects.map((p) => ({ label: p.name, value: p.id })),
     [projects],
   );
-  const sectionOptions = useMemo(() => SECTIONS.map((s) => ({ label: s, value: s })), []);
+  const sections = useMemo(() => Array.from(new Set(Object.values(sectionsByProject).flat())).sort(), [sectionsByProject]);
+  const sectionOptions = useMemo(() => sections.map((s) => ({ label: s, value: s })), [sections]);
   const priorityOptions = useMemo(
     () => Object.values(Priority).map((p) => ({ label: p, value: p })),
     [],
@@ -131,20 +161,34 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
+    void refreshProjects();
+  }, [refreshProjects]);
+
+  // The API scopes each project's catalog to the signed-in user's
+  // assignment. Fetch all assigned projects so changing the form's Project
+  // selector never exposes an unapproved or stale free-text section.
+  useEffect(() => {
     let active = true;
-    // /v1/projects is server-scoped for the current session. This prevents a
-    // non-admin browser from learning project data outside its assignment.
-    void ProjectsService.list().then((response) => {
-      if (!active) return;
-      setProjects(response.data.map((project) => ({
-        id: project.id, name: project.name, key: project.key ?? project.name.slice(0, 4).toUpperCase(), description: project.description ?? '', lead: project.lead ?? 'Unassigned', externalLink: project.externalLink,
-        status: project.status === 'Completed' || project.status === 'On Hold' || project.status === 'Review' ? project.status : 'Active',
-        dueDate: project.dueDate ? new Date(project.dueDate) : new Date(), updatedAt: project.updatedAt ? new Date(project.updatedAt) : new Date(), members: [], stats: { testCasesCount: 0, passRate: 0 },
-      })));
-      setProjectsError(null);
-    }).catch((error) => { if (active) { setProjects([]); setProjectsError(error?.message ?? 'Project tidak dapat dimuat.'); } });
+    if (projects.length === 0) {
+      setSectionsByProject({});
+      return () => { active = false; };
+    }
+    void Promise.all(projects.map(async (project) => [project.id, (await ProjectsService.listSections(project.id)).data] as const))
+      .then((entries) => { if (active) setSectionsByProject(Object.fromEntries(entries)); })
+      .catch((error) => { if (active) showToast(error?.message ?? 'Katalog Section tidak dapat dimuat.', 'error'); });
     return () => { active = false; };
-  }, []);
+  }, [projects]);
+
+  useEffect(() => {
+    const refreshCatalog = () => {
+      if (!projects.length) return;
+      void Promise.all(projects.map(async (project) => [project.id, (await ProjectsService.listSections(project.id, { force: true })).data] as const))
+        .then((entries) => setSectionsByProject(Object.fromEntries(entries)))
+        .catch((error) => showToast(error?.message ?? 'Katalog Section tidak dapat dimuat.', 'error'));
+    };
+    window.addEventListener('sections-catalog-updated', refreshCatalog);
+    return () => window.removeEventListener('sections-catalog-updated', refreshCatalog);
+  }, [projects]);
 
   const handleViewTestCases = (projectId: string) => {
     // Switch to test cases and filter by this project
@@ -178,7 +222,7 @@ const App: React.FC = () => {
       try {
         const responses = await Promise.all(filters.projectId.map((projectId) => ProjectsService.listTestCases(projectId)));
         const projectData = responses.flatMap((response, index) => response.data.map((testCase: ProjectTestCaseRecord): TestCase => ({
-          id: testCase.id, title: testCase.title, projectId: testCase.projectId ?? filters.projectId[index], section: testCase.section ?? 'Uncategorized',
+          id: testCase.id, tcNumber: testCase.tcNumber, projectKey: testCase.projectKey, title: testCase.title, projectId: testCase.projectId ?? filters.projectId[index], section: testCase.section ?? 'Uncategorized',
           priority: Object.values(Priority).includes(testCase.priority as Priority) ? testCase.priority as Priority : Priority.Medium,
           status: Object.values(Status).includes(testCase.status as Status) ? testCase.status as Status : Status.Draft,
           automationType: Object.values(AutomationType).includes(testCase.automationType as AutomationType) ? testCase.automationType as AutomationType : AutomationType.Manual,
@@ -286,8 +330,12 @@ const App: React.FC = () => {
         ? await ProjectsService.updateTestCase(projectId, editingCase.id, payload)
         : await ProjectsService.createTestCase(projectId, payload);
       const saved = response.data;
-      const testCase: TestCase = { id: saved.id, title: saved.title, projectId: saved.projectId ?? projectId, section: saved.section, priority: saved.priority as Priority, status: saved.status as Status, automationType: saved.automationType as AutomationType, steps: saved.steps, tags: saved.tags, createdBy: saved.createdBy ?? '—', updatedAt: saved.updatedAt ? new Date(saved.updatedAt) : new Date(), preconditions: saved.preconditions ?? undefined };
+      const testCase: TestCase = { id: saved.id, tcNumber: saved.tcNumber, projectKey: saved.projectKey, title: saved.title, projectId: saved.projectId ?? projectId, section: saved.section, priority: saved.priority as Priority, status: saved.status as Status, automationType: saved.automationType as AutomationType, steps: saved.steps, tags: saved.tags, createdBy: saved.createdBy ?? '—', updatedAt: saved.updatedAt ? new Date(saved.updatedAt) : new Date(), preconditions: saved.preconditions ?? undefined };
       setTestCases((items) => editingCase ? items.map((item) => item.id === testCase.id ? { ...item, ...testCase } : item) : [testCase, ...items]);
+      if (!editingCase) {
+        ProjectsService.invalidateList();
+        await refreshProjects();
+      }
       showToast(editingCase ? 'Test case updated successfully.' : 'New test case created.');
       setIsFormOpen(false); setEditingCase(null);
     } catch (error) { showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Test case gagal disimpan.', 'error'); }
@@ -308,14 +356,26 @@ const App: React.FC = () => {
       confirmLabel: 'Delete',
       onConfirm: () => { void (async () => {
         try {
-          await Promise.all(targetIds.map(async (testCaseId) => {
-            const testCase = testCases.find((item) => item.id === testCaseId);
-            if (testCase) await ProjectsService.removeTestCase(testCase.projectId, testCaseId);
-          }));
-          setTestCases((items) => items.filter((item) => !targetIds.includes(item.id)));
-          setSelectedIds((items) => items.filter((item) => !targetIds.includes(item)));
-          showToast(`${count} test case${count > 1 ? 's' : ''} deleted.`, 'success');
-        } catch (error) { showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Test case gagal dihapus.', 'error'); }
+        const targets = targetIds.map((testCaseId) => ({ id: testCaseId, testCase: testCases.find((item) => item.id === testCaseId) }));
+        const results = await Promise.allSettled(targets.map(({ testCase }) => testCase ? ProjectsService.removeTestCase(testCase.projectId, testCase.id) : Promise.reject(new Error('TEST_CASE_NOT_FOUND'))));
+        const successfulIds = targets.filter((_, index) => results[index].status === 'fulfilled').map(({ id: testCaseId }) => testCaseId);
+        const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+        if (successfulIds.length > 0) {
+          setTestCases((items) => items.filter((item) => !successfulIds.includes(item.id)));
+          setSelectedIds((items) => items.filter((item) => !successfulIds.includes(item)));
+          ProjectsService.invalidateList();
+          await refreshProjects();
+        }
+        if (failures.length > 0) {
+          const firstFailure = failures[0].reason;
+          const reason = firstFailure && typeof firstFailure === 'object' && 'message' in firstFailure ? String(firstFailure.message) : 'Unknown error';
+          showToast(`${successfulIds.length} deleted; ${failures.length} failed: ${reason}`, 'error');
+        } else {
+          showToast(`${successfulIds.length} test case${successfulIds.length > 1 ? 's' : ''} deleted.`, 'success');
+        }
+        } catch (error) {
+          showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Test case gagal dihapus.', 'error');
+        }
         finally { setConfirmState((current) => ({ ...current, isOpen: false })); }
       })(); },
     });
@@ -361,19 +421,25 @@ const App: React.FC = () => {
   };
 
   const handleSaveProject = async (data: Partial<Project>) => {
+    const name = (data.name || editingProject?.name || '').trim();
+    const key = (data.key || editingProject?.key || '').trim().toUpperCase();
+    if (!name) { showToast('Project Name wajib diisi.', 'error'); return; }
+    if (!/^[A-Z0-9]{1,4}$/.test(key)) { showToast('Project Key harus unik, maksimal 4 karakter alfanumerik.', 'error'); return; }
+    const conflicts = projects.some((project) => project.id !== editingProject?.id && (project.name.trim().toLowerCase() === name.toLowerCase() || project.key.toUpperCase() === key));
+    if (conflicts) { showToast('Project Name atau Project Key sudah digunakan.', 'error'); return; }
     const payload = {
-      name: data.name || editingProject?.name || 'Untitled Project',
-      key: data.key || editingProject?.key || 'NEW',
+      name,
+      key,
       description: data.description ?? editingProject?.description ?? '',
       lead: data.lead ?? editingProject?.lead ?? 'Unassigned',
-      status: data.status || editingProject?.status || 'Active',
+      status: data.status === 'Completed' ? 'Completed' : 'Active',
       dueDate: data.dueDate?.toISOString() ?? editingProject?.dueDate?.toISOString(),
-      externalLink: data.externalLink ?? editingProject?.externalLink ?? '',
+      externalLink: data.externalLink?.trim() || undefined,
     };
     try {
       const response = editingProject ? await ProjectsService.update(editingProject.id, payload) : await ProjectsService.create(payload);
       const saved = response.data;
-      const project: Project = { id: saved.id, name: saved.name, key: saved.key ?? saved.name.slice(0, 4).toUpperCase(), description: saved.description ?? '', lead: saved.lead ?? 'Unassigned', externalLink: saved.externalLink, status: saved.status === 'Completed' || saved.status === 'On Hold' || saved.status === 'Review' ? saved.status : 'Active', dueDate: saved.dueDate ? new Date(saved.dueDate) : new Date(), updatedAt: saved.updatedAt ? new Date(saved.updatedAt) : new Date(), members: [], stats: { testCasesCount: 0, passRate: 0 } };
+      const project: Project = { id: saved.id, name: saved.name, key: saved.key ?? saved.name.slice(0, 4).toUpperCase(), description: saved.description ?? '', lead: saved.lead ?? 'Unassigned', externalLink: saved.externalLink, createdBy: saved.createdBy ?? currentUserLabel, status: saved.status === 'Completed' ? 'Completed' : 'Active', dueDate: saved.dueDate ? new Date(saved.dueDate) : new Date(), updatedAt: saved.updatedAt ? new Date(saved.updatedAt) : new Date(), members: [], stats: { testCasesCount: 0, passRate: 0 } };
       setProjects((current) => editingProject ? current.map((item) => item.id === project.id ? project : item) : [project, ...current]);
       showToast(editingProject ? 'Project details updated successfully.' : 'New project created successfully.');
       setIsProjectFormOpen(false); setEditingProject(null);
@@ -445,19 +511,7 @@ const App: React.FC = () => {
 
   const hasProjectSelected = filters.projectId.length > 0;
 
-  // Calculate projects available in the form based on filter
-  const formProjects = useMemo(() => {
-    // If editing, show all projects to allow moving or proper display
-    if (editingCase) return projects;
-
-    // If creating, restrict to selected filters
-    if (filters.projectId.length > 0) {
-      return projects.filter((p) => filters.projectId.includes(p.id));
-    }
-
-    // Fallback (though Create button is disabled if no project selected)
-    return projects;
-  }, [editingCase, filters.projectId, projects]);
+  const formProjects = projects;
 
   return (
     <div className="flex h-screen bg-[#f8fafc] font-sans text-slate-900">
@@ -470,7 +524,6 @@ const App: React.FC = () => {
             <>
               {projectsError && <div role="alert" className="mx-auto mb-5 max-w-7xl rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{projectsError}</div>}
               <ProjectBoard
-                testCases={testCases}
                 projects={projects}
                 onViewTestCases={handleViewTestCases}
                 onViewReports={handleViewReports}
@@ -478,7 +531,6 @@ const App: React.FC = () => {
                 onCreate={handleCreateProject}
                 onEdit={handleEditProject}
                 onDelete={handleDeleteProject}
-                canManage={Boolean(isAdmin)}
               />
             </>
           )}
@@ -498,7 +550,7 @@ const App: React.FC = () => {
                   <Button
                     onClick={handleCreate}
                     icon={<Plus size={18} />}
-                    disabled={!isAdmin || (!hasProjectSelected && !isLoading)} // Disable if no project selected
+                    disabled={!hasProjectSelected && !isLoading}
                   >
                     New Case
                   </Button>
@@ -609,7 +661,7 @@ const App: React.FC = () => {
                   )}
                 </div>
 
-                {isAdmin && selectedIds.length > 0 && (
+                {selectedIds.length > 0 && (
                   <div className="animate-in fade-in slide-in-from-right-5 bg-brand-50 border-brand-100 mr-1 flex items-center gap-2 rounded-lg border py-1.5 pl-3 pr-2 shadow-sm duration-200">
                     <span className="text-brand-800 mr-1 text-xs font-semibold">
                       {selectedIds.length} Selected
@@ -690,7 +742,7 @@ const App: React.FC = () => {
                   onUpdate={(id, updates) => requestUpdate([id], updates)}
                   loading={isLoading}
                   hasProjectSelected={hasProjectSelected}
-                  canManage={Boolean(isAdmin)}
+                  canManage
                   pagination={{
                     currentPage,
                     totalPages:
@@ -725,6 +777,8 @@ const App: React.FC = () => {
         onSave={handleSave}
         initialData={editingCase}
         projects={formProjects}
+        sectionsByProject={sectionsByProject}
+        preselectedProjectId={filters.projectId[0]}
       />
 
       <ProjectForm
@@ -732,6 +786,7 @@ const App: React.FC = () => {
         onClose={() => setIsProjectFormOpen(false)}
         onSave={handleSaveProject}
         initialData={editingProject}
+        createdBy={currentUserLabel}
       />
 
       <ConfirmationModal

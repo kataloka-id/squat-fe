@@ -26,6 +26,10 @@ export interface TestStep {
 
 export interface TestCase {
   id: string;
+  /** Immutable, project-scoped sequence supplied by the API. */
+  tcNumber?: number;
+  /** Canonical project key supplied with the test-case response. */
+  projectKey?: string;
   title: string;
   projectId: string;
   section: string;
@@ -45,7 +49,7 @@ export interface Project {
   key: string;
   description: string;
   lead: string;
-  status: 'Active' | 'Completed' | 'On Hold' | 'Review';
+  status: 'Active' | 'Completed';
   dueDate: Date;
   updatedAt: Date;
   stats: {

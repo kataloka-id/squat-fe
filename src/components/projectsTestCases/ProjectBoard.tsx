@@ -9,11 +9,10 @@ import {
   Calendar,
   ExternalLink
 } from 'lucide-react';
-import { Project, TestCase } from '../projectsTestCases/types.ts';
+import { Project } from '../projectsTestCases/types.ts';
 import { Button } from './ui/Button';
 
 interface ProjectBoardProps {
-  testCases: TestCase[];
   projects: Project[];
   onViewTestCases: (projectId: string) => void;
   onViewReports: (projectId: string) => void;
@@ -21,11 +20,9 @@ interface ProjectBoardProps {
   onCreate: () => void;
   onEdit: (project: Project) => void;
   onDelete: (projectId: string) => void;
-  canManage: boolean;
 }
 
-export const ProjectBoard: React.FC<ProjectBoardProps> = ({ 
-    testCases, 
+export const ProjectBoard: React.FC<ProjectBoardProps> = ({
     projects, 
     onViewTestCases, 
     onViewReports,
@@ -33,33 +30,12 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({
     onCreate, 
     onEdit, 
     onDelete,
-    canManage,
 }) => {
   
-  // Enrich projects with dynamic stats based on current testCases
-  const enrichedProjects = projects.map(project => {
-    const projectCases = testCases.filter(tc => tc.projectId === project.id);
-    const total = projectCases.length;
-    
-    // If we have cases, update the stats, otherwise keep default/mock
-    if (total > 0) {
-      return {
-        ...project,
-        stats: {
-          ...project.stats,
-          testCasesCount: total
-        }
-      };
-    }
-    return project;
-  });
-
   const getStatusColor = (status: Project['status']) => {
     switch (status) {
       case 'Active': return 'text-emerald-600';
       case 'Completed': return 'text-blue-600';
-      case 'On Hold': return 'text-amber-600';
-      case 'Review': return 'text-brand-600';
       default: return 'text-slate-500';
     }
   };
@@ -83,12 +59,12 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({
             Overview of all active QA projects.
           </p>
         </div>
-        {canManage && <Button onClick={onCreate} icon={<Plus size={18} />}>Create Project</Button>}
+        <Button onClick={onCreate} icon={<Plus size={18} />}>Create Project</Button>
       </div>
 
       {/* Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {enrichedProjects.map((project) => {
+        {projects.map((project) => {
            return (
             <div 
               key={project.id}
@@ -125,7 +101,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({
                     </div>
                   </div>
                   
-                  {canManage && <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
@@ -146,7 +122,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({
                       >
                         <Trash2 size={18} />
                       </button>
-                  </div>}
+                  </div>
                 </div>
 
                 <p 
