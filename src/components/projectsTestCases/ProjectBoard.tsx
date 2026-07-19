@@ -21,6 +21,7 @@ interface ProjectBoardProps {
   onCreate: () => void;
   onEdit: (project: Project) => void;
   onDelete: (projectId: string) => void;
+  canManage: boolean;
 }
 
 export const ProjectBoard: React.FC<ProjectBoardProps> = ({ 
@@ -31,7 +32,8 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({
     onViewTestRuns, 
     onCreate, 
     onEdit, 
-    onDelete 
+    onDelete,
+    canManage,
 }) => {
   
   // Enrich projects with dynamic stats based on current testCases
@@ -81,7 +83,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({
             Overview of all active QA projects.
           </p>
         </div>
-        <Button onClick={onCreate} icon={<Plus size={18} />}>Create Project</Button>
+        {canManage && <Button onClick={onCreate} icon={<Plus size={18} />}>Create Project</Button>}
       </div>
 
       {/* Grid */}
@@ -123,7 +125,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({
                     </div>
                   </div>
                   
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  {canManage && <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
@@ -144,7 +146,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({
                       >
                         <Trash2 size={18} />
                       </button>
-                  </div>
+                  </div>}
                 </div>
 
                 <p 

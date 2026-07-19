@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { invalidateReadCacheForSessionChange } from './read-cache';
 
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
@@ -23,6 +24,8 @@ api.interceptors.response.use(
     const isSessionCheck = error.config?.url?.endsWith('/auth/session');
 
     if (status === 401 && !isSessionCheck && window.location.pathname !== '/login') {
+      // Never retain scoped data after the server declares this cookie invalid.
+      invalidateReadCacheForSessionChange();
       window.location.assign('/login');
     }
 

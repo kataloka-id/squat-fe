@@ -1,65 +1,70 @@
 import api from './axios';
+import { getCached, invalidateReadCache, type ReadOptions } from './read-cache';
 import type { ApiResponse, RoleRecord, UserRecord } from '@/src/types/api.ts';
 
-// React Strict Mode deliberately re-runs mount effects in development. Settings
-// loads several read-only resources on mount, so coalesce only concurrent reads
-// to prevent that development remount from issuing duplicate API requests.
-// The reference is cleared once the request settles; later explicit refreshes
-// and post-mutation reloads therefore always request fresh data.
-let settingsReadSessionGeneration = 0;
-
-// The authenticated cookie changes synchronously during login/logout, while a
-// previous Settings request may still be in flight.  Tie each coalesced read
-// to a generation so a new account can never reuse that previous promise.
-const coalesceActiveRequest = <T>(request: () => Promise<T>) => {
-  let activeRequest: { generation: number; promise: Promise<T> } | undefined;
-
-  return () => {
-    if (activeRequest?.generation === settingsReadSessionGeneration) return activeRequest.promise;
-
-    const pendingRequest = request();
-    const pendingEntry = { generation: settingsReadSessionGeneration, promise: pendingRequest };
-    activeRequest = pendingEntry;
-    void pendingRequest.then(
-      () => {
-        if (activeRequest === pendingEntry) activeRequest = undefined;
-      },
-      () => {
-        if (activeRequest === pendingEntry) activeRequest = undefined;
-      },
-    );
-
-    return pendingRequest;
-  };
-};
-
 export const invalidateSettingsReadRequests = () => {
-  settingsReadSessionGeneration += 1;
+  invalidateReadCache('/v1/users');
+  invalidateReadCache('/v1/roles');
 };
 
 export type UserPayload = Partial<Pick<UserRecord, 'email' | 'username' | 'roleSlug' | 'isActive'>> & {
   password?: string;
 };
 
-const getMe = coalesceActiveRequest(() => api.get('/v1/users/me') as Promise<ApiResponse<UserRecord>>);
-const listUsers = coalesceActiveRequest(() => api.get('/v1/users') as Promise<ApiResponse<UserRecord[]>>);
-const listRoles = coalesceActiveRequest(() => api.get('/v1/roles') as Promise<ApiResponse<RoleRecord[]>>);
+export interface ProjectAssignmentsPayload {
+  projectIds: string[];
+}
 
 export const UsersService = {
-  getMe,
-  updateMe: (payload: UserPayload) => api.patch('/v1/users/me', payload) as Promise<ApiResponse<UserRecord>>,
-  list: listUsers,
-  create: (payload: Required<Pick<UserPayload, 'email' | 'username' | 'password' | 'roleSlug'>> & Pick<UserPayload, 'isActive'>) =>
-    api.post('/v1/users', payload) as Promise<ApiResponse<UserRecord>>,
-  update: (id: string, payload: UserPayload) => api.patch(`/v1/users/${id}`, payload) as Promise<ApiResponse<UserRecord>>,
-  remove: (id: string) => api.delete(`/v1/users/${id}`) as Promise<ApiResponse<null>>,
+  getMe: (options?: ReadOptions) => getCached('/v1/users/me', () => api.get('/v1/users/me') as Promise<ApiResponse<UserRecord>>, options),
+  updateMe: async (payload: UserPayload) => {
+    const response = await api.patch('/v1/users/me', payload) as ApiResponse<UserRecord>;
+    invalidateReadCache('/v1/users/me');
+    return response;
+  },
+  list: (options?: ReadOptions) => getCached('/v1/users', () => api.get('/v1/users') as Promise<ApiResponse<UserRecord[]>>, options),
+  create: async (payload: Required<Pick<UserPayload, 'email' | 'username' | 'password' | 'roleSlug'>> & Pick<UserPayload, 'isActive'>) => {
+    const response = await api.post('/v1/users', payload) as ApiResponse<UserRecord>;
+    invalidateReadCache('/v1/users');
+    return response;
+  },
+  update: async (id: string, payload: UserPayload) => {
+    const response = await api.patch(`/v1/users/${id}`, payload) as ApiResponse<UserRecord>;
+    invalidateReadCache('/v1/users');
+    invalidateReadCache('/v1/projects');
+    return response;
+  },
+  remove: async (id: string) => {
+    const response = await api.delete(`/v1/users/${id}`) as ApiResponse<null>;
+    invalidateReadCache('/v1/users');
+    invalidateReadCache('/v1/projects');
+    return response;
+  },
+  getProjectAssignments: (id: string, options?: ReadOptions) =>
+    getCached(`/v1/users/${id}/project-assignments`, () => api.get(`/v1/users/${id}/project-assignments`) as Promise<ApiResponse<ProjectAssignmentsPayload>>, options),
+  updateProjectAssignments: async (id: string, payload: ProjectAssignmentsPayload) => {
+    const response = await api.put(`/v1/users/${id}/project-assignments`, payload) as ApiResponse<ProjectAssignmentsPayload>;
+    invalidateReadCache(`/v1/users/${id}/project-assignments`);
+    invalidateReadCache('/v1/projects');
+    return response;
+  },
 };
 
 export const RolesService = {
-  list: listRoles,
-  create: (payload: Pick<RoleRecord, 'slug' | 'name' | 'description'>) =>
-    api.post('/v1/roles', payload) as Promise<ApiResponse<RoleRecord>>,
-  update: (slug: string, payload: Partial<Pick<RoleRecord, 'name' | 'description'>>) =>
-    api.patch(`/v1/roles/${slug}`, payload) as Promise<ApiResponse<RoleRecord>>,
-  remove: (slug: string) => api.delete(`/v1/roles/${slug}`) as Promise<ApiResponse<null>>,
+  list: (options?: ReadOptions) => getCached('/v1/roles', () => api.get('/v1/roles') as Promise<ApiResponse<RoleRecord[]>>, options),
+  create: async (payload: Pick<RoleRecord, 'slug' | 'name' | 'description'>) => {
+    const response = await api.post('/v1/roles', payload) as ApiResponse<RoleRecord>;
+    invalidateReadCache('/v1/roles');
+    return response;
+  },
+  update: async (slug: string, payload: Partial<Pick<RoleRecord, 'name' | 'description'>>) => {
+    const response = await api.patch(`/v1/roles/${slug}`, payload) as ApiResponse<RoleRecord>;
+    invalidateReadCache('/v1/roles');
+    return response;
+  },
+  remove: async (slug: string) => {
+    const response = await api.delete(`/v1/roles/${slug}`) as ApiResponse<null>;
+    invalidateReadCache('/v1/roles');
+    return response;
+  },
 };

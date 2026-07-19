@@ -67,7 +67,7 @@ Form mempertahankan label eksplisit dan pesan status `role="alert"`.
 make local
 ```
 
-Perintah ini foreground sampai `Ctrl+C`. URL resmi: frontend `http://localhost:3001`, backend `http://localhost:3000`. `make stop` hanya menghentikan process tree yang direkam oleh `make local`; proses asing tidak disentuh. Jangan membuka backend sebagai UI di `127.0.0.1:3000`; origin tersebut sengaja ditolak CORS.
+Perintah ini foreground sampai `Ctrl+C`. URL resmi: frontend `http://localhost:3001`, backend `http://localhost:3000`. `make stop` menghentikan process tree yang direkam oleh `make local`. Jika record PID hilang, perintah ini hanya menghentikan PID listener Kataloka yang tervalidasi lewat port dan direktori kerja project; ia tidak menelusuri parent process. Listener asing tidak disentuh. Jangan membuka backend sebagai UI di `127.0.0.1:3000`; origin tersebut sengaja ditolak CORS.
 
 ## Validasi
 
@@ -82,4 +82,7 @@ Lint penuh masih dapat memuat temuan legacy di luar scope RBAC. Tidak ada suite 
 ## Creds
 
     "email": "admin.local@example.test",
-    "password": "LocalOnly-Admin-2026!"
+    "password": "LocalOnly-Admin-2026!",
+
+    "email": "qa.local@example.test"
+    "password": "admin123"

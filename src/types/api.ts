@@ -70,3 +70,51 @@ export interface ApiResponse<T> {
   message: string;
   data: T;
 }
+
+export interface ProjectAssignmentRecord {
+  id: string;
+  name: string;
+  key?: string;
+  description?: string;
+  lead?: string;
+  status?: string;
+  dueDate?: string;
+  externalLink?: string;
+  createdBy?: string;
+  updatedAt?: string;
+}
+
+export interface ProjectMemberRecord {
+  id?: string;
+  userId?: string;
+  email?: string;
+  userEmail?: string;
+  username?: string;
+  roleSlug?: string;
+  role?: string;
+}
+
+export interface ProjectPayload {
+  name: string;
+  key: string;
+  description?: string;
+  lead?: string;
+  status?: string;
+  dueDate?: string;
+  externalLink?: string;
+}
+
+export interface ProjectTestCaseRecord {
+  id: string;
+  title: string;
+  projectId?: string;
+  section: string;
+  priority: string;
+  status: string;
+  automationType: string;
+  preconditions?: string | null;
+  steps: Array<{ id: string; action: string; expectedResult: string }>;
+  tags: string[];
+  createdBy?: string;
+  updatedAt?: string;
+}

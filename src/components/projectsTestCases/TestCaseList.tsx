@@ -37,6 +37,7 @@ interface TestCaseListProps {
   pagination?: PaginationProps;
   loading?: boolean;
   hasProjectSelected?: boolean;
+  canManage?: boolean;
 }
 
 // Inline dropdown for editing Status/Priority
@@ -126,7 +127,8 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
   onUpdate,
   pagination,
   loading = false,
-  hasProjectSelected = false
+  hasProjectSelected = false,
+  canManage = true,
 }) => {
   // Check if all items on the current page are selected
   const allSelected = testCases.length > 0 && testCases.every(tc => selectedIds.includes(tc.id));
@@ -180,7 +182,7 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
         <table className="min-w-full divide-y divide-slate-100">
           <thead className="bg-slate-50 sticky top-0 z-20 shadow-sm">
             <tr>
-              <th className="px-6 py-4 text-left w-12 align-top bg-slate-50">
+              {canManage && <th className="px-6 py-4 text-left w-12 align-top bg-slate-50">
                 <input
                   type="checkbox"
                   className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 h-4 w-4 cursor-pointer transition-all accent-brand-600 bg-white"
@@ -189,7 +191,7 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
                   onChange={onToggleSelectAll}
                   disabled={loading || testCases.length === 0}
                 />
-              </th>
+              </th>}
               <TableHead field="id" label="ID" className="w-24" />
               <TableHead field="projectId" label="Project" className="w-24 hidden sm:table-cell" sortable={false} />
               <TableHead field="title" label="Title" />
@@ -198,7 +200,7 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
               <TableHead field="status" label="Status" />
               <TableHead field="automationType" label="Type" />
               <TableHead field="updatedAt" label="Updated" className="hidden lg:table-cell" />
-              <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider align-top bg-slate-50"></th>
+              {canManage && <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider align-top bg-slate-50"></th>}
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-slate-50">
@@ -232,18 +234,18 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
                     key={tc.id} 
                     className={`group transition-all duration-150 ease-in-out ${isSelected ? 'bg-brand-50/30' : 'hover:bg-slate-50'}`}
                   >
-                    <td className="px-6 py-4 whitespace-nowrap align-middle">
+                    {canManage && <td className="px-6 py-4 whitespace-nowrap align-middle">
                       <input
                         type="checkbox"
                         className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 h-4 w-4 cursor-pointer transition-all accent-brand-600 bg-white"
                         checked={isSelected}
                         onChange={() => onToggleSelect(tc.id)}
                       />
-                    </td>
+                    </td>}
                     <td className="px-6 py-4 whitespace-nowrap align-middle">
                       <span 
                         className="font-mono text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded cursor-pointer hover:bg-brand-100 hover:text-brand-700 transition-colors border border-slate-200"
-                        onClick={() => onEdit(tc)}
+                        onClick={() => canManage && onEdit(tc)}
                       >
                         {tc.id}
                       </span>
@@ -263,20 +265,10 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
                       {tc.section}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap align-middle">
-                      <InlineBadgeSelect 
-                        type="priority"
-                        value={tc.priority}
-                        options={Object.values(Priority)}
-                        onChange={(val) => onUpdate(tc.id, { priority: val as Priority })}
-                      />
+                      {canManage ? <InlineBadgeSelect type="priority" value={tc.priority} options={Object.values(Priority)} onChange={(val) => onUpdate(tc.id, { priority: val as Priority })} /> : <Badge type="priority" value={tc.priority} />}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap align-middle">
-                       <InlineBadgeSelect 
-                        type="status"
-                        value={tc.status}
-                        options={Object.values(Status)}
-                        onChange={(val) => onUpdate(tc.id, { status: val as Status })}
-                      />
+                       {canManage ? <InlineBadgeSelect type="status" value={tc.status} options={Object.values(Status)} onChange={(val) => onUpdate(tc.id, { status: val as Status })} /> : <Badge type="status" value={tc.status} />}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap align-middle">
                        <Badge type="automation" value={tc.automationType} />
@@ -284,7 +276,7 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 font-mono hidden lg:table-cell align-middle">
                       {new Date(tc.updatedAt).toLocaleDateString()}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium align-middle">
+                    {canManage && <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium align-middle">
                       <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button 
                           onClick={() => onEdit(tc)}
@@ -301,7 +293,7 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
-                    </td>
+                    </td>}
                   </tr>
                 );
               })

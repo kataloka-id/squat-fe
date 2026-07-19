@@ -12,6 +12,10 @@ import { MultiSelect } from '@/src/components/projectsTestCases/ui/MultiSelect.t
 import { Select } from '@/src/components/projectsTestCases/ui/Select.tsx';
 import { Toast,ToastType } from '@/src/components/projectsTestCases/ui/Toast.tsx';
 import { SettingsPage } from '@/src/components/settings/SettingsPage.tsx';
+import { TeamPage } from '@/src/components/team/TeamPage.tsx';
+import { ProjectsService } from '@/src/api/projects.service.ts';
+import type { ProjectTestCaseRecord } from '@/src/types/api.ts';
+import { useSessionUser } from '@/src/auth/SessionContext.tsx';
 import { Plus, Filter, Trash2, Search, Briefcase, Zap, Check, X } from 'lucide-react';
 import {
   TestCase,
@@ -24,12 +28,12 @@ import {
   Project,
 } from '../components/projectsTestCases/types.ts';
 import {
-  INITIAL_TEST_CASES,
   SECTIONS,
-  PROJECTS as INITIAL_PROJECTS,
 } from '../components/projectsTestCases/constants.ts';
 
 const App: React.FC = () => {
+  const sessionUser = useSessionUser();
+  const isAdmin = sessionUser?.roleSlug.toLowerCase() === 'admin';
   // --- View State ---
   // Default landing page is now 'projects'
   const [currentView, setCurrentView] = useState<
@@ -37,10 +41,10 @@ const App: React.FC = () => {
   >('projects');
 
   // --- Data State ---
-  const [projects, setProjects] = useState<Project[]>(INITIAL_PROJECTS);
-
-  // Global Test Case State (Source of Truth)
-  const [globalTestCases, setGlobalTestCases] = useState<TestCase[]>(INITIAL_TEST_CASES);
+  // Projects always begin empty and are populated only from the scoped API;
+  // this avoids a transient render of a global/mock collection for non-admins.
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectsError, setProjectsError] = useState<string | null>(null);
 
   // Displayed Test Cases (Filtered View)
   const [testCases, setTestCases] = useState<TestCase[]>([]);
@@ -126,6 +130,22 @@ const App: React.FC = () => {
     setCurrentView(view as any);
   };
 
+  useEffect(() => {
+    let active = true;
+    // /v1/projects is server-scoped for the current session. This prevents a
+    // non-admin browser from learning project data outside its assignment.
+    void ProjectsService.list().then((response) => {
+      if (!active) return;
+      setProjects(response.data.map((project) => ({
+        id: project.id, name: project.name, key: project.key ?? project.name.slice(0, 4).toUpperCase(), description: project.description ?? '', lead: project.lead ?? 'Unassigned', externalLink: project.externalLink,
+        status: project.status === 'Completed' || project.status === 'On Hold' || project.status === 'Review' ? project.status : 'Active',
+        dueDate: project.dueDate ? new Date(project.dueDate) : new Date(), updatedAt: project.updatedAt ? new Date(project.updatedAt) : new Date(), members: [], stats: { testCasesCount: 0, passRate: 0 },
+      })));
+      setProjectsError(null);
+    }).catch((error) => { if (active) { setProjects([]); setProjectsError(error?.message ?? 'Project tidak dapat dimuat.'); } });
+    return () => { active = false; };
+  }, []);
+
   const handleViewTestCases = (projectId: string) => {
     // Switch to test cases and filter by this project
     setFilters((prev) => ({ ...prev, projectId: [projectId] }));
@@ -143,31 +163,36 @@ const App: React.FC = () => {
     setCurrentView('reports');
   };
 
-  // Effect: Load data when project selection changes or global data changes
+  // Test cases are fetched per selected project. The API authorizes this
+  // server-side, so a client cannot obtain other projects by changing a filter.
   useEffect(() => {
+    let active = true;
     const loadData = async () => {
       // If no project selected, clear table
       if (filters.projectId.length === 0) {
-        setTestCases([]);
+        if (active) setTestCases([]);
         return;
       }
 
       setIsLoading(true);
-
-      // Simulate API Network Delay only on filter change, not on data update
-      // We can check if testCases was empty to decide if we need delay
-      // but for simplicity let's keep it snappy if data just updated
-      // await new Promise(resolve => setTimeout(resolve, 300));
-
-      // Filter globalTestCases by selected projects
-      const projectData = globalTestCases.filter((tc) => filters.projectId.includes(tc.projectId));
-
-      setTestCases(projectData);
-      setIsLoading(false);
+      try {
+        const responses = await Promise.all(filters.projectId.map((projectId) => ProjectsService.listTestCases(projectId)));
+        const projectData = responses.flatMap((response, index) => response.data.map((testCase: ProjectTestCaseRecord): TestCase => ({
+          id: testCase.id, title: testCase.title, projectId: testCase.projectId ?? filters.projectId[index], section: testCase.section ?? 'Uncategorized',
+          priority: Object.values(Priority).includes(testCase.priority as Priority) ? testCase.priority as Priority : Priority.Medium,
+          status: Object.values(Status).includes(testCase.status as Status) ? testCase.status as Status : Status.Draft,
+          automationType: Object.values(AutomationType).includes(testCase.automationType as AutomationType) ? testCase.automationType as AutomationType : AutomationType.Manual,
+          steps: testCase.steps ?? [], tags: testCase.tags ?? [], updatedAt: testCase.updatedAt ? new Date(testCase.updatedAt) : new Date(), createdBy: testCase.createdBy ?? '—', preconditions: testCase.preconditions,
+        })));
+        if (active) setTestCases(projectData);
+      } catch (error) {
+        if (active) { setTestCases([]); showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Test cases tidak dapat dimuat.', 'error'); }
+      } finally { if (active) setIsLoading(false); }
     };
 
-    loadData();
-  }, [filters.projectId, globalTestCases]);
+    void loadData();
+    return () => { active = false; };
+  }, [filters.projectId]);
 
   const handleSort = (field: SortField) => {
     setSortConfig((prev) => ({
@@ -202,25 +227,18 @@ const App: React.FC = () => {
   };
 
   // Executes the actual update state change (called after confirmation)
-  const performUpdate = (ids: string[], updates: Partial<TestCase>) => {
-    setGlobalTestCases((prev) =>
-      prev.map((tc) => {
-        if (ids.includes(tc.id)) {
-          return { ...tc, ...updates, updatedAt: new Date() };
-        }
-        return tc;
-      }),
-    );
-
-    // Reset bulk selection
-    setBulkStatus('');
-    setBulkPriority('');
-
-    if (ids.length === 1) {
-      showToast('Test case updated successfully.');
-    } else {
-      showToast(`Updated ${ids.length} test cases successfully.`);
-    }
+  const performUpdate = async (ids: string[], updates: Partial<TestCase>) => {
+    try {
+      await Promise.all(ids.map(async (id) => {
+        const current = testCases.find((testCase) => testCase.id === id);
+        if (!current) return;
+        const response = await ProjectsService.updateTestCase(current.projectId, id, { ...current, ...updates, preconditions: updates.preconditions ?? current.preconditions ?? null });
+        const saved = response.data;
+        setTestCases((items) => items.map((item) => item.id === id ? { ...item, ...saved, projectId: saved.projectId ?? current.projectId, priority: saved.priority as Priority, status: saved.status as Status, automationType: saved.automationType as AutomationType, preconditions: saved.preconditions ?? undefined, updatedAt: saved.updatedAt ? new Date(saved.updatedAt) : new Date() } : item));
+      }));
+      setBulkStatus(''); setBulkPriority('');
+      showToast(ids.length === 1 ? 'Test case updated successfully.' : `Updated ${ids.length} test cases successfully.`);
+    } catch (error) { showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Test case gagal diperbarui.', 'error'); }
   };
 
   // Initiates update with Confirmation Modal
@@ -240,7 +258,7 @@ const App: React.FC = () => {
         : `Are you sure you want to update this test case? This will set ${changesList}.`,
       variant: 'primary',
       confirmLabel: 'Update',
-      onConfirm: () => performUpdate(ids, updates),
+      onConfirm: () => { void performUpdate(ids, updates); },
     });
   };
 
@@ -254,37 +272,25 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSave = (data: Partial<TestCase>) => {
-    // Update Global State
-    if (editingCase) {
-      // Update
-      setGlobalTestCases((prev) =>
-        prev.map((tc) =>
-          tc.id === editingCase.id ? ({ ...tc, ...data, updatedAt: new Date() } as TestCase) : tc,
-        ),
-      );
-      showToast('Test case updated successfully.');
-    } else {
-      // Create
-      const newCase: TestCase = {
-        id: `TC-${Math.floor(Math.random() * 10000)}`,
-        title: data.title || 'Untitled',
-        projectId: data.projectId || filters.projectId[0] || projects[0].id,
-        section: data.section || 'Uncategorized',
-        priority: data.priority || Priority.Medium,
-        status: data.status || Status.Draft,
-        automationType: data.automationType || AutomationType.Manual,
-        steps: data.steps || [],
-        tags: data.tags || [],
-        createdBy: 'Alex Morgan',
-        updatedAt: new Date(),
-        preconditions: data.preconditions,
+  const handleSave = async (data: Partial<TestCase>) => {
+    const projectId = editingCase?.projectId ?? data.projectId ?? filters.projectId[0];
+    if (!projectId) { showToast('Pilih project terlebih dahulu.', 'error'); return; }
+    try {
+      const payload = {
+        title: data.title ?? editingCase?.title ?? 'Untitled', section: data.section ?? editingCase?.section ?? 'Uncategorized',
+        priority: data.priority ?? editingCase?.priority ?? Priority.Medium, status: data.status ?? editingCase?.status ?? Status.Draft,
+        automationType: data.automationType ?? editingCase?.automationType ?? AutomationType.Manual,
+        preconditions: data.preconditions ?? editingCase?.preconditions ?? null, steps: data.steps ?? editingCase?.steps ?? [], tags: data.tags ?? editingCase?.tags ?? [],
       };
-      setGlobalTestCases((prev) => [newCase, ...prev]);
-      showToast('New test case created.');
-    }
-    setIsFormOpen(false);
-    setEditingCase(null);
+      const response = editingCase
+        ? await ProjectsService.updateTestCase(projectId, editingCase.id, payload)
+        : await ProjectsService.createTestCase(projectId, payload);
+      const saved = response.data;
+      const testCase: TestCase = { id: saved.id, title: saved.title, projectId: saved.projectId ?? projectId, section: saved.section, priority: saved.priority as Priority, status: saved.status as Status, automationType: saved.automationType as AutomationType, steps: saved.steps, tags: saved.tags, createdBy: saved.createdBy ?? '—', updatedAt: saved.updatedAt ? new Date(saved.updatedAt) : new Date(), preconditions: saved.preconditions ?? undefined };
+      setTestCases((items) => editingCase ? items.map((item) => item.id === testCase.id ? { ...item, ...testCase } : item) : [testCase, ...items]);
+      showToast(editingCase ? 'Test case updated successfully.' : 'New test case created.');
+      setIsFormOpen(false); setEditingCase(null);
+    } catch (error) { showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Test case gagal disimpan.', 'error'); }
   };
 
   const initiateDelete = (id?: string) => {
@@ -300,16 +306,18 @@ const App: React.FC = () => {
           : `Are you sure you want to delete this test case? This action cannot be undone.`,
       variant: 'danger',
       confirmLabel: 'Delete',
-      onConfirm: () => {
-        if (id) {
-          setGlobalTestCases((prev) => prev.filter((tc) => tc.id !== id));
-          setSelectedIds((prev) => prev.filter((selectedId) => selectedId !== id));
-        } else {
-          setGlobalTestCases((prev) => prev.filter((tc) => !selectedIds.includes(tc.id)));
-          setSelectedIds([]);
-        }
-        showToast(`${count} test case${count > 1 ? 's' : ''} deleted.`, 'success');
-      },
+      onConfirm: () => { void (async () => {
+        try {
+          await Promise.all(targetIds.map(async (testCaseId) => {
+            const testCase = testCases.find((item) => item.id === testCaseId);
+            if (testCase) await ProjectsService.removeTestCase(testCase.projectId, testCaseId);
+          }));
+          setTestCases((items) => items.filter((item) => !targetIds.includes(item.id)));
+          setSelectedIds((items) => items.filter((item) => !targetIds.includes(item)));
+          showToast(`${count} test case${count > 1 ? 's' : ''} deleted.`, 'success');
+        } catch (error) { showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Test case gagal dihapus.', 'error'); }
+        finally { setConfirmState((current) => ({ ...current, isOpen: false })); }
+      })(); },
     });
   };
 
@@ -332,10 +340,11 @@ const App: React.FC = () => {
         'Are you sure you want to delete this project? This will also remove all associated test cases, test runs, and reports. This action cannot be undone.',
       variant: 'danger',
       confirmLabel: 'Delete Project',
-      onConfirm: () => {
+      onConfirm: () => { void (async () => {
+        try {
+        await ProjectsService.remove(projectId);
         setProjects((prev) => prev.filter((p) => p.id !== projectId));
-        // Also clean up all associated test cases from global state
-        setGlobalTestCases((prev) => prev.filter((tc) => tc.projectId !== projectId));
+        setTestCases((prev) => prev.filter((tc) => tc.projectId !== projectId));
         // Clear selection if needed
         if (filters.projectId.includes(projectId)) {
           setFilters((prev) => ({
@@ -344,38 +353,31 @@ const App: React.FC = () => {
           }));
         }
         showToast('Project and associated data deleted successfully.');
+        } catch (error) { showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Project gagal dihapus.', 'error'); }
+        finally { setConfirmState((prev) => ({ ...prev, isOpen: false })); }
+      })();
       },
     });
   };
 
-  const handleSaveProject = (data: Partial<Project>) => {
-    if (editingProject) {
-      // Update Existing
-      setProjects((prev) =>
-        prev.map((p) =>
-          p.id === editingProject.id ? ({ ...p, ...data, updatedAt: new Date() } as Project) : p,
-        ),
-      );
-      showToast('Project details updated successfully.');
-    } else {
-      // Create New
-      const newProject: Project = {
-        id: `proj-${Math.floor(Math.random() * 10000)}`,
-        name: data.name || 'Untitled Project',
-        key: data.key || 'NEW',
-        description: data.description || '',
-        lead: data.lead || 'Unassigned',
-        status: 'Active',
-        dueDate: data.dueDate || new Date(),
-        updatedAt: new Date(),
-        members: [],
-        stats: { testCasesCount: 0, passRate: 0 },
-      };
-      setProjects((prev) => [newProject, ...prev]);
-      showToast('New project created successfully.');
-    }
-    setIsProjectFormOpen(false);
-    setEditingProject(null);
+  const handleSaveProject = async (data: Partial<Project>) => {
+    const payload = {
+      name: data.name || editingProject?.name || 'Untitled Project',
+      key: data.key || editingProject?.key || 'NEW',
+      description: data.description ?? editingProject?.description ?? '',
+      lead: data.lead ?? editingProject?.lead ?? 'Unassigned',
+      status: data.status || editingProject?.status || 'Active',
+      dueDate: data.dueDate?.toISOString() ?? editingProject?.dueDate?.toISOString(),
+      externalLink: data.externalLink ?? editingProject?.externalLink ?? '',
+    };
+    try {
+      const response = editingProject ? await ProjectsService.update(editingProject.id, payload) : await ProjectsService.create(payload);
+      const saved = response.data;
+      const project: Project = { id: saved.id, name: saved.name, key: saved.key ?? saved.name.slice(0, 4).toUpperCase(), description: saved.description ?? '', lead: saved.lead ?? 'Unassigned', externalLink: saved.externalLink, status: saved.status === 'Completed' || saved.status === 'On Hold' || saved.status === 'Review' ? saved.status : 'Active', dueDate: saved.dueDate ? new Date(saved.dueDate) : new Date(), updatedAt: saved.updatedAt ? new Date(saved.updatedAt) : new Date(), members: [], stats: { testCasesCount: 0, passRate: 0 } };
+      setProjects((current) => editingProject ? current.map((item) => item.id === project.id ? project : item) : [project, ...current]);
+      showToast(editingProject ? 'Project details updated successfully.' : 'New project created successfully.');
+      setIsProjectFormOpen(false); setEditingProject(null);
+    } catch (error) { showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Project gagal disimpan.', 'error'); }
   };
 
   // --- Derived State ---
@@ -465,16 +467,20 @@ const App: React.FC = () => {
         <main className="relative flex-1 overflow-auto p-8">
           {/* View: Projects (Landing Page) */}
           {currentView === 'projects' && (
-            <ProjectBoard
-              testCases={globalTestCases} // Use global state for stats
-              projects={projects}
-              onViewTestCases={handleViewTestCases}
-              onViewReports={handleViewReports}
-              onViewTestRuns={handleViewTestRuns}
-              onCreate={handleCreateProject}
-              onEdit={handleEditProject}
-              onDelete={handleDeleteProject}
-            />
+            <>
+              {projectsError && <div role="alert" className="mx-auto mb-5 max-w-7xl rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{projectsError}</div>}
+              <ProjectBoard
+                testCases={testCases}
+                projects={projects}
+                onViewTestCases={handleViewTestCases}
+                onViewReports={handleViewReports}
+                onViewTestRuns={handleViewTestRuns}
+                onCreate={handleCreateProject}
+                onEdit={handleEditProject}
+                onDelete={handleDeleteProject}
+                canManage={Boolean(isAdmin)}
+              />
+            </>
           )}
 
           {/* View: Test Cases */}
@@ -492,7 +498,7 @@ const App: React.FC = () => {
                   <Button
                     onClick={handleCreate}
                     icon={<Plus size={18} />}
-                    disabled={!hasProjectSelected && !isLoading} // Disable if no project selected
+                    disabled={!isAdmin || (!hasProjectSelected && !isLoading)} // Disable if no project selected
                   >
                     New Case
                   </Button>
@@ -603,7 +609,7 @@ const App: React.FC = () => {
                   )}
                 </div>
 
-                {selectedIds.length > 0 && (
+                {isAdmin && selectedIds.length > 0 && (
                   <div className="animate-in fade-in slide-in-from-right-5 bg-brand-50 border-brand-100 mr-1 flex items-center gap-2 rounded-lg border py-1.5 pl-3 pr-2 shadow-sm duration-200">
                     <span className="text-brand-800 mr-1 text-xs font-semibold">
                       {selectedIds.length} Selected
@@ -684,6 +690,7 @@ const App: React.FC = () => {
                   onUpdate={(id, updates) => requestUpdate([id], updates)}
                   loading={isLoading}
                   hasProjectSelected={hasProjectSelected}
+                  canManage={Boolean(isAdmin)}
                   pagination={{
                     currentPage,
                     totalPages:
@@ -702,7 +709,8 @@ const App: React.FC = () => {
           )}
 
           {/* Under Development Views */}
-          {['runs', 'reports', 'team'].includes(currentView) && <UnderDevelopment />}
+          {['runs', 'reports'].includes(currentView) && <UnderDevelopment />}
+          {currentView === 'team' && <TeamPage onManageAssignments={() => setCurrentView('settings')} />}
           {currentView === 'settings' && <SettingsPage />}
         </main>
       </div>
