@@ -1,0 +1,5 @@
+# Default project untuk pekerjaan lintas FE/BE yang dipimpin orchestrator.
+# Gunakan scripts/kataloka-orchestrator agar backend ditambahkan sebagai writable
+# workspace pada sesi Codex.
+model = "gpt-5.6-terra"
+model_reasoning_effort = "medium"

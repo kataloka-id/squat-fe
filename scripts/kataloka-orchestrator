@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+project_dir="/Users/dayadi-qa/GIT/KATALOKA-ID/squat-fe"
+backend_dir="/Users/dayadi-qa/GIT/KATALOKA-ID/kataloka-main-be"
+
+if [[ ! -d "$backend_dir" ]]; then
+  printf 'Backend workspace tidak ditemukan: %s\n' "$backend_dir" >&2
+  exit 1
+fi
+
+exec codex -C "$project_dir" --add-dir "$backend_dir" "$@"
