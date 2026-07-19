@@ -1,5 +1,33 @@
 # React + TypeScript + Vite
 
+## Menjalankan lokal dengan Neon branch `dev`
+
+Frontend selalu berbicara ke API lokal pada `http://localhost:3000`; browser
+tidak pernah terhubung langsung ke Neon. Siapkan file yang diabaikan Git di
+workspace backend (`../kataloka-main-be/.env.neon`) dari template backend, lalu
+isi `DATABASE_URL` dengan connection string Neon untuk branch `dev` (termasuk
+`sslmode=require`). Jangan menaruh URL tersebut pada file `.env` di frontend
+atau pada variabel `VITE_*`.
+
+Jalankan seluruh stack dengan satu perintah dari repository ini:
+
+```sh
+make neon-dev
+```
+
+Saat startup, backend memvalidasi file environment dan `DATABASE_URL`, lalu
+berjalan pada `http://localhost:3000`; frontend berjalan pada
+`http://localhost:3001`. Tidak ada migration yang dijalankan.
+Gunakan `Ctrl+C` untuk menghentikan keduanya, atau `make stop` dari repository
+ini. Untuk database lokal/default, gunakan `make local`.
+
+Untuk menerapkan schema atau seed ke Neon branch `dev`, jalankan dari root
+frontend dengan target `make db-neon-dev-migrate`, `make db-neon-dev-seed`,
+atau `make db-neon-dev-provision-admin`. Semua meneruskan ke backend dan
+memerlukan konfirmasi eksplisit; lihat
+`../kataloka-main-be/docs/neon-dev-schema-seed.md` untuk nilai konfirmasi dan
+prasyarat URL direct Neon.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:
