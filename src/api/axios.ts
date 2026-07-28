@@ -32,6 +32,10 @@ api.interceptors.response.use(
     return Promise.reject({
       status,
       message: data?.message || 'Unexpected error',
+      // Preserve structured import validation feedback while retaining the
+      // application-wide normalized error shape.
+      errors: data?.errors,
+      warnings: data?.warnings,
     });
   },
 );

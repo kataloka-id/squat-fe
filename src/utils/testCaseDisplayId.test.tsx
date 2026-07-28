@@ -22,6 +22,9 @@ describe('test-case display ID', () => {
     const form = renderToStaticMarkup(<TestCaseForm isOpen initialData={testCase} projects={[project]} sectionsByProject={{ [project.id]: ['Checkout'] }} onClose={() => {}} onSave={() => {}} />);
     expect(table).toContain('PAY-12');
     expect(form).toContain('PAY-12');
+    expect(table).toContain('Testing Type');
+    expect(table).toContain('Automation Readiness');
+    expect(table).toContain('Candidate');
     expect(table).not.toContain(testCase.id);
     expect(form).not.toContain(testCase.id);
   });

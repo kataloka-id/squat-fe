@@ -1,8 +1,18 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, Plus, Trash2, GripVertical, Save, ChevronDown, Check } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { ChevronDown, ChevronUp, GripVertical, Plus, Save, Trash2, X } from 'lucide-react';
 import { Button } from './ui/Button';
-import { TestCase, Priority, Status, TestStep, Project, AutomationType } from '../projectsTestCases/types.ts';
+import { Select } from './ui/Select';
+import {
+  AutomationType,
+  AutomationReadiness,
+  Priority,
+  Project,
+  Status,
+  TestCase,
+  TestStep,
+} from '../projectsTestCases/types.ts';
 import { formatTestCaseDisplayId } from '@/src/utils/testCaseDisplayId.ts';
+import { MarkdownEditor } from './ui/Markdown.tsx';
 
 interface TestCaseFormProps {
   isOpen: boolean;
@@ -14,8 +24,22 @@ interface TestCaseFormProps {
   onSave: (data: Partial<TestCase>) => void;
 }
 
-export const TestCaseForm: React.FC<TestCaseFormProps> = ({ isOpen, initialData, projects, sectionsByProject, preselectedProjectId, onClose, onSave }) => {
-  const selectedInitialProjectId = initialData?.projectId ?? preselectedProjectId ?? projects[0]?.id ?? '';
+const inputClassName =
+  'w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm transition-all placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20';
+const fieldLabelClassName = 'mb-1.5 block text-sm font-semibold text-slate-700';
+const sectionTitleClassName = 'text-sm font-semibold text-slate-900';
+
+export const TestCaseForm: React.FC<TestCaseFormProps> = ({
+  isOpen,
+  initialData,
+  projects,
+  sectionsByProject,
+  preselectedProjectId,
+  onClose,
+  onSave,
+}) => {
+  const selectedInitialProjectId =
+    initialData?.projectId ?? preselectedProjectId ?? projects[0]?.id ?? '';
   const initialSections = sectionsByProject[selectedInitialProjectId] ?? [];
   const [formData, setFormData] = useState<Partial<TestCase>>({
     title: '',
@@ -24,65 +48,87 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({ isOpen, initialData,
     priority: Priority.Medium,
     status: Status.Draft,
     automationType: AutomationType.Manual,
+    automationReadiness: AutomationReadiness.Candidate,
     preconditions: '',
     steps: [],
-    tags: []
+    tags: [],
   });
-
   const [steps, setSteps] = useState<TestStep[]>([]);
-
-  const [isPriorityOpen, setIsPriorityOpen] = useState(false);
-  const priorityContainerRef = useRef<HTMLDivElement>(null);
+  const [draggedStepId, setDraggedStepId] = useState<string | null>(null);
+  const [stepMoveAnnouncement, setStepMoveAnnouncement] = useState('');
 
   useEffect(() => {
     if (initialData) {
-      setFormData(initialData);
-      setSteps(initialData.steps || []);
-    } else {
-      // Reset form
       setFormData({
-        title: '',
-        projectId: selectedInitialProjectId,
-        section: (sectionsByProject[selectedInitialProjectId] ?? [])[0] || '',
-        priority: Priority.Medium,
-        status: Status.Draft,
-        automationType: AutomationType.Manual,
-        preconditions: '',
-        tags: []
+        ...initialData,
+        automationReadiness: initialData.automationReadiness ?? AutomationReadiness.Candidate,
       });
-      setSteps([{ id: Date.now().toString(), action: '', expectedResult: '' }]);
+      setSteps(initialData.steps || []);
+      return;
     }
+
+    setFormData({
+      title: '',
+      projectId: selectedInitialProjectId,
+      section: (sectionsByProject[selectedInitialProjectId] ?? [])[0] || '',
+      priority: Priority.Medium,
+      status: Status.Draft,
+      automationType: AutomationType.Manual,
+      automationReadiness: AutomationReadiness.Candidate,
+      preconditions: '',
+      tags: [],
+    });
+    setSteps([{ id: Date.now().toString(), action: '', expectedResult: '' }]);
   }, [initialData, isOpen, projects, sectionsByProject, selectedInitialProjectId]);
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (priorityContainerRef.current && !priorityContainerRef.current.contains(event.target as Node)) {
-        setIsPriorityOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+  const handleChange = (
+    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
+  ) => {
+    const { name, value } = event.target;
+    setFormData((previous) => ({ ...previous, [name]: value }));
   };
 
   const handleStepChange = (id: string, field: 'action' | 'expectedResult', value: string) => {
-    setSteps(prev => prev.map(step => step.id === id ? { ...step, [field]: value } : step));
+    setSteps((previous) =>
+      previous.map((step) => (step.id === id ? { ...step, [field]: value } : step)),
+    );
   };
 
   const addStep = () => {
-    setSteps(prev => [...prev, { id: Date.now().toString(), action: '', expectedResult: '' }]);
+    setSteps((previous) => [
+      ...previous,
+      { id: Date.now().toString(), action: '', expectedResult: '' },
+    ]);
   };
 
   const removeStep = (id: string) => {
-    setSteps(prev => prev.filter(step => step.id !== id));
+    setSteps((previous) => previous.filter((step) => step.id !== id));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const moveStep = (sourceId: string, targetId: string) => {
+    if (sourceId === targetId) return;
+    setSteps((previous) => {
+      const sourceIndex = previous.findIndex((step) => step.id === sourceId);
+      const targetIndex = previous.findIndex((step) => step.id === targetId);
+      if (sourceIndex < 0 || targetIndex < 0) return previous;
+      const next = [...previous];
+      const [source] = next.splice(sourceIndex, 1);
+      next.splice(targetIndex, 0, source);
+      return next;
+    });
+  };
+
+  const moveStepByOffset = (id: string, offset: -1 | 1) => {
+    const currentIndex = steps.findIndex((step) => step.id === id);
+    const destinationIndex = currentIndex + offset;
+    if (currentIndex < 0 || destinationIndex < 0 || destinationIndex >= steps.length) return;
+    moveStep(id, steps[destinationIndex].id);
+    setStepMoveAnnouncement(`Step moved to position ${destinationIndex + 1}.`);
+  };
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!formData.title?.trim()) return;
     onSave({ ...formData, steps });
   };
 
@@ -93,258 +139,460 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({ isOpen, initialData,
 
   return (
     <>
-      <div 
-        className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm transition-opacity" 
-        onClick={onClose}
-      />
-      <div className="fixed inset-y-0 right-0 z-50 w-full max-w-2xl bg-white shadow-2xl transform transition-transform duration-300 ease-in-out flex flex-col border-l border-slate-100">
-        {/* Header */}
-        <div className="flex items-center justify-between px-8 py-6 border-b border-slate-100 bg-white">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-               <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-brand-50 text-brand-600 border border-brand-100">
-                 {initialData ? 'Update' : 'New'}
-               </span>
-               <span className="text-sm text-slate-400 font-mono">
+      <div className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4"
+        onClick={(event) => {
+          if (event.target === event.currentTarget) onClose();
+        }}
+        role="presentation"
+      >
+        <div
+          aria-labelledby="test-case-form-title"
+          aria-modal="true"
+          className="flex h-full w-full max-w-7xl flex-col overflow-hidden bg-white shadow-2xl sm:h-[calc(100dvh-2rem)] sm:rounded-2xl sm:border sm:border-slate-200"
+          onClick={(event) => event.stopPropagation()}
+          role="dialog"
+        >
+          <header className="flex items-start justify-between gap-4 border-b border-slate-200 bg-white px-5 py-4 sm:px-7 sm:py-5">
+            <div className="min-w-0">
+              <div className="mb-1.5 flex items-center gap-2">
+                <span className="rounded border border-brand-100 bg-brand-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-brand-600">
+                  {initialData ? 'Update' : 'New'}
+                </span>
+                <span className="truncate font-mono text-xs text-slate-400">
                   {initialData ? formatTestCaseDisplayId(initialData, editingProjectKey) : 'TC-NEW'}
-               </span>
-            </div>
-            <h2 className="text-xl font-bold text-slate-900">
-              {initialData ? `Edit Test Case` : 'Create Test Case'}
-            </h2>
-          </div>
-          <button onClick={onClose} className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-50 transition-colors">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Form Body */}
-        <form id="testCaseForm" onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-8 space-y-8">
-          
-          <div className="space-y-6">
-            
-            {/* Project Selection */}
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Project</label>
-              <div>
-                <select
-                  name="projectId"
-                  value={formData.projectId ?? ''}
-                  disabled={projects.length <= 1}
-                  onChange={(event) => {
-                    const projectId = event.target.value;
-                    const projectSections = sectionsByProject[projectId] ?? [];
-                    setFormData((previous) => ({ ...previous, projectId, section: projectSections.includes(previous.section ?? '') ? previous.section : projectSections[0] ?? '' }));
-                  }}
-                  className={`w-full rounded-lg border px-4 py-2.5 text-sm font-medium shadow-sm transition-all focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 ${projects.length > 1 ? 'cursor-pointer border-slate-200 bg-white text-slate-900' : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-500'}`}
-                  aria-describedby="project-assignment-help"
-                >
-                  {projects.map((project) => <option key={project.id} value={project.id}>{project.key} — {project.name}</option>)}
-                </select>
-                <p id="project-assignment-help" className="mt-1 text-[10px] text-slate-400">Only projects assigned to you are available.</p>
+                </span>
               </div>
+              <h2 className="text-lg font-bold text-slate-900 sm:text-xl" id="test-case-form-title">
+                {initialData ? 'Edit Test Case' : 'Create Test Case'}
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                Capture the scenario, its configuration, and the expected outcome for each step.
+              </p>
             </div>
+            <button
+              aria-label="Close test case form"
+              className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+              onClick={onClose}
+              type="button"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </header>
 
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Title <span className="text-red-500">*</span></label>
-              <input
-                type="text"
-                name="title"
-                required
-                value={formData.title}
-                onChange={handleChange}
-                placeholder="Describe the test scenario..."
-                className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-lg shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-sm text-slate-900 transition-all"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-6">
-              
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Section</label>
-                <select name="section" required value={formData.section ?? ''} onChange={handleChange} className="w-full rounded-lg border border-slate-200 bg-white px-4 py-2.5 text-sm text-slate-900 shadow-sm transition-all focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20" disabled={availableSections.length === 0}>
-                  {availableSections.length === 0 ? <option value="">No sections available</option> : availableSections.map((section) => <option key={section} value={section}>{section}</option>)}
-                </select>
-                <p className="mt-1 text-[10px] text-slate-400">Choose a section from the project catalog.</p>
-              </div>
-
-              <div>
-                <label className="block text-sm font-semibold text-slate-700 mb-2">Priority</label>
-                <div className="relative" ref={priorityContainerRef}>
-                  <div
-                    onClick={() => setIsPriorityOpen(!isPriorityOpen)}
-                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-lg shadow-sm flex items-center justify-between cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-sm text-slate-900 transition-all"
-                  >
-                    <span>{formData.priority}</span>
-                    <ChevronDown size={16} className={`text-slate-400 transition-transform ${isPriorityOpen ? 'rotate-180' : ''}`} />
+          <form
+            className="min-h-0 flex-1 overflow-y-auto"
+            id="testCaseForm"
+            onSubmit={handleSubmit}
+          >
+            <div className="grid min-h-full lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+              <div className="space-y-8 p-5 sm:p-7 lg:border-r lg:border-slate-200">
+                <section aria-labelledby="test-case-details-heading">
+                  <div className="mb-5">
+                    <h3 className={sectionTitleClassName} id="test-case-details-heading">
+                      Test case details
+                    </h3>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Choose the project and describe the scenario being covered.
+                    </p>
                   </div>
+                  <div className="space-y-5">
+                    <div>
+                      <label className={fieldLabelClassName} htmlFor="test-case-project">
+                        Project
+                      </label>
+                      <select
+                        aria-describedby="project-assignment-help"
+                        className={`${inputClassName} ${projects.length > 1 ? 'cursor-pointer' : 'cursor-not-allowed bg-slate-100 text-slate-500'}`}
+                        disabled={projects.length <= 1}
+                        id="test-case-project"
+                        name="projectId"
+                        onChange={(event) => {
+                          const projectId = event.target.value;
+                          const projectSections = sectionsByProject[projectId] ?? [];
+                          setFormData((previous) => ({
+                            ...previous,
+                            projectId,
+                            section: projectSections.includes(previous.section ?? '')
+                              ? previous.section
+                              : (projectSections[0] ?? ''),
+                          }));
+                        }}
+                        value={formData.projectId ?? ''}
+                      >
+                        {projects.map((project) => (
+                          <option key={project.id} value={project.id}>
+                            {project.key} — {project.name}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="mt-1.5 text-xs text-slate-400" id="project-assignment-help">
+                        Only projects assigned to you are available.
+                      </p>
+                    </div>
 
-                  {isPriorityOpen && (
-                    <div className="absolute top-full left-0 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto animate-in fade-in zoom-in-95 duration-100">
-                      {Object.values(Priority).map(p => (
-                        <div 
-                          key={p}
-                          onClick={() => {
-                            setFormData(prev => ({ ...prev, priority: p }));
-                            setIsPriorityOpen(false);
-                          }}
-                          className={`
-                            px-4 py-2.5 text-sm cursor-pointer transition-colors flex items-center justify-between
-                            ${p === formData.priority ? 'bg-brand-50 text-brand-700 font-medium' : 'hover:bg-slate-50 text-slate-700'}
-                          `}
+                    <div>
+                      <label className={fieldLabelClassName} htmlFor="test-case-title">
+                        Title <span className="text-red-500">*</span>
+                      </label>
+                      <MarkdownEditor
+                        id="test-case-title"
+                        label="Title"
+                        onChange={(title) => setFormData((previous) => ({ ...previous, title }))}
+                        placeholder="Describe the test scenario..."
+                        required
+                        rows={2}
+                        value={formData.title ?? ''}
+                      />
+                    </div>
+
+                    <div>
+                      <label className={fieldLabelClassName} htmlFor="test-case-description">
+                        Description
+                      </label>
+                      <MarkdownEditor
+                        id="test-case-description"
+                        label="Description"
+                        onChange={(description) => setFormData((previous) => ({ ...previous, description }))}
+                        placeholder="Describe the purpose, context, and scope of this test case..."
+                        rows={4}
+                        value={formData.description ?? ''}
+                      />
+                      <p className="mt-1.5 text-xs text-slate-500">
+                        Provide additional context about what this test case validates.
+                      </p>
+                    </div>
+                  </div>
+                </section>
+
+                <section aria-labelledby="test-case-configuration-heading">
+                  <div className="mb-5">
+                    <h3 className={sectionTitleClassName} id="test-case-configuration-heading">
+                      Configuration
+                    </h3>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Set how this case is organized, automated, and tracked.
+                    </p>
+                  </div>
+                  <div className="space-y-5">
+                    <div className="grid gap-5 sm:grid-cols-2">
+                      <div>
+                        <label className={fieldLabelClassName} htmlFor="test-case-section">
+                          Section
+                        </label>
+                        <select
+                          className={inputClassName}
+                          disabled={availableSections.length === 0}
+                          id="test-case-section"
+                          name="section"
+                          onChange={handleChange}
+                          required
+                          value={formData.section ?? ''}
                         >
-                          {p}
-                          {p === formData.priority && <Check size={16} className="text-brand-600" />}
+                          {availableSections.length === 0 ? (
+                            <option value="">No sections available</option>
+                          ) : (
+                            availableSections.map((section) => (
+                              <option key={section} value={section}>
+                                {section}
+                              </option>
+                            ))
+                          )}
+                        </select>
+                        <p className="mt-1.5 text-xs text-slate-400">
+                          Choose a section from the project catalog.
+                        </p>
+                      </div>
+                      <div>
+                        <label className={fieldLabelClassName} htmlFor="test-case-priority">
+                          Priority
+                        </label>
+                        <Select
+                          className="w-full"
+                          onChange={(priority) =>
+                            setFormData((previous) => ({
+                              ...previous,
+                              priority: priority as Priority,
+                            }))
+                          }
+                          options={Object.values(Priority).map((priority) => ({
+                            label: priority,
+                            value: priority,
+                          }))}
+                          placeholder="Select priority"
+                          size="md"
+                          value={formData.priority ?? Priority.Medium}
+                        />
+                      </div>
+                    </div>
+
+                    <fieldset>
+                      <legend className={fieldLabelClassName}>Testing Type</legend>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                        {Object.values(AutomationType).map((type) => (
+                          <label
+                            className={`flex cursor-pointer items-center justify-center rounded-lg border px-3 py-2.5 text-sm font-medium transition-all ${formData.automationType === type ? 'border-brand-300 bg-brand-50 text-brand-700 ring-1 ring-brand-500' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'}`}
+                            key={type}
+                          >
+                            <input
+                              checked={formData.automationType === type}
+                              className="sr-only"
+                              name="automationType"
+                              onChange={handleChange}
+                              type="radio"
+                              value={type}
+                            />
+                            {type}
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+
+                    <fieldset>
+                      <legend className={fieldLabelClassName}>Automation Readiness</legend>
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                        {Object.values(AutomationReadiness).map((readiness) => (
+                          <label
+                            className={`flex cursor-pointer items-center justify-center rounded-lg border px-3 py-2.5 text-sm font-medium transition-all ${formData.automationReadiness === readiness ? 'border-brand-300 bg-brand-50 text-brand-700 ring-1 ring-brand-500' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'}`}
+                            key={readiness}
+                          >
+                            <input
+                              checked={formData.automationReadiness === readiness}
+                              className="sr-only"
+                              name="automationReadiness"
+                              onChange={handleChange}
+                              type="radio"
+                              value={readiness}
+                            />
+                            {readiness}
+                          </label>
+                        ))}
+                      </div>
+                      <p className="mt-2 text-sm text-slate-500">Indicate whether this test case is suitable and ready for automation.</p>
+                    </fieldset>
+
+                    <fieldset>
+                      <legend className={fieldLabelClassName}>Status</legend>
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                        {Object.values(Status).map((status) => (
+                          <label
+                            className={`flex cursor-pointer items-center justify-center rounded-lg border px-3 py-2.5 text-sm font-medium transition-all ${formData.status === status ? 'border-brand-300 bg-brand-50 text-brand-700 ring-1 ring-brand-500' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'}`}
+                            key={status}
+                          >
+                            <input
+                              checked={formData.status === status}
+                              className="sr-only"
+                              name="status"
+                              onChange={handleChange}
+                              type="radio"
+                              value={status}
+                            />
+                            {status}
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                  </div>
+                </section>
+
+                <section aria-labelledby="test-case-preconditions-heading">
+                  <div className="mb-3">
+                    <h3 className={sectionTitleClassName} id="test-case-preconditions-heading">
+                      Preconditions
+                    </h3>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Record anything required before this case can be run.
+                    </p>
+                  </div>
+                  <MarkdownEditor
+                    className="min-h-28"
+                    id="test-case-preconditions"
+                    label="Preconditions"
+                    onChange={(preconditions) => setFormData((previous) => ({ ...previous, preconditions }))}
+                    placeholder="E.g. User must be logged in..."
+                    rows={3}
+                    value={formData.preconditions ?? ''}
+                  />
+                </section>
+              </div>
+
+              <section
+                aria-labelledby="test-case-steps-heading"
+                className="bg-slate-50/60 p-5 sm:p-7"
+              >
+                <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h3 className={sectionTitleClassName} id="test-case-steps-heading">
+                      Test steps
+                    </h3>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Keep each step focused on one action and its expected result.
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-500 shadow-sm ring-1 ring-slate-200">
+                    {steps.length} {steps.length === 1 ? 'step' : 'steps'}
+                  </span>
+                </div>
+
+                <div className="space-y-3">
+                  <p aria-live="polite" className="sr-only">{stepMoveAnnouncement}</p>
+                  {steps.map((step, index) => (
+                    <article
+                      className="group rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:border-brand-200"
+                      draggable
+                      onDragEnd={() => setDraggedStepId(null)}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDragStart={() => setDraggedStepId(step.id)}
+                      onDrop={() => {
+                        if (draggedStepId) moveStep(draggedStepId, step.id);
+                        setDraggedStepId(null);
+                      }}
+                      key={step.id}
+                    >
+                      <div className="mb-4 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <span
+                            aria-hidden="true"
+                            className="cursor-move text-slate-300 group-hover:text-slate-500"
+                            title="Drag to reorder step"
+                          >
+                            <GripVertical size={16} />
+                          </span>
+                          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
+                            {index + 1}
+                          </span>
+                          <span className="text-sm font-semibold text-slate-700">
+                            Step {index + 1}
+                          </span>
                         </div>
-                      ))}
+                        <div className="flex items-center gap-1">
+                          <button
+                            aria-label={`Move step ${index + 1} up`}
+                            className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                            disabled={index === 0}
+                            onClick={() => moveStepByOffset(step.id, -1)}
+                            type="button"
+                          >
+                            <ChevronUp size={16} />
+                          </button>
+                          <button
+                            aria-label={`Move step ${index + 1} down`}
+                            className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+                            disabled={index === steps.length - 1}
+                            onClick={() => moveStepByOffset(step.id, 1)}
+                            type="button"
+                          >
+                            <ChevronDown size={16} />
+                          </button>
+                          <button
+                            aria-label={`Delete step ${index + 1}`}
+                            className="rounded-md p-1.5 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600 focus:outline-none focus:ring-2 focus:ring-red-500/20"
+                            onClick={() => removeStep(step.id)}
+                            type="button"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="space-y-3">
+                        <div>
+                          <label
+                            className="mb-1.5 block text-xs font-semibold text-slate-600"
+                            htmlFor={`test-step-action-${step.id}`}
+                          >
+                            Action
+                          </label>
+                          <MarkdownEditor
+                            id={`test-step-action-${step.id}`}
+                            label={`Step ${index + 1} action`}
+                            onChange={(event) =>
+                              handleStepChange(step.id, 'action', event)
+                            }
+                            placeholder="What action will be performed?"
+                            rows={3}
+                            value={step.action}
+                          />
+                        </div>
+                        <div>
+                          <label
+                            className="mb-1.5 block text-xs font-semibold text-slate-600"
+                            htmlFor={`test-step-result-${step.id}`}
+                          >
+                            Expected result
+                          </label>
+                          <MarkdownEditor
+                            id={`test-step-result-${step.id}`}
+                            label={`Step ${index + 1} expected result`}
+                            onChange={(event) =>
+                              handleStepChange(step.id, 'expectedResult', event)
+                            }
+                            placeholder="What is the expected result?"
+                            rows={3}
+                            value={step.expectedResult}
+                          />
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+
+                  {steps.length === 0 && (
+                    <div className="rounded-xl border-2 border-dashed border-slate-200 bg-white px-5 py-10 text-center">
+                      <p className="text-sm font-semibold text-slate-700">No steps defined</p>
+                      <p className="mt-1 text-xs text-slate-400">
+                        Add the first action to begin documenting this test case.
+                      </p>
                     </div>
                   )}
                 </div>
-              </div>
+
+                <button
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-brand-200 bg-white py-3 text-sm font-semibold text-brand-700 transition-all hover:border-brand-400 hover:bg-brand-50 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                  onClick={addStep}
+                  type="button"
+                >
+                  <Plus size={17} />
+                  Add step
+                </button>
+              </section>
+
+              <section aria-labelledby="test-case-main-expected-result-heading" className="bg-white p-5 sm:p-7">
+                <div className="mb-3">
+                  <h3 className={sectionTitleClassName} id="test-case-main-expected-result-heading">
+                    Main Expected Result
+                  </h3>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Describe the final outcome expected after all test steps are completed.
+                  </p>
+                </div>
+                <MarkdownEditor
+                  id="test-case-main-expected-result"
+                  label="Main Expected Result"
+                  maxLength={10000}
+                  onChange={(mainExpectedResult) => setFormData((previous) => ({ ...previous, mainExpectedResult }))}
+                  placeholder="Describe the overall expected outcome..."
+                  rows={4}
+                  value={formData.mainExpectedResult ?? ''}
+                />
+              </section>
             </div>
+          </form>
 
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-3">Automation Type</label>
-              <div className="flex gap-3">
-                {Object.values(AutomationType).map((type) => (
-                   <label key={type} className={`
-                      flex-1 cursor-pointer rounded-lg border px-3 py-2 text-center text-sm font-medium transition-all flex items-center justify-center gap-2
-                      ${formData.automationType === type 
-                        ? 'bg-brand-50 border-brand-200 text-brand-700 ring-1 ring-brand-500' 
-                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                      }
-                   `}>
-                     <input
-                       type="radio"
-                       name="automationType"
-                       value={type}
-                       checked={formData.automationType === type}
-                       onChange={handleChange}
-                       className="sr-only"
-                     />
-                     {type}
-                   </label>
-                ))}
-              </div>
+          <footer className="flex flex-col-reverse gap-3 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7">
+            <p className="text-xs text-slate-400">
+              {initialData
+                ? `Last modified: ${new Date(initialData.updatedAt).toLocaleDateString()}`
+                : 'Unsaved draft'}
+            </p>
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:gap-3">
+              <Button onClick={onClose} type="button" variant="secondary">
+                Cancel
+              </Button>
+              <Button form="testCaseForm" icon={<Save size={16} />} type="submit">
+                {initialData ? 'Save Changes' : 'Create Case'}
+              </Button>
             </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-3">Status</label>
-              <div className="flex gap-3">
-                {Object.values(Status).map((status) => (
-                   <label key={status} className={`
-                      flex-1 cursor-pointer rounded-lg border px-3 py-2 text-center text-sm font-medium transition-all
-                      ${formData.status === status 
-                        ? 'bg-brand-50 border-brand-200 text-brand-700 ring-1 ring-brand-500' 
-                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                      }
-                   `}>
-                     <input
-                       type="radio"
-                       name="status"
-                       value={status}
-                       checked={formData.status === status}
-                       onChange={handleChange}
-                       className="sr-only"
-                     />
-                     {status}
-                   </label>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Preconditions</label>
-              <textarea
-                name="preconditions"
-                value={formData.preconditions}
-                onChange={handleChange}
-                rows={2}
-                placeholder="E.g. User must be logged in..."
-                className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-lg shadow-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 text-sm text-slate-900 transition-all"
-              />
-            </div>
-
-            {/* Dynamic Steps */}
-            <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-3">Test Steps</label>
-              
-              <div className="space-y-3 mb-4">
-                {steps.map((step, index) => (
-                  <div key={step.id} className="group relative bg-white p-4 rounded-lg border border-slate-200 shadow-sm hover:border-brand-200 transition-all">
-                    <div className="absolute left-2 top-1/2 -translate-y-1/2 text-slate-300 cursor-move opacity-0 group-hover:opacity-100 p-1 hover:text-slate-500">
-                      <GripVertical size={14} />
-                    </div>
-                    <div className="flex gap-4 ml-4">
-                      <div className="flex-1 space-y-3">
-                         <div className="flex gap-3">
-                           <span className="text-[10px] font-bold text-slate-400 bg-slate-100 rounded px-1.5 py-1 h-fit mt-1">#{index + 1}</span>
-                           <div className="flex-1">
-                             <input
-                                placeholder="Action performed..."
-                                value={step.action}
-                                onChange={(e) => handleStepChange(step.id, 'action', e.target.value)}
-                                className="w-full px-3 py-1.5 border-b border-slate-200 text-sm text-slate-900 focus:border-brand-500 focus:outline-none placeholder:text-slate-300 transition-colors bg-transparent"
-                              />
-                           </div>
-                         </div>
-                         <div className="flex gap-3">
-                           <span className="w-7"></span>
-                           <div className="flex-1">
-                             <input
-                                placeholder="Expected result..."
-                                value={step.expectedResult}
-                                onChange={(e) => handleStepChange(step.id, 'expectedResult', e.target.value)}
-                                className="w-full px-3 py-1.5 bg-slate-50/50 border-b border-slate-200 text-sm text-slate-600 focus:border-brand-500 focus:outline-none placeholder:text-slate-300 transition-colors"
-                              />
-                           </div>
-                         </div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeStep(step.id)}
-                        className="text-slate-300 hover:text-red-500 self-start p-1 transition-colors"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                
-                {steps.length === 0 && (
-                  <div className="flex flex-col items-center justify-center py-6 border-2 border-dashed border-slate-200 rounded-lg text-slate-500 bg-slate-50/50">
-                    <p className="text-sm font-medium">No steps defined</p>
-                    <p className="text-xs text-slate-400 mt-1">Start adding steps below</p>
-                  </div>
-                )}
-              </div>
-
-              <button
-                type="button"
-                onClick={addStep}
-                className="w-full py-2.5 border-2 border-dashed border-slate-200 rounded-lg text-slate-500 text-sm font-medium hover:border-brand-300 hover:text-brand-600 hover:bg-brand-50/50 transition-all flex items-center justify-center gap-2 bg-white"
-              >
-                <Plus size={16} />
-                Add New Step
-              </button>
-            </div>
-            
-          </div>
-        </form>
-
-        {/* Footer */}
-        <div className="px-8 py-5 border-t border-slate-100 bg-slate-50/50 flex justify-between items-center">
-          <div className="text-xs text-slate-400">
-            {initialData ? `Last modified: ${new Date(initialData.updatedAt).toLocaleDateString()}` : 'Unsaved draft'}
-          </div>
-          <div className="flex gap-3">
-            <Button variant="secondary" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button type="submit" form="testCaseForm" icon={<Save size={16} />}>
-              {initialData ? 'Save Changes' : 'Create Case'}
-            </Button>
-          </div>
+          </footer>
         </div>
       </div>
     </>

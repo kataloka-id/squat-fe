@@ -2,6 +2,8 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { Sidebar } from '@/src/components/projectsTestCases/Layout/Sidebar.tsx';
 import { TestCaseList } from '@/src/components/projectsTestCases/TestCaseList.tsx';
 import { TestCaseForm } from '@/src/components/projectsTestCases/TestCaseForm.tsx';
+import { TestCaseDetail } from '@/src/components/projectsTestCases/TestCaseDetail.tsx';
+import { TestCaseImportDialog } from '@/src/components/projectsTestCases/TestCaseImportDialog.tsx';
 import { TestCaseStats } from '@/src/components/projectsTestCases/TestCaseStats.tsx';
 import { ProjectBoard } from '@/src/components/projectsTestCases/ProjectBoard.tsx';
 import { ProjectForm } from '@/src/components/projectsTestCases/ProjectForm.tsx';
@@ -17,7 +19,8 @@ import { ProjectsService } from '@/src/api/projects.service.ts';
 import type { ProjectAssignmentRecord, ProjectTestCaseRecord } from '@/src/types/api.ts';
 import { useSessionUser } from '@/src/auth/SessionContext.tsx';
 import { isCurrentProjectRequest } from '@/src/utils/projectStats.ts';
-import { Plus, Filter, Trash2, Search, Briefcase, Zap, Check, X } from 'lucide-react';
+import { Plus, Filter, Trash2, Search, Briefcase, Zap, Check, X, Upload } from 'lucide-react';
+import type { TestCaseImportPayload } from '@/src/types/api.ts';
 import {
   TestCase,
   FilterState,
@@ -26,6 +29,9 @@ import {
   Priority,
   Status,
   AutomationType,
+  AutomationReadiness,
+  matchesAutomationReadinessFilter,
+  normalizeAutomationReadiness,
   Project,
 } from '../components/projectsTestCases/types.ts';
 
@@ -94,7 +100,9 @@ const App: React.FC = () => {
 
   // Modals
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isImportOpen, setIsImportOpen] = useState(false);
   const [editingCase, setEditingCase] = useState<TestCase | null>(null);
+  const [viewingCase, setViewingCase] = useState<TestCase | null>(null);
 
   const [isProjectFormOpen, setIsProjectFormOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
@@ -124,6 +132,7 @@ const App: React.FC = () => {
     status: [],
     projectId: [], // Default is empty, user must select
     automationType: [],
+    automationReadiness: [],
   });
   const [sortConfig, setSortConfig] = useState<{ field: SortField; order: SortOrder }>({
     field: 'updatedAt',
@@ -151,6 +160,10 @@ const App: React.FC = () => {
   );
   const automationOptions = useMemo(
     () => Object.values(AutomationType).map((a) => ({ label: a, value: a })),
+    [],
+  );
+  const automationReadinessOptions = useMemo(
+    () => Object.values(AutomationReadiness).map((readiness) => ({ label: readiness, value: readiness })),
     [],
   );
 
@@ -226,7 +239,8 @@ const App: React.FC = () => {
           priority: Object.values(Priority).includes(testCase.priority as Priority) ? testCase.priority as Priority : Priority.Medium,
           status: Object.values(Status).includes(testCase.status as Status) ? testCase.status as Status : Status.Draft,
           automationType: Object.values(AutomationType).includes(testCase.automationType as AutomationType) ? testCase.automationType as AutomationType : AutomationType.Manual,
-          steps: testCase.steps ?? [], tags: testCase.tags ?? [], updatedAt: testCase.updatedAt ? new Date(testCase.updatedAt) : new Date(), createdBy: testCase.createdBy ?? '—', preconditions: testCase.preconditions,
+          automationReadiness: normalizeAutomationReadiness(testCase.automationReadiness),
+          steps: testCase.steps ?? [], tags: testCase.tags ?? [], updatedAt: testCase.updatedAt ? new Date(testCase.updatedAt) : new Date(), createdBy: testCase.createdBy ?? '—', description: testCase.description ?? undefined, preconditions: testCase.preconditions ?? undefined, mainExpectedResult: testCase.mainExpectedResult ?? undefined,
         })));
         if (active) setTestCases(projectData);
       } catch (error) {
@@ -265,10 +279,30 @@ const App: React.FC = () => {
     setIsFormOpen(true);
   };
 
+  const handleImport = async (projectId: string, payload: TestCaseImportPayload) => {
+    const response = await ProjectsService.importTestCases(projectId, payload);
+    const refreshed = await ProjectsService.listTestCases(projectId, { force: true });
+    const imported = refreshed.data.map((testCase: ProjectTestCaseRecord): TestCase => ({
+      id: testCase.id, tcNumber: testCase.tcNumber, projectKey: testCase.projectKey, title: testCase.title, projectId: testCase.projectId ?? projectId, section: testCase.section ?? 'Uncategorized',
+      priority: Object.values(Priority).includes(testCase.priority as Priority) ? testCase.priority as Priority : Priority.Medium,
+      status: Object.values(Status).includes(testCase.status as Status) ? testCase.status as Status : Status.Draft,
+      automationType: Object.values(AutomationType).includes(testCase.automationType as AutomationType) ? testCase.automationType as AutomationType : AutomationType.Manual,
+      automationReadiness: normalizeAutomationReadiness(testCase.automationReadiness), steps: testCase.steps ?? [], tags: testCase.tags ?? [], updatedAt: testCase.updatedAt ? new Date(testCase.updatedAt) : new Date(), createdBy: testCase.createdBy ?? '—', description: testCase.description ?? undefined, preconditions: testCase.preconditions ?? undefined, mainExpectedResult: testCase.mainExpectedResult ?? undefined,
+    }));
+    setTestCases((current) => [...current.filter((testCase) => testCase.projectId !== projectId), ...imported]);
+    ProjectsService.invalidateList();
+    await refreshProjects();
+    showToast(`${response.data.importedCount} test case${response.data.importedCount === 1 ? '' : 's'} imported successfully.`);
+    return response.data;
+  };
+
   const handleEdit = (tc: TestCase) => {
+    setViewingCase(null);
     setEditingCase(tc);
     setIsFormOpen(true);
   };
+
+  const handleView = (tc: TestCase) => setViewingCase(tc);
 
   // Executes the actual update state change (called after confirmation)
   const performUpdate = async (ids: string[], updates: Partial<TestCase>) => {
@@ -276,9 +310,9 @@ const App: React.FC = () => {
       await Promise.all(ids.map(async (id) => {
         const current = testCases.find((testCase) => testCase.id === id);
         if (!current) return;
-        const response = await ProjectsService.updateTestCase(current.projectId, id, { ...current, ...updates, preconditions: updates.preconditions ?? current.preconditions ?? null });
+        const response = await ProjectsService.updateTestCase(current.projectId, id, { ...current, ...updates, description: updates.description ?? current.description ?? null, preconditions: updates.preconditions ?? current.preconditions ?? null, mainExpectedResult: updates.mainExpectedResult ?? current.mainExpectedResult ?? null });
         const saved = response.data;
-        setTestCases((items) => items.map((item) => item.id === id ? { ...item, ...saved, projectId: saved.projectId ?? current.projectId, priority: saved.priority as Priority, status: saved.status as Status, automationType: saved.automationType as AutomationType, preconditions: saved.preconditions ?? undefined, updatedAt: saved.updatedAt ? new Date(saved.updatedAt) : new Date() } : item));
+        setTestCases((items) => items.map((item) => item.id === id ? { ...item, ...saved, projectId: saved.projectId ?? current.projectId, priority: saved.priority as Priority, status: saved.status as Status, automationType: saved.automationType as AutomationType, automationReadiness: normalizeAutomationReadiness(saved.automationReadiness), description: saved.description ?? undefined, preconditions: saved.preconditions ?? undefined, mainExpectedResult: saved.mainExpectedResult ?? undefined, updatedAt: saved.updatedAt ? new Date(saved.updatedAt) : new Date() } : item));
       }));
       setBulkStatus(''); setBulkPriority('');
       showToast(ids.length === 1 ? 'Test case updated successfully.' : `Updated ${ids.length} test cases successfully.`);
@@ -324,13 +358,14 @@ const App: React.FC = () => {
         title: data.title ?? editingCase?.title ?? 'Untitled', section: data.section ?? editingCase?.section ?? 'Uncategorized',
         priority: data.priority ?? editingCase?.priority ?? Priority.Medium, status: data.status ?? editingCase?.status ?? Status.Draft,
         automationType: data.automationType ?? editingCase?.automationType ?? AutomationType.Manual,
-        preconditions: data.preconditions ?? editingCase?.preconditions ?? null, steps: data.steps ?? editingCase?.steps ?? [], tags: data.tags ?? editingCase?.tags ?? [],
+        automationReadiness: data.automationReadiness ?? editingCase?.automationReadiness ?? AutomationReadiness.Candidate,
+        description: data.description ?? editingCase?.description ?? null, preconditions: data.preconditions ?? editingCase?.preconditions ?? null, mainExpectedResult: data.mainExpectedResult ?? editingCase?.mainExpectedResult ?? null, steps: data.steps ?? editingCase?.steps ?? [], tags: data.tags ?? editingCase?.tags ?? [],
       };
       const response = editingCase
         ? await ProjectsService.updateTestCase(projectId, editingCase.id, payload)
         : await ProjectsService.createTestCase(projectId, payload);
       const saved = response.data;
-      const testCase: TestCase = { id: saved.id, tcNumber: saved.tcNumber, projectKey: saved.projectKey, title: saved.title, projectId: saved.projectId ?? projectId, section: saved.section, priority: saved.priority as Priority, status: saved.status as Status, automationType: saved.automationType as AutomationType, steps: saved.steps, tags: saved.tags, createdBy: saved.createdBy ?? '—', updatedAt: saved.updatedAt ? new Date(saved.updatedAt) : new Date(), preconditions: saved.preconditions ?? undefined };
+      const testCase: TestCase = { id: saved.id, tcNumber: saved.tcNumber, projectKey: saved.projectKey, title: saved.title, projectId: saved.projectId ?? projectId, section: saved.section, priority: saved.priority as Priority, status: saved.status as Status, automationType: saved.automationType as AutomationType, automationReadiness: normalizeAutomationReadiness(saved.automationReadiness), steps: saved.steps, tags: saved.tags, createdBy: saved.createdBy ?? '—', updatedAt: saved.updatedAt ? new Date(saved.updatedAt) : new Date(), description: saved.description ?? undefined, preconditions: saved.preconditions ?? undefined, mainExpectedResult: saved.mainExpectedResult ?? undefined };
       setTestCases((items) => editingCase ? items.map((item) => item.id === testCase.id ? { ...item, ...testCase } : item) : [testCase, ...items]);
       if (!editingCase) {
         ProjectsService.invalidateList();
@@ -473,6 +508,9 @@ const App: React.FC = () => {
     if (filters.automationType.length > 0) {
       result = result.filter((tc) => filters.automationType.includes(tc.automationType));
     }
+    if (filters.automationReadiness.length > 0) {
+      result = result.filter((tc) => matchesAutomationReadinessFilter(tc.automationReadiness, filters.automationReadiness));
+    }
 
     // Sort
     result.sort((a, b) => {
@@ -547,6 +585,14 @@ const App: React.FC = () => {
                   </p>
                 </div>
                 <div className="mt-4 flex gap-3 sm:mt-0">
+                  <Button
+                    onClick={() => setIsImportOpen(true)}
+                    icon={<Upload size={18} />}
+                    variant="secondary"
+                    disabled={projects.length === 0 && !isLoading}
+                  >
+                    Import JSON
+                  </Button>
                   <Button
                     onClick={handleCreate}
                     icon={<Plus size={18} />}
@@ -628,7 +674,7 @@ const App: React.FC = () => {
                   />
 
                   <MultiSelect
-                    label="Automation"
+                    label="Testing Type"
                     options={automationOptions}
                     selectedValues={filters.automationType}
                     onChange={(vals) =>
@@ -638,10 +684,22 @@ const App: React.FC = () => {
                     disabled={!hasProjectSelected}
                   />
 
+                  <MultiSelect
+                    label="Automation Readiness"
+                    options={automationReadinessOptions}
+                    selectedValues={filters.automationReadiness}
+                    onChange={(vals) =>
+                      setFilters((prev) => ({ ...prev, automationReadiness: vals as AutomationReadiness[] }))
+                    }
+                    icon={<Zap className="h-3.5 w-3.5" />}
+                    disabled={!hasProjectSelected}
+                  />
+
                   {(filters.section.length > 0 ||
                     filters.priority.length > 0 ||
                     filters.status.length > 0 ||
                     filters.automationType.length > 0 ||
+                    filters.automationReadiness.length > 0 ||
                     filters.search) && (
                     <button
                       onClick={() =>
@@ -652,6 +710,7 @@ const App: React.FC = () => {
                           priority: [],
                           status: [],
                           automationType: [],
+                          automationReadiness: [],
                         }))
                       }
                       className="text-brand-600 hover:text-brand-800 hover:bg-brand-50 ml-2 rounded px-2 py-1 text-xs font-medium transition-colors"
@@ -737,6 +796,7 @@ const App: React.FC = () => {
                   onSort={handleSort}
                   onToggleSelect={handleToggleSelect}
                   onToggleSelectAll={handleToggleSelectAll}
+                  onView={handleView}
                   onEdit={handleEdit}
                   onDelete={initiateDelete}
                   onUpdate={(id, updates) => requestUpdate([id], updates)}
@@ -779,6 +839,22 @@ const App: React.FC = () => {
         projects={formProjects}
         sectionsByProject={sectionsByProject}
         preselectedProjectId={filters.projectId[0]}
+      />
+
+      <TestCaseImportDialog
+        isOpen={isImportOpen}
+        onClose={() => setIsImportOpen(false)}
+        onImport={handleImport}
+        projects={projects}
+        sectionsByProject={sectionsByProject}
+        preselectedProjectId={filters.projectId[0]}
+      />
+
+      <TestCaseDetail
+        onClose={() => setViewingCase(null)}
+        onEdit={handleEdit}
+        project={projects.find((project) => project.id === viewingCase?.projectId)}
+        testCase={viewingCase}
       />
 
       <ProjectForm
