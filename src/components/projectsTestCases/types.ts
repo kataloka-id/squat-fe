@@ -18,6 +18,25 @@ export enum AutomationType {
   Manual = 'Manual'
 }
 
+export enum AutomationReadiness {
+  NotAutomatable = 'Not Automatable',
+  Candidate = 'Candidate',
+  Ready = 'Ready',
+  Automated = 'Automated'
+}
+
+/** Maps missing or unsupported API values safely for legacy test cases. */
+export const normalizeAutomationReadiness = (value: unknown): AutomationReadiness =>
+  Object.values(AutomationReadiness).includes(value as AutomationReadiness)
+    ? value as AutomationReadiness
+    : AutomationReadiness.Candidate;
+
+export const matchesAutomationReadinessFilter = (
+  value: unknown,
+  selectedReadiness: AutomationReadiness[],
+): boolean =>
+  selectedReadiness.length === 0 || selectedReadiness.includes(normalizeAutomationReadiness(value));
+
 export interface TestStep {
   id: string;
   action: string;
@@ -36,7 +55,13 @@ export interface TestCase {
   priority: Priority;
   status: Status;
   automationType: AutomationType;
+  /** Optional only at the type boundary so legacy records can still be opened. */
+  automationReadiness?: AutomationReadiness;
   preconditions?: string;
+  /** Optional context for the test case, stored as raw Markdown. */
+  description?: string;
+  /** Optional overall outcome for the test case, stored as raw Markdown. */
+  mainExpectedResult?: string;
   steps: TestStep[];
   tags: string[];
   updatedAt: Date;
@@ -61,7 +86,7 @@ export interface Project {
   createdBy?: string;
 }
 
-export type SortField = 'id' | 'title' | 'priority' | 'status' | 'updatedAt' | 'projectId' | 'section' | 'automationType';
+export type SortField = 'id' | 'title' | 'priority' | 'status' | 'updatedAt' | 'projectId' | 'section' | 'automationType' | 'automationReadiness';
 export type SortOrder = 'asc' | 'desc';
 
 export interface FilterState {
@@ -71,4 +96,5 @@ export interface FilterState {
   status: Status[];
   projectId: string[];
   automationType: AutomationType[];
+  automationReadiness: AutomationReadiness[];
 }

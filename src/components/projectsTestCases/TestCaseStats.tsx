@@ -88,10 +88,10 @@ export const TestCaseStats: React.FC<TestCaseStatsProps> = ({ testCases }) => {
           </div>
        </div>
 
-       {/* Automation Stats */}
+       {/* Testing Type Stats */}
        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center">
           <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2">
-             <Activity size={12} /> Automation
+             <Activity size={12} /> Testing Type
           </p>
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
              <StatItem color="bg-violet-500" count={stats.automation[AutomationType.UI]} tooltip="UI Tests" />

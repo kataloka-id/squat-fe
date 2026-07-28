@@ -1,8 +1,8 @@
 import api from './axios';
 import { getCached, invalidateReadCache, type ReadOptions } from './read-cache';
-import type { ApiResponse, ProjectAssignmentRecord, ProjectMemberRecord, ProjectPayload, ProjectTestCaseRecord, SectionRecord } from '@/src/types/api.ts';
+import type { ApiResponse, ProjectAssignmentRecord, ProjectMemberRecord, ProjectPayload, ProjectTestCaseRecord, SectionRecord, TestCaseImportPayload, TestCaseImportResult } from '@/src/types/api.ts';
 
-type TestCasePayload = Pick<ProjectTestCaseRecord, 'title' | 'section' | 'priority' | 'status' | 'automationType' | 'preconditions' | 'steps' | 'tags'>;
+type TestCasePayload = Pick<ProjectTestCaseRecord, 'title' | 'section' | 'priority' | 'status' | 'automationType' | 'automationReadiness' | 'description' | 'preconditions' | 'mainExpectedResult' | 'steps' | 'tags'>;
 
 export const ProjectsService = {
   // The backend scopes this collection to the authenticated caller.  Do not
@@ -33,6 +33,12 @@ export const ProjectsService = {
   createTestCase: async (projectId: string, payload: TestCasePayload) => {
     const response = await api.post(`/v1/projects/${projectId}/test-cases`, payload) as ApiResponse<ProjectTestCaseRecord>;
     invalidateReadCache(`/v1/projects/${projectId}/test-cases`);
+    return response;
+  },
+  importTestCases: async (projectId: string, payload: TestCaseImportPayload) => {
+    const response = await api.post(`/v1/projects/${projectId}/test-cases/import`, payload) as ApiResponse<TestCaseImportResult>;
+    invalidateReadCache(`/v1/projects/${projectId}/test-cases`);
+    invalidateReadCache('/v1/projects');
     return response;
   },
   updateTestCase: async (projectId: string, id: string, payload: TestCasePayload) => {

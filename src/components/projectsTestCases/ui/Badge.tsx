@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Priority, Status, AutomationType } from '../types.ts';
+import { Priority, Status, AutomationReadiness, AutomationType } from '../types.ts';
 
 interface BadgeProps {
-  type: 'priority' | 'status' | 'tag' | 'automation';
+  type: 'priority' | 'status' | 'tag' | 'automation' | 'automationReadiness';
   value: string;
   onClick?: () => void;
   className?: string;
@@ -69,6 +69,28 @@ export const Badge: React.FC<BadgeProps> = ({ type, value, onClick, className = 
       case AutomationType.Manual:
         containerStyles += " bg-slate-100 text-slate-600 border-slate-200";
         dotColor = "bg-slate-400";
+        break;
+      default:
+        containerStyles += " bg-slate-50 text-slate-600 border-slate-200";
+        dotColor = "bg-slate-400";
+    }
+  } else if (type === 'automationReadiness') {
+    switch (value) {
+      case AutomationReadiness.NotAutomatable:
+        containerStyles += " bg-slate-100 text-slate-600 border-slate-200";
+        dotColor = "bg-slate-400";
+        break;
+      case AutomationReadiness.Candidate:
+        containerStyles += " bg-amber-50 text-amber-700 border-amber-200";
+        dotColor = "bg-amber-500";
+        break;
+      case AutomationReadiness.Ready:
+        containerStyles += " bg-blue-50 text-blue-700 border-blue-200";
+        dotColor = "bg-blue-500";
+        break;
+      case AutomationReadiness.Automated:
+        containerStyles += " bg-emerald-50 text-emerald-700 border-emerald-200";
+        dotColor = "bg-emerald-500";
         break;
       default:
         containerStyles += " bg-slate-50 text-slate-600 border-slate-200";

@@ -120,9 +120,43 @@ export interface ProjectTestCaseRecord {
   priority: string;
   status: string;
   automationType: string;
+  automationReadiness?: string;
+  description?: string | null;
   preconditions?: string | null;
+  mainExpectedResult?: string | null;
   steps: Array<{ id: string; action: string; expectedResult: string }>;
   tags: string[];
   createdBy?: string;
   updatedAt?: string;
+}
+
+export interface TestCaseImportIssue {
+  path: string;
+  code: string;
+  message: string;
+}
+
+export interface TestCaseImportPayload {
+  version: '1.0';
+  projectKey?: string;
+  testCases: Array<{
+    title: string;
+    description?: string;
+    section: string;
+    priority: string;
+    status: string;
+    automationType: string;
+    automationReadiness: string;
+    preconditions?: string;
+    mainExpectedResult?: string;
+    steps: Array<{ action: string; expectedResult: string }>;
+    tags?: string[];
+  }>;
+}
+
+export interface TestCaseImportResult {
+  totalRequested: number;
+  importedCount: number;
+  created: Array<{ id: string; key?: string }>;
+  warnings?: TestCaseImportIssue[];
 }

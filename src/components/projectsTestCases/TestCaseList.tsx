@@ -8,9 +8,10 @@ import {
   Search,
   LayoutList
 } from 'lucide-react';
-import { TestCase, SortField, SortOrder, Project, Priority, Status } from '../projectsTestCases/types.ts';
+import { normalizeAutomationReadiness, TestCase, SortField, SortOrder, Project, Priority, Status } from '../projectsTestCases/types.ts';
 import { Badge } from './ui/Badge';
 import { formatTestCaseDisplayId } from '@/src/utils/testCaseDisplayId.ts';
+import { markdownToPlainText } from '@/src/utils/markdown.ts';
 import { Button } from './ui/Button';
 import { Select } from './ui/Select';
 
@@ -32,6 +33,8 @@ interface TestCaseListProps {
   onSort: (field: SortField) => void;
   onToggleSelect: (id: string) => void;
   onToggleSelectAll: () => void;
+  // eslint-disable-next-line no-unused-vars -- TypeScript callback parameter, not a runtime binding.
+  onView?: (tc: TestCase) => void;
   onEdit: (tc: TestCase) => void;
   onDelete: (id: string) => void;
   onUpdate: (id: string, updates: Partial<TestCase>) => void;
@@ -107,6 +110,7 @@ const SkeletonRow = () => (
     </td>
     <td className="px-6 py-4"><div className="h-4 w-20 bg-slate-100 rounded"></div></td>
     <td className="px-6 py-4"><div className="h-6 w-16 bg-slate-100 rounded-md"></div></td>
+    <td className="px-6 py-4"><div className="h-6 w-24 bg-slate-100 rounded-md"></div></td>
     <td className="px-6 py-4"><div className="h-6 w-16 bg-slate-100 rounded-md"></div></td>
     <td className="px-6 py-4"><div className="h-6 w-16 bg-slate-100 rounded-md"></div></td>
     <td className="px-6 py-4"><div className="h-4 w-20 bg-slate-100 rounded"></div></td>
@@ -123,6 +127,7 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
   onSort,
   onToggleSelect,
   onToggleSelectAll,
+  onView,
   onEdit,
   onDelete,
   onUpdate,
@@ -199,7 +204,8 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
               <TableHead field="section" label="Section" className="hidden md:table-cell" />
               <TableHead field="priority" label="Priority" />
               <TableHead field="status" label="Status" />
-              <TableHead field="automationType" label="Type" />
+              <TableHead field="automationType" label="Testing Type" />
+              <TableHead field="automationReadiness" label="Automation Readiness" />
               <TableHead field="updatedAt" label="Updated" className="hidden lg:table-cell" />
               {canManage && <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider align-top bg-slate-50"></th>}
             </tr>
@@ -211,7 +217,7 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
             ) : testCases.length === 0 ? (
               // Empty State (No results after filter)
               <tr>
-                <td colSpan={10} className="px-6 py-20 text-center text-slate-500">
+                <td colSpan={11} className="px-6 py-20 text-center text-slate-500">
                   <div className="flex flex-col items-center justify-center animate-in fade-in zoom-in-95 duration-200">
                     <div className="h-16 w-16 rounded-full bg-slate-50 flex items-center justify-center mb-4 border border-slate-100">
                       <Search className="h-8 w-8 text-slate-300" />
@@ -246,7 +252,7 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
                     <td className="px-6 py-4 whitespace-nowrap align-middle">
                       <span 
                         className="font-mono text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded cursor-pointer hover:bg-brand-100 hover:text-brand-700 transition-colors border border-slate-200"
-                        onClick={() => canManage && onEdit(tc)}
+                        onClick={() => onView?.(tc)}
                       >
                         {formatTestCaseDisplayId(tc, project?.key)}
                       </span>
@@ -259,7 +265,7 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
                       </div>
                     </td>
                     <td className="px-6 py-4 align-middle">
-                      <div className="text-sm text-slate-900 font-medium line-clamp-1 group-hover:text-brand-600 transition-colors cursor-pointer" onClick={() => canManage && onEdit(tc)}>{tc.title}</div>
+                      <button className="line-clamp-1 text-left text-sm font-medium text-slate-900 transition-colors hover:text-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-500/20" onClick={() => onView?.(tc)} type="button">{markdownToPlainText(tc.title)}</button>
                       <div className="text-xs text-slate-500 mt-1 line-clamp-1 md:hidden">{tc.section}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 hidden md:table-cell align-middle">
@@ -273,6 +279,9 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap align-middle">
                        <Badge type="automation" value={tc.automationType} />
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap align-middle">
+                       <Badge type="automationReadiness" value={normalizeAutomationReadiness(tc.automationReadiness)} />
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 font-mono hidden lg:table-cell align-middle">
                       {new Date(tc.updatedAt).toLocaleDateString()}
