@@ -4,6 +4,18 @@
 
 :root {
   color-scheme: light;
+  --company-brand: #8a00d6;
+  --company-brand-50-rgb: 250 245 253;
+  --company-brand-100-rgb: 243 230 251;
+  --company-brand-200-rgb: 229 199 246;
+  --company-brand-300-rgb: 211 158 239;
+  --company-brand-400-rgb: 179 89 228;
+  --company-brand-500-rgb: 138 0 214;
+  --company-brand-600-rgb: 124 0 193;
+  --company-brand-700-rgb: 108 0 167;
+  --company-brand-800-rgb: 88 0 137;
+  --company-brand-900-rgb: 69 0 107;
+  --company-brand-950-rgb: 41 0 64;
 }
 
 body {
@@ -62,9 +74,8 @@ body {
     scroll-behavior: smooth;
   }
 
-  /* Text Selection - Matches Brand Secondary Color (Vivid Violet) */
   ::selection {
-    background-color: #a100ff;
+    background-color: rgb(var(--company-brand-500-rgb));
     color: #ffffff;
   }
 }

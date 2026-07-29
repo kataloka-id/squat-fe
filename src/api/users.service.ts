@@ -5,14 +5,22 @@ import type { ApiResponse, RoleRecord, UserRecord } from '@/src/types/api.ts';
 export const invalidateSettingsReadRequests = () => {
   invalidateReadCache('/v1/users');
   invalidateReadCache('/v1/roles');
+  invalidateReadCache('/v1/roles/assignable');
 };
 
 export type UserPayload = Partial<Pick<UserRecord, 'email' | 'username' | 'roleSlug' | 'isActive'>> & {
   password?: string;
+  companyId?: string;
 };
+export type RoleDeleteData = null | Pick<RoleRecord, 'slug' | 'isActive'> & { archived: true };
 
 export interface ProjectAssignmentsPayload {
   projectIds: string[];
+}
+
+export interface UserListFilters {
+  q?: string;
+  companyId?: string;
 }
 
 export const UsersService = {
@@ -22,8 +30,14 @@ export const UsersService = {
     invalidateReadCache('/v1/users/me');
     return response;
   },
-  list: (options?: ReadOptions) => getCached('/v1/users', () => api.get('/v1/users') as Promise<ApiResponse<UserRecord[]>>, options),
-  create: async (payload: Required<Pick<UserPayload, 'email' | 'username' | 'password' | 'roleSlug'>> & Pick<UserPayload, 'isActive'>) => {
+  list: (options?: ReadOptions, filters?: UserListFilters) => {
+    const params = new URLSearchParams();
+    if (filters?.q?.trim()) params.set('q', filters.q.trim());
+    if (filters?.companyId) params.set('companyId', filters.companyId);
+    const path = params.size ? `/v1/users?${params.toString()}` : '/v1/users';
+    return getCached(path, () => api.get(path) as Promise<ApiResponse<UserRecord[]>>, options);
+  },
+  create: async (payload: Required<Pick<UserPayload, 'email' | 'username' | 'password' | 'roleSlug'>> & Pick<UserPayload, 'isActive' | 'companyId'>) => {
     const response = await api.post('/v1/users', payload) as ApiResponse<UserRecord>;
     invalidateReadCache('/v1/users');
     return response;
@@ -52,19 +66,23 @@ export const UsersService = {
 
 export const RolesService = {
   list: (options?: ReadOptions) => getCached('/v1/roles', () => api.get('/v1/roles') as Promise<ApiResponse<RoleRecord[]>>, options),
+  assignable: (options?: ReadOptions) => getCached('/v1/roles/assignable', () => api.get('/v1/roles/assignable') as Promise<ApiResponse<RoleRecord[]>>, options),
   create: async (payload: Pick<RoleRecord, 'slug' | 'name' | 'description'>) => {
     const response = await api.post('/v1/roles', payload) as ApiResponse<RoleRecord>;
     invalidateReadCache('/v1/roles');
+    invalidateReadCache('/v1/roles/assignable');
     return response;
   },
   update: async (slug: string, payload: Partial<Pick<RoleRecord, 'name' | 'description'>>) => {
     const response = await api.patch(`/v1/roles/${slug}`, payload) as ApiResponse<RoleRecord>;
     invalidateReadCache('/v1/roles');
+    invalidateReadCache('/v1/roles/assignable');
     return response;
   },
   remove: async (slug: string) => {
-    const response = await api.delete(`/v1/roles/${slug}`) as ApiResponse<null>;
+    const response = await api.delete(`/v1/roles/${slug}`) as ApiResponse<RoleDeleteData>;
     invalidateReadCache('/v1/roles');
+    invalidateReadCache('/v1/roles/assignable');
     return response;
   },
 };

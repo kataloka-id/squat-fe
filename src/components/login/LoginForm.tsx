@@ -115,7 +115,7 @@ setIsLoading(true);
               id="email"
               type="email"
               label="Email"
-              placeholder="user@squathub.com"
+              placeholder="user@company.com"
               value={email}
               onChange={(e) => {
                 setEmail(e.target.value);

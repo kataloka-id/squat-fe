@@ -37,7 +37,7 @@ export const BrandingPanel: React.FC = () => {
         <div className="mt-12 flex items-center gap-4 text-sm font-medium text-gray-400">
           <div className="flex items-center gap-2">
             <div className="h-2 w-2 rounded-full bg-green-500"></div>
-            Dayadi Tirtodewo
+            Powered by KATALOKA.ID
           </div>
           <span className="text-gray-600">|</span>
           <div>v1.0.0 Enterprise</div>

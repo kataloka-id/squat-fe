@@ -41,6 +41,7 @@ export interface AuthSessionResponse {
       email: string;
       username?: string;
       role: string;
+      company: CompanyRecord | null;
     };
   };
   meta: {
@@ -49,12 +50,50 @@ export interface AuthSessionResponse {
   };
 }
 
+export interface CompanyRecord {
+  id: string;
+  name: string;
+  hasLogo: boolean;
+  logoVersion: string | null;
+  profileColour: string | null;
+}
+
+export interface ManagedCompanyRecord extends CompanyDetailsRecord {}
+
+export interface CompanyDetailsRecord extends CompanyRecord {
+  businessType: number;
+  category: number;
+  address: string;
+  phone: string;
+  email: string | null;
+  field: string;
+  postalCode: string;
+  isActive: boolean;
+}
+
+export interface EnterpriseCategoryRecord {
+  id: number;
+  code: string;
+  name: string;
+  description?: string;
+  isActive: boolean;
+}
+
+export interface EnterpriseTypeRecord {
+  id: number;
+  businessType: string;
+  legalEntity?: boolean | null;
+  description?: string | null;
+  isActive: boolean;
+}
+
 export interface UserRecord {
   id: string;
   email: string;
   username: string;
   roleSlug: string;
   isActive: boolean;
+  company?: CompanyRecord | null;
 }
 
 export interface RoleRecord {
@@ -62,6 +101,7 @@ export interface RoleRecord {
   slug: string;
   name?: string;
   description?: string;
+  isActive: boolean;
 }
 
 export interface SectionRecord {
