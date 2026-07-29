@@ -107,6 +107,7 @@ export interface RoleRecord {
 export interface SectionRecord {
   id: string;
   name: string;
+  projectId: string;
 }
 
 export interface ApiResponse<T> {
@@ -156,6 +157,7 @@ export interface ProjectTestCaseRecord {
   projectKey?: string;
   title: string;
   projectId?: string;
+  sectionId?: string;
   section: string;
   priority: string;
   status: string;

@@ -19,11 +19,33 @@ interface SidebarProps {
   onNavigate: (view: string) => void;
 }
 
+const userInitials = (name: string) => {
+  const initials = name
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0])
+    .join('');
+
+  return initials.toUpperCase() || 'U';
+};
+
+const roleLabel = (role: string) => role
+  .split(/[_-]/)
+  .filter(Boolean)
+  .map((part) => part.toLowerCase() === 'qa' ? 'QA' : `${part[0]?.toUpperCase() ?? ''}${part.slice(1)}`)
+  .join(' ') || 'User';
+
 export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => {
   const [collapsed, setCollapsed] = useState(false);
   const sessionUser = useSessionUser();
   const company = sessionUser?.company;
   const companyName = company?.name?.trim() || 'Company';
+  const userName = sessionUser?.username?.trim() || sessionUser?.email || 'Current user';
+  const userRole = roleLabel(sessionUser?.roleSlug ?? '');
+  const userCompany = company?.name?.trim();
+  const currentUserTooltip = `${userName} · ${userRole}`;
 
   const menuItems = [
     { id: 'projects', icon: Briefcase, label: 'Projects' },
@@ -113,8 +135,33 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
         })}
       </nav>
 
-      {/* User / Footer */}
+      {/* Account controls stay visible while the navigation menu scrolls. */}
       <div className="mb-2 flex-shrink-0 border-t border-slate-800/50 p-3">
+        <section
+          className={`group/user relative flex items-center ${collapsed ? 'justify-center px-0 py-3' : 'gap-3 px-3 py-3'} rounded-xl text-left`}
+          aria-label={`Current user: ${currentUserTooltip}${userCompany ? `, ${userCompany}` : ''}`}
+          title={collapsed ? currentUserTooltip : undefined}
+        >
+          <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white shadow-sm" aria-hidden="true">
+            {userInitials(userName)}
+          </span>
+          <div className={`min-w-0 flex-1 overflow-hidden transition-all duration-300 ${collapsed ? 'max-w-0 opacity-0' : 'max-w-[180px] opacity-100'}`}>
+            <p className="truncate text-sm font-semibold text-white">{userName}</p>
+            <p className="truncate text-xs text-slate-400">{userRole}</p>
+            {userCompany && <p className="truncate text-xs text-slate-500">{userCompany}</p>}
+          </div>
+
+          {collapsed && (
+            <div role="tooltip" className="pointer-events-none absolute bottom-0 left-full z-50 ml-4 w-max max-w-56 rounded-md border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-xl transition-opacity group-hover/user:opacity-100">
+              <p className="truncate">{userName}</p>
+              <p className="truncate text-slate-400">{userRole}</p>
+              {userCompany && <p className="truncate text-slate-500">{userCompany}</p>}
+              <div className="absolute -left-1 bottom-3 h-2 w-2 rotate-45 transform border-b border-l border-slate-700 bg-slate-900"></div>
+            </div>
+          )}
+        </section>
+
+        <div className="my-2 border-t border-slate-800" />
         <button
           onClick={handleLogout}
           className={`relative flex w-full items-center ${collapsed ? 'justify-center px-0 py-3' : 'px-3 py-3'} group rounded-xl text-slate-400 transition-all duration-200 hover:bg-slate-800/50 hover:text-red-400`}

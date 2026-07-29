@@ -2,7 +2,7 @@ import api from './axios';
 import { getCached, invalidateReadCache, type ReadOptions } from './read-cache';
 import type { ApiResponse, ProjectAssignmentRecord, ProjectMemberRecord, ProjectPayload, ProjectTestCaseRecord, SectionRecord, TestCaseImportPayload, TestCaseImportResult } from '@/src/types/api.ts';
 
-type TestCasePayload = Pick<ProjectTestCaseRecord, 'title' | 'section' | 'priority' | 'status' | 'automationType' | 'automationReadiness' | 'description' | 'preconditions' | 'mainExpectedResult' | 'steps' | 'tags'>;
+type TestCasePayload = Pick<ProjectTestCaseRecord, 'title' | 'sectionId' | 'priority' | 'status' | 'automationType' | 'automationReadiness' | 'description' | 'preconditions' | 'mainExpectedResult' | 'steps' | 'tags'>;
 
 export const ProjectsService = {
   // The backend scopes this collection to the authenticated caller.  Do not
@@ -29,7 +29,7 @@ export const ProjectsService = {
   listTestCases: (projectId: string, options?: ReadOptions) =>
     getCached(`/v1/projects/${projectId}/test-cases`, () => api.get(`/v1/projects/${projectId}/test-cases`) as Promise<ApiResponse<ProjectTestCaseRecord[]>>, options),
   listSections: (projectId: string, options?: ReadOptions) =>
-    getCached(`/v1/projects/${projectId}/sections`, () => api.get(`/v1/projects/${projectId}/sections`) as Promise<ApiResponse<string[]>>, options),
+    getCached(`/v1/projects/${projectId}/sections`, () => api.get(`/v1/projects/${projectId}/sections`) as Promise<ApiResponse<SectionRecord[]>>, options),
   createTestCase: async (projectId: string, payload: TestCasePayload) => {
     const response = await api.post(`/v1/projects/${projectId}/test-cases`, payload) as ApiResponse<ProjectTestCaseRecord>;
     invalidateReadCache(`/v1/projects/${projectId}/test-cases`);
@@ -54,20 +54,21 @@ export const ProjectsService = {
 };
 
 export const SectionsService = {
-  list: (options?: ReadOptions) => getCached('/v1/sections', () => api.get('/v1/sections') as Promise<ApiResponse<SectionRecord[]>>, options),
-  create: async (payload: Pick<SectionRecord, 'name'>) => {
-    const response = await api.post('/v1/sections', payload) as ApiResponse<SectionRecord>;
-    invalidateReadCache('/v1/sections');
+  list: (projectId: string, options?: ReadOptions) =>
+    getCached(`/v1/projects/${projectId}/sections`, () => api.get(`/v1/projects/${projectId}/sections`) as Promise<ApiResponse<SectionRecord[]>>, options),
+  create: async (projectId: string, payload: Pick<SectionRecord, 'name'>) => {
+    const response = await api.post(`/v1/projects/${projectId}/sections`, payload) as ApiResponse<SectionRecord>;
+    invalidateReadCache(`/v1/projects/${projectId}/sections`);
     return response;
   },
-  update: async (id: string, payload: Pick<SectionRecord, 'name'>) => {
-    const response = await api.patch(`/v1/sections/${id}`, payload) as ApiResponse<SectionRecord>;
-    invalidateReadCache('/v1/sections');
+  update: async (projectId: string, id: string, payload: Pick<SectionRecord, 'name'>) => {
+    const response = await api.patch(`/v1/projects/${projectId}/sections/${id}`, payload) as ApiResponse<SectionRecord>;
+    invalidateReadCache(`/v1/projects/${projectId}/sections`);
     return response;
   },
-  remove: async (id: string) => {
-    const response = await api.delete(`/v1/sections/${id}`) as ApiResponse<null>;
-    invalidateReadCache('/v1/sections');
+  remove: async (projectId: string, id: string) => {
+    const response = await api.delete(`/v1/projects/${projectId}/sections/${id}`) as ApiResponse<null>;
+    invalidateReadCache(`/v1/projects/${projectId}/sections`);
     return response;
   },
 };

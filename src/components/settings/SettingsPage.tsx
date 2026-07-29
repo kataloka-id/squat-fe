@@ -45,6 +45,7 @@ export const SettingsPage = () => {
   const [roles, setRoles] = useState<RoleRecord[]>([]);
   const [projects, setProjects] = useState<ProjectAssignmentRecord[]>([]);
   const [sections, setSections] = useState<SectionRecord[]>([]);
+  const [selectedSectionProjectId, setSelectedSectionProjectId] = useState('');
   const [newSectionName, setNewSectionName] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -109,21 +110,26 @@ export const SettingsPage = () => {
         setCategories(categoriesResponse.data);
         setEnterpriseTypes(typesResponse.data);
       } else setDetails(null);
+      // Project membership is the authorization boundary for the Section
+      // catalog. Fetch the caller's scoped projects for every Settings user,
+      // while keeping unrelated account administration admin-only.
+      const projectsPromise = ProjectsService.list(options);
       if (isAdmin) {
         const roleRequest = isKatalokaAdmin ? RolesService.list(options) : RolesService.assignable(options);
-        const [rolesResponse, usersResponse, projectsResponse, sectionsResponse] = await Promise.all([
+        const [rolesResponse, usersResponse, projectsResponse] = await Promise.all([
           roleRequest.catch(() => null),
           // The server scopes this sensitive list from the current session.
           // Do not reuse a list cached under an earlier permission context.
           UsersService.list({ force: true }, { q: appliedUserFilters.q, ...(isKatalokaAdmin ? { companyId: appliedUserFilters.companyId } : {}) }),
-          ProjectsService.list(options),
-          SectionsService.list(options),
+          projectsPromise,
         ]);
         if (!isCurrentLoad()) return;
         setRoles(rolesResponse?.data ?? []);
         setUsers(usersResponse.data);
         setProjects(projectsResponse.data);
-        setSections(sectionsResponse.data);
+        setSelectedSectionProjectId((current) =>
+          projectsResponse.data.some((project) => project.id === current) ? current : (projectsResponse.data[0]?.id ?? ''),
+        );
         if (isKatalokaAdmin) {
           const [companiesResponse, categoriesResponse, typesResponse] = await Promise.all([
             CompaniesService.listManaged(options), CompaniesService.listCategories(false), CompaniesService.listTypes(false),
@@ -140,8 +146,12 @@ export const SettingsPage = () => {
         // about roles or other accounts, even though those sections are hidden.
         setRoles([]);
         setUsers([]);
-        setProjects([]);
-        setSections([]);
+        const projectsResponse = await projectsPromise;
+        if (!isCurrentLoad()) return;
+        setProjects(projectsResponse.data);
+        setSelectedSectionProjectId((current) =>
+          projectsResponse.data.some((project) => project.id === current) ? current : (projectsResponse.data[0]?.id ?? ''),
+        );
       }
     } catch (error) {
       if (isCurrentLoad()) setNotice({ type: 'error', message: errorMessage(error) });
@@ -149,6 +159,20 @@ export const SettingsPage = () => {
       if (isCurrentLoad()) setLoading(false);
     }
   }, [appliedUserFilters, isAdmin, isKatalokaAdmin, sessionUserId]);
+
+  useEffect(() => {
+    if (!selectedSectionProjectId) {
+      setSections([]);
+      return;
+    }
+    let active = true;
+    void SectionsService.list(selectedSectionProjectId).then((response) => {
+      if (active) setSections(response.data);
+    }).catch((error) => {
+      if (active) setNotice({ type: 'error', message: errorMessage(error) });
+    });
+    return () => { active = false; };
+  }, [selectedSectionProjectId]);
 
   useEffect(() => {
     void load();
@@ -475,7 +499,8 @@ export const SettingsPage = () => {
   };
 
   const refreshSections = async () => {
-    const response = await SectionsService.list({ force: true });
+    if (!selectedSectionProjectId) return;
+    const response = await SectionsService.list(selectedSectionProjectId, { force: true });
     setSections(response.data);
     window.dispatchEvent(new Event('sections-catalog-updated'));
   };
@@ -485,7 +510,8 @@ export const SettingsPage = () => {
     if (!newSectionName.trim()) return;
     setSaving(true);
     try {
-      await SectionsService.create({ name: newSectionName.trim() });
+      if (!selectedSectionProjectId) return;
+      await SectionsService.create(selectedSectionProjectId, { name: newSectionName.trim() });
       setNewSectionName('');
       await refreshSections();
       setNotice({ type: 'success', message: 'Section ditambahkan.' });
@@ -498,7 +524,8 @@ export const SettingsPage = () => {
     if (name === null || !name.trim() || name.trim() === section.name) return;
     setSaving(true);
     try {
-      await SectionsService.update(section.id, { name: name.trim() });
+      if (!selectedSectionProjectId) return;
+      await SectionsService.update(selectedSectionProjectId, section.id, { name: name.trim() });
       await refreshSections();
       setNotice({ type: 'success', message: 'Section diperbarui.' });
     } catch (error) { setNotice({ type: 'error', message: errorMessage(error) }); }
@@ -509,7 +536,8 @@ export const SettingsPage = () => {
     if (!window.confirm(`Hapus Section ${section.name}?`)) return;
     setSaving(true);
     try {
-      await SectionsService.remove(section.id);
+      if (!selectedSectionProjectId) return;
+      await SectionsService.remove(selectedSectionProjectId, section.id);
       await refreshSections();
       setNotice({ type: 'success', message: 'Section dihapus.' });
     } catch (error) { setNotice({ type: 'error', message: errorMessage(error) }); }
@@ -560,8 +588,8 @@ export const SettingsPage = () => {
           </Fragment>)}</tbody></table></div>
         </section>
         {isKatalokaAdmin && <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm"><div className="mb-5 flex items-center gap-3"><div className="rounded-lg bg-violet-50 p-2 text-violet-600"><Shield size={20} /></div><div><h2 className="font-semibold text-slate-900">Role</h2><p className="text-sm text-slate-500">Tambahkan role untuk penugasan akun mendatang.</p></div></div><form noValidate onSubmit={createRole} className="mb-8 grid gap-3 md:grid-cols-4 md:items-end"><div><div className="flex items-center gap-1"><label htmlFor="role-slug" className="text-sm font-medium text-slate-700">Slug</label><span className="group relative inline-flex cursor-help text-xs font-medium text-slate-500 underline decoration-dotted underline-offset-2 focus:outline-none focus:ring-2 focus:ring-brand-500/20" tabIndex={0} aria-label="Bantuan format slug role" aria-describedby="role-slug-help">(i)<span id="role-slug-help" role="tooltip" className="pointer-events-none absolute bottom-full left-0 z-10 mb-2 w-max max-w-56 rounded-md border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-left text-xs font-medium text-white opacity-0 shadow-xl transition-opacity group-hover:opacity-100 group-focus:opacity-100">2-50 karakter: huruf kecil, angka, atau tanda hubung.</span></span></div><input id="role-slug" required minLength={2} maxLength={50} pattern="[a-z0-9-]{2,50}" title="2-50 huruf kecil, angka, atau tanda hubung" value={newRole.slug} onChange={(e) => setNewRole({ ...newRole, slug: e.target.value })} className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 disabled:bg-slate-100" /></div><Field label="Nama" required value={newRole.name} onChange={(e) => setNewRole({ ...newRole, name: e.target.value })} /><Field label="Deskripsi" value={newRole.description} onChange={(e) => setNewRole({ ...newRole, description: e.target.value })} /><div className="flex md:self-end"><Button type="submit" disabled={saving} icon={<Plus size={16} />}>Tambah role</Button></div></form><ul className="divide-y rounded-lg border border-slate-200">{roles.map((role) => <li key={role.slug} className="flex items-center justify-between gap-4 p-3"><div><span className="font-medium text-slate-800">{role.name ?? role.slug}</span><span className="ml-2 text-xs text-slate-500">{role.slug}</span>{role.isActive === false && <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">Nonaktif</span>}{role.description && <p className="text-sm text-slate-500">{role.description}</p>}</div><div className="flex gap-2"><Button variant="secondary" size="sm" disabled={saving} onClick={() => void editRole(role)}>Ubah</Button>{role.slug === 'kataloka_admin' ? <span className="group relative inline-flex" tabIndex={0} aria-describedby={`role-delete-help-${role.slug}`}><Button variant="danger" size="sm" disabled icon={<Trash2 size={15} />}>Hapus</Button><span id={`role-delete-help-${role.slug}`} role="tooltip" className="pointer-events-none absolute bottom-full right-0 z-10 mb-2 w-max max-w-56 rounded-md border border-slate-700 bg-slate-900 px-2.5 py-1.5 text-left text-xs font-medium text-white opacity-0 shadow-xl transition-opacity group-hover:opacity-100 group-focus:opacity-100">Role platform Kataloka Admin tidak dapat dihapus.</span></span> : <Button variant="danger" size="sm" disabled={saving} onClick={() => void deleteRole(role)} icon={<Trash2 size={15} />}>Hapus</Button>}</div></li>)}</ul></section>}
-        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm"><div className="mb-5 flex items-center gap-3"><div className="rounded-lg bg-amber-50 p-2 text-amber-600"><Shield size={20} /></div><div><h2 className="font-semibold text-slate-900">Katalog Section Test Case</h2><p className="text-sm text-slate-500">Hanya Admin dapat menambah, mengubah, atau menghapus pilihan Section.</p></div></div><form onSubmit={createSection} className="mb-4 flex max-w-xl gap-3"><input required maxLength={150} value={newSectionName} onChange={(event) => setNewSectionName(event.target.value)} placeholder="Nama Section" className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20" /><Button type="submit" disabled={saving} icon={<Plus size={16} />}>Tambah Section</Button></form><ul className="divide-y rounded-lg border border-slate-200">{sections.length === 0 ? <li className="p-3 text-sm text-slate-500">Belum ada Section.</li> : sections.map((section) => <li key={section.id} className="flex items-center justify-between gap-4 p-3"><span className="text-sm font-medium text-slate-800">{section.name}</span><div className="flex gap-2"><Button variant="secondary" size="sm" disabled={saving} onClick={() => void editSection(section)}>Ubah</Button><Button variant="danger" size="sm" disabled={saving} onClick={() => void deleteSection(section)} icon={<Trash2 size={15} />}>Hapus</Button></div></li>)}</ul></section>
       </>}
+      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm"><div className="mb-5 flex items-center gap-3"><div className="rounded-lg bg-amber-50 p-2 text-amber-600"><Shield size={20} /></div><div><h2 className="font-semibold text-slate-900">Katalog Section Test Case</h2><p className="text-sm text-slate-500">Kelola pilihan Section untuk project yang dapat Anda akses.</p></div></div>{projects.length === 0 ? <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">Anda belum memiliki akses ke project mana pun.</p> : <><label className="mb-4 block max-w-xl text-sm font-medium text-slate-700">Project<select aria-label="Project katalog Section" value={selectedSectionProjectId} onChange={(event) => setSelectedSectionProjectId(event.target.value)} className="mt-1.5 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20">{projects.map((project) => <option key={project.id} value={project.id}>{project.key ?? project.name} — {project.name}</option>)}</select></label><form onSubmit={createSection} className="mb-4 flex max-w-xl gap-3"><input required maxLength={150} value={newSectionName} onChange={(event) => setNewSectionName(event.target.value)} placeholder="Nama Section" className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20" /><Button type="submit" disabled={saving || !selectedSectionProjectId} icon={<Plus size={16} />}>Tambah Section</Button></form><ul className="divide-y rounded-lg border border-slate-200">{sections.length === 0 ? <li className="p-3 text-sm text-slate-500">Belum ada Section untuk project ini.</li> : sections.map((section) => <li key={section.id} className="flex items-center justify-between gap-4 p-3"><span className="text-sm font-medium text-slate-800">{section.name}</span><div className="flex gap-2"><Button variant="secondary" size="sm" disabled={saving} onClick={() => void editSection(section)}>Ubah</Button><Button variant="danger" size="sm" disabled={saving} onClick={() => void deleteSection(section)} icon={<Trash2 size={15} />}>Hapus</Button></div></li>)}</ul></>}</section>
     </>}
     {assignmentUser && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4" role="dialog" aria-modal="true" aria-labelledby="assignment-title">
       <div className="w-full max-w-lg rounded-xl bg-white shadow-xl"><div className="flex items-start justify-between border-b border-slate-200 p-5"><div><h2 id="assignment-title" className="font-semibold text-slate-900">Assignment project</h2><p className="mt-1 text-sm text-slate-500">Pilih project yang dapat diakses oleh {assignmentUser.username || assignmentUser.email}.</p></div><button aria-label="Tutup dialog" className="rounded p-1 text-slate-500 hover:bg-slate-100" onClick={() => setAssignmentUser(null)} disabled={saving}><X size={20}/></button></div><div className="max-h-[55vh] space-y-2 overflow-y-auto p-5">{assignmentLoading ? <p className="text-sm text-slate-500">Memuat assignment…</p> : projects.length === 0 ? <p className="text-sm text-slate-500">Belum ada project untuk di-assign.</p> : projects.map((project) => <label key={project.id} className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 p-3 hover:bg-slate-50"><input type="checkbox" checked={assignedProjectIds.includes(project.id)} onChange={(event) => setAssignedProjectIds((current) => event.target.checked ? [...current, project.id] : current.filter((id) => id !== project.id))}/><span><span className="block text-sm font-medium text-slate-800">{project.name}</span>{project.key && <span className="text-xs text-slate-500">{project.key}</span>}</span></label>)}</div><div className="flex justify-end gap-2 border-t border-slate-200 p-4"><Button variant="secondary" onClick={() => setAssignmentUser(null)} disabled={saving}>Batal</Button><Button onClick={() => void saveAssignments()} disabled={saving || assignmentLoading} icon={<Save size={16}/>}>Simpan assignment</Button></div></div>

@@ -92,6 +92,22 @@ describe('SettingsPage Company Profile', () => {
     expect(companies.updateProfile).not.toHaveBeenCalled();
   });
 
+  it('lets a non-admin project member manage only the selected project section catalog', async () => {
+    const user = userEvent.setup();
+    projects.list.mockResolvedValue({ data: [{ id: 'p1', name: 'Project One', key: 'ONE' }, { id: 'p2', name: 'Project Two', key: 'TWO' }] });
+    sections.list.mockImplementation((projectId: string) => Promise.resolve({ data: projectId === 'p1' ? [{ id: 's1', name: 'General', projectId: 'p1' }] : [{ id: 's2', name: 'Regression', projectId: 'p2' }] }));
+    sections.create.mockResolvedValue({ data: { id: 's3', name: 'Payments', projectId: 'p2' } });
+    renderSettings('qa');
+    await screen.findByRole('heading', { name: 'Katalog Section Test Case' });
+    expect(await screen.findByText('General')).not.toBeNull();
+    await user.selectOptions(screen.getByLabelText('Project katalog Section'), 'p2');
+    expect(await screen.findByText('Regression')).not.toBeNull();
+    await user.type(screen.getByPlaceholderText('Nama Section'), 'Payments');
+    await user.click(screen.getByRole('button', { name: 'Tambah Section' }));
+    await waitFor(() => expect(sections.create).toHaveBeenCalledWith('p2', { name: 'Payments' }));
+    expect(sections.list).toHaveBeenCalledWith('p2', expect.anything());
+  });
+
   it('shows the selected business type and category as read-only for a QA user', async () => {
     renderSettings('qa');
     await screen.findByRole('heading', { name: 'Business details' });

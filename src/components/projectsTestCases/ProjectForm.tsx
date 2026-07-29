@@ -125,7 +125,10 @@ export const ProjectForm: React.FC<ProjectFormProps> = ({ isOpen, initialData, o
                         pattern="[A-Za-z0-9]{1,4}"
                         value={formData.key}
                         onChange={(event) => setFormData((previous) => ({ ...previous, key: event.target.value.toUpperCase() }))}
-                        className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg shadow-sm text-slate-900 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+                        disabled={Boolean(initialData)}
+                        className={initialData
+                          ? 'w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg shadow-sm text-slate-500 text-sm cursor-not-allowed'
+                          : 'w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg shadow-sm text-slate-900 text-sm font-mono uppercase focus:outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500'}
                     />
                     <Hash className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                 </div>
