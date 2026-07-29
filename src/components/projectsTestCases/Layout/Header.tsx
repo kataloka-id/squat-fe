@@ -42,18 +42,18 @@ export const Header: React.FC<HeaderProps> = ({ onSearch, projectTitle = 'Core P
         <button className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors hidden sm:block">
           <HelpCircle className="w-5 h-5" />
         </button>
-        
+
         <div className="w-px h-6 bg-slate-200 mx-2"></div>
         
         <button className="flex items-center gap-3 pl-2 py-1 hover:bg-slate-50 rounded-lg pr-3 transition-colors">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-brand-500 to-purple-500 p-[1px]">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-brand-500 to-brand-600 p-[1px]">
              <div className="w-full h-full rounded-full bg-white p-[1px]">
                <img 
                  src="https://picsum.photos/seed/alex/100/100" 
                  alt="User" 
                  className="w-full h-full rounded-full object-cover"
                />
-             </div>
+            </div>
           </div>
           <div className="hidden lg:block text-left">
             <p className="text-sm font-semibold text-slate-700">Alex Morgan</p>

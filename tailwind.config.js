@@ -14,20 +14,18 @@ export default {
           dark: '#0f0024', // Almost Black Purple
           accent: '#e6007e', // Pinkish accent
         },
-        // Accenture-inspired Palette
-        // Primary Accent: Vivid Purple (#A100FF)
         brand: {
-          50: '#fbf5ff',
-          100: '#f5eaff',
-          200: '#ebd6ff',
-          300: '#daadff',
-          400: '#c27aff',
-          500: '#a100ff', // Primary Brand Color
-          600: '#8a00d6', // Hover
-          700: '#7500b3',
-          800: '#630094',
-          900: '#460073', // Deep Purple
-          950: '#24003b',
+          50: 'rgb(var(--company-brand-50-rgb) / <alpha-value>)',
+          100: 'rgb(var(--company-brand-100-rgb) / <alpha-value>)',
+          200: 'rgb(var(--company-brand-200-rgb) / <alpha-value>)',
+          300: 'rgb(var(--company-brand-300-rgb) / <alpha-value>)',
+          400: 'rgb(var(--company-brand-400-rgb) / <alpha-value>)',
+          500: 'rgb(var(--company-brand-500-rgb) / <alpha-value>)',
+          600: 'rgb(var(--company-brand-600-rgb) / <alpha-value>)',
+          700: 'rgb(var(--company-brand-700-rgb) / <alpha-value>)',
+          800: 'rgb(var(--company-brand-800-rgb) / <alpha-value>)',
+          900: 'rgb(var(--company-brand-900-rgb) / <alpha-value>)',
+          950: 'rgb(var(--company-brand-950-rgb) / <alpha-value>)',
         },
         // Override Slate with Neutral Grays + Pure Black for a sharp Corporate look
         slate: {
@@ -61,7 +59,7 @@ export default {
       },
       boxShadow: {
         soft: '0 2px 10px rgba(0, 0, 0, 0.03)',
-        glow: '0 0 15px rgba(161, 0, 255, 0.3)', // Purple glow
+        glow: '0 0 15px rgb(var(--company-brand-500-rgb) / 0.3)',
       },
     },
   },

@@ -6,19 +6,24 @@ import {
   Settings, 
   Briefcase,
   Users,
-  Layers,
   LogOut
 } from 'lucide-react';
 import {AuthService} from '@/src/api/auth.service.ts';
 import {useNavigate} from 'react-router-dom';
+import { useSessionUser } from '@/src/auth/SessionContext.tsx';
+import { CompanyLogo } from '@/src/components/company/CompanyLogo.tsx';
 
 interface SidebarProps {
   currentView: string;
+  // eslint-disable-next-line no-unused-vars -- this is a TypeScript callback parameter, not a runtime binding.
   onNavigate: (view: string) => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => {
   const [collapsed, setCollapsed] = useState(false);
+  const sessionUser = useSessionUser();
+  const company = sessionUser?.company;
+  const companyName = company?.name?.trim() || 'Company';
 
   const menuItems = [
     { id: 'projects', icon: Briefcase, label: 'Projects' },
@@ -46,23 +51,24 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
       className={`flex flex-col bg-slate-900 text-slate-300 transition-all duration-300 ease-in-out ${collapsed ? 'w-20' : 'w-72'} group/sidebar relative sticky top-0 z-30 h-screen overflow-hidden border-r border-slate-800 shadow-xl`}
     >
       {/* Brand - Click to Toggle Sidebar */}
-      <div
-        className={`flex h-20 items-center ${collapsed ? 'justify-center px-2' : 'px-6'} flex-shrink-0 border-b border-slate-800/50 transition-all duration-300`}
-      >
-        <div
-          className={`flex w-full cursor-pointer select-none items-center overflow-hidden ${collapsed ? 'justify-center' : ''}`}
+      <div className={`flex flex-shrink-0 ${collapsed ? 'justify-center p-3' : 'px-3 pb-2 pt-3'}`}>
+        <button
+          type="button"
+          aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-expanded={!collapsed}
+          className={`flex items-center text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 ${collapsed ? 'h-11 w-11 justify-center rounded-xl bg-transparent px-0 hover:bg-slate-800' : 'min-h-[88px] w-full rounded-2xl border border-slate-700/80 bg-slate-800/70 px-4 shadow-sm hover:bg-slate-800'}`}
           onClick={() => setCollapsed(!collapsed)}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
-          <div className="flex-shrink-0 rounded-xl bg-brand-600 p-2 shadow-glow transition-transform duration-200">
-            <Layers className="h-6 w-6 text-white" />
+          <div className={`flex flex-shrink-0 items-center justify-center overflow-hidden bg-slate-900 ${collapsed ? 'h-8 w-8 rounded-lg p-1' : 'h-14 w-14 rounded-xl p-2'}`}>
+            <CompanyLogo company={company} className="h-full w-full" />
           </div>
           <span
-            className={`overflow-hidden whitespace-nowrap text-lg font-bold tracking-tight text-white transition-all duration-300 ${collapsed ? 'max-w-0 opacity-0' : 'ml-3 max-w-[200px] opacity-100'}`}
+            className={`truncate whitespace-nowrap font-bold tracking-tight text-white transition-all duration-300 ${collapsed ? 'max-w-0 text-lg opacity-0' : 'ml-4 max-w-[180px] text-lg opacity-100'}`}
           >
-            SQUAT
+            {companyName}
           </span>
-        </div>
+        </button>
       </div>
 
       {/* Menu */}
