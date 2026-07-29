@@ -51,6 +51,7 @@ export interface TestCase {
   projectKey?: string;
   title: string;
   projectId: string;
+  sectionId?: string;
   section: string;
   priority: Priority;
   status: Status;

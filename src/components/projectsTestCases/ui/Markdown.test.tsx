@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { MarkdownContent, MarkdownEditor } from './Markdown.tsx';
 import { markdownToPlainText } from '@/src/utils/markdown.ts';
@@ -22,6 +22,45 @@ describe('Markdown authoring', () => {
     expect(screen.getAllByRole('list')).toHaveLength(2);
     expect(screen.getByText('const safe = true;').closest('pre')).not.toBeNull();
     expect(screen.getByRole('link', { name: 'docs' }).getAttribute('href')).toBe('https://example.com');
+  });
+
+  it('switches independently between accessible Write and Preview tabs', () => {
+    render(<><MarkdownEditor id="first" label="First" onChange={() => {}} value="**First**" /><MarkdownEditor id="second" label="Second" onChange={() => {}} value="Second" /></>);
+    const firstTabs = screen.getByRole('tablist', { name: 'First editor mode' });
+    const secondTabs = screen.getByRole('tablist', { name: 'Second editor mode' });
+    fireEvent.click(within(firstTabs).getByRole('tab', { name: 'Preview' }));
+    expect(within(firstTabs).getByRole('tab', { name: 'Preview' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByLabelText('First preview').textContent).toContain('First');
+    expect(within(secondTabs).getByRole('tab', { name: 'Write' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByLabelText('Second')).not.toBeNull();
+  });
+
+  it('applies formatting around the active selection and keeps the editor focused', async () => {
+    const onChange = vi.fn();
+    const { container } = render(<MarkdownEditor id="selection" label="Selection" onChange={onChange} value="alpha beta" />);
+    const editor = within(container).getByLabelText('Selection') as HTMLTextAreaElement;
+    const markdownEditor = editor.closest('.rounded-lg') as HTMLElement;
+    editor.focus();
+    editor.setSelectionRange(6, 10);
+    fireEvent.mouseDown(within(markdownEditor).getByRole('button', { name: 'Bold' }));
+    fireEvent.click(within(markdownEditor).getByRole('button', { name: 'Bold' }));
+    expect(onChange).toHaveBeenLastCalledWith('alpha **beta**');
+    await waitFor(() => expect(document.activeElement).toBe(editor));
+
+    editor.setSelectionRange(0, 12);
+    fireEvent.click(within(markdownEditor).getByRole('button', { name: 'Quote' }));
+    expect(onChange).toHaveBeenLastCalledWith('> alpha beta');
+  });
+
+  it('prefixes each selected line for list formatting and renders quotes', () => {
+    const onChange = vi.fn();
+    const { container, rerender } = render(<MarkdownEditor id="list" label="List" onChange={onChange} value={'one\ntwo'} />);
+    const editor = within(container).getByLabelText('List') as HTMLTextAreaElement;
+    editor.setSelectionRange(0, 7);
+    fireEvent.click(within(editor.closest('.rounded-lg') as HTMLElement).getByRole('button', { name: 'Bulleted list' }));
+    expect(onChange).toHaveBeenLastCalledWith('- one\n- two');
+    rerender(<MarkdownContent value="> Important context" />);
+    expect(screen.getByText('Important context').closest('blockquote')).not.toBeNull();
   });
 
   it('does not create executable HTML or unsafe links from user input', () => {
@@ -76,8 +115,10 @@ describe('Markdown authoring', () => {
   it('retains the required title validation before submission', () => {
     const onSave = vi.fn();
     const { container } = render(<TestCaseForm isOpen onClose={() => {}} onSave={onSave} projects={[project]} sectionsByProject={{ [project.id]: ['General'] }} />);
-    const title = within(container).getByLabelText('Title') as HTMLTextAreaElement;
+    const title = within(container).getByLabelText('Title') as HTMLInputElement;
     expect(title.required).toBe(true);
+    expect(title.tagName).toBe('INPUT');
+    expect(within(title.parentElement!).queryByRole('tablist')).toBeNull();
     fireEvent.submit(container.querySelector('form')!);
     expect(onSave).not.toHaveBeenCalled();
   });
@@ -92,6 +133,20 @@ describe('Markdown authoring', () => {
     expect((within(container).getByLabelText('Candidate') as HTMLInputElement).checked).toBe(true);
     expect(within(container).getByText('Indicate whether this test case is suitable and ready for automation.')).not.toBeNull();
     expect(within(container).queryByText('Automation type')).toBeNull();
+  });
+
+  it('uses a wider desktop form layout and weighted non-wrapping readiness choices', () => {
+    const { container } = render(<TestCaseForm isOpen onClose={() => {}} onSave={() => {}} projects={[project]} sectionsByProject={{ [project.id]: ['General'] }} />);
+    expect(within(container).getByRole('dialog').className).toContain('max-w-[90rem]');
+
+    const readinessFieldset = within(container).getByText('Automation Readiness').closest('fieldset')!;
+    const readinessOptions = readinessFieldset.querySelector('div');
+    expect(readinessOptions?.className).toContain('lg:grid-cols-[minmax(0,1.45fr)_repeat(3,minmax(0,1fr))]');
+
+    for (const readiness of Object.values(AutomationReadiness)) {
+      expect(within(readinessFieldset).getByLabelText(readiness).parentElement?.className).toContain('min-h-11');
+      expect(within(readinessFieldset).getByLabelText(readiness).parentElement?.className).toContain('whitespace-nowrap');
+    }
   });
 
   it('opens a legacy case without readiness as Candidate and preserves its testing type and status', () => {
@@ -131,7 +186,7 @@ describe('Markdown authoring', () => {
     const { container } = render(<TestCaseForm isOpen onClose={() => {}} onSave={() => {}} projects={[project]} sectionsByProject={{ [project.id]: ['General'] }} />);
     const description = within(container).getByRole('textbox', { name: 'Description' });
     fireEvent.change(description, { target: { value: '<script>window.pwned = true</script>\n\n**Safe context**' } });
-    fireEvent.click(within(description.parentElement!).getByRole('button', { name: 'Preview' }));
+    fireEvent.click(within(container).getByRole('tablist', { name: 'Description editor mode' }).querySelector('[role="tab"][aria-selected="false"]')!);
     const preview = within(container).getByLabelText('Description preview');
     expect(preview.querySelector('script')).toBeNull();
     expect(preview.textContent).toContain('<script>window.pwned = true</script>');
@@ -177,7 +232,7 @@ describe('Markdown authoring', () => {
   it('previews a main expected result safely without rendering raw HTML', () => {
     const { container } = render(<TestCaseForm isOpen onClose={() => {}} onSave={() => {}} projects={[project]} sectionsByProject={{ [project.id]: ['General'] }} />);
     fireEvent.change(within(container).getByRole('textbox', { name: 'Main Expected Result' }), { target: { value: '<script>window.pwned = true</script>\n\n**Safe text**' } });
-    fireEvent.click(within(container).getAllByRole('button', { name: 'Preview' }).at(-1)!);
+    fireEvent.click(within(container).getByRole('tablist', { name: 'Main Expected Result editor mode' }).querySelector('[role="tab"][aria-selected="false"]')!);
     const preview = within(container).getByLabelText('Main Expected Result preview');
     expect(preview.querySelector('script')).toBeNull();
     expect(preview.textContent).toContain('<script>window.pwned = true</script>');

@@ -28,7 +28,7 @@ describe('ProjectsService cache invalidation', () => {
 
     for (const automationReadiness of Object.values(AutomationReadiness)) {
       const payload = {
-        title: 'Case', section: 'General', priority: 'Medium', status, automationType, automationReadiness,
+        title: 'Case', sectionId: 'section-1', priority: 'Medium', status, automationType, automationReadiness,
         description: '**Purpose**\n\n- scope', preconditions: null, mainExpectedResult: null, steps: [], tags: [],
       };
 
@@ -42,6 +42,16 @@ describe('ProjectsService cache invalidation', () => {
         automationReadiness, automationType, status,
       }));
     }
+  });
+
+  it('scopes section catalog mutations to a project', async () => {
+    const { SectionsService } = await import('./projects.service.ts');
+    api.post.mockResolvedValue({ data: { id: 'section-1', name: 'General', projectId: 'project-1' } });
+    api.patch.mockResolvedValue({ data: { id: 'section-1', name: 'Renamed', projectId: 'project-1' } });
+    await SectionsService.create('project-1', { name: 'General' });
+    await SectionsService.update('project-1', 'section-1', { name: 'Renamed' });
+    expect(api.post).toHaveBeenCalledWith('/v1/projects/project-1/sections', { name: 'General' });
+    expect(api.patch).toHaveBeenCalledWith('/v1/projects/project-1/sections/section-1', { name: 'Renamed' });
   });
 
   it('posts the validated JSON contract to the project-scoped import endpoint', async () => {

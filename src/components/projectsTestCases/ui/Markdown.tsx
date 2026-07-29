@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Bold, Code, Eye, Italic, Link, List, ListOrdered } from 'lucide-react';
+import { Bold, Code, Italic, Link, List, ListOrdered, Quote } from 'lucide-react';
 
 type MarkdownEditorProps = {
   id: string;
@@ -69,6 +69,12 @@ export const MarkdownContent = ({ value, className = '' }: { value?: string | nu
       blocks.push(<pre className="overflow-x-auto rounded-md bg-slate-900 p-3 text-xs text-slate-100" key={blocks.length}><code>{code.join('\n')}</code></pre>);
       continue;
     }
+    if (lines[index].startsWith('> ')) {
+      const quote: string[] = [];
+      while (index < lines.length && lines[index].startsWith('> ')) quote.push(lines[index++].slice(2));
+      blocks.push(<blockquote className="border-l-4 border-slate-200 pl-3 text-slate-600" key={blocks.length}>{quote.map((line, lineIndex) => <React.Fragment key={lineIndex}><InlineMarkdown value={line} />{lineIndex < quote.length - 1 && <br />}</React.Fragment>)}</blockquote>);
+      continue;
+    }
     const unordered = /^[-*+]\s+(.+)$/.exec(lines[index]);
     const ordered = /^\d+\.\s+(.+)$/.exec(lines[index]);
     if (unordered || ordered) {
@@ -86,14 +92,14 @@ export const MarkdownContent = ({ value, className = '' }: { value?: string | nu
     }
     if (!lines[index].trim()) { index += 1; continue; }
     const paragraph: string[] = [];
-    while (index < lines.length && lines[index].trim() && !lines[index].startsWith('```') && !/^([-*+]\s+|\d+\.\s+)/.test(lines[index])) paragraph.push(lines[index++]);
+    while (index < lines.length && lines[index].trim() && !lines[index].startsWith('```') && !lines[index].startsWith('> ') && !/^([-*+]\s+|\d+\.\s+)/.test(lines[index])) paragraph.push(lines[index++]);
     blocks.push(<p key={blocks.length}>{paragraph.map((line, lineIndex) => <React.Fragment key={lineIndex}><InlineMarkdown value={line} />{lineIndex < paragraph.length - 1 && <br />}</React.Fragment>)}</p>);
   }
   return <div className={`space-y-2 break-words ${className}`}>{blocks}</div>;
 };
 
 export const MarkdownEditor = ({ id, label, value, onChange, placeholder, required, maxLength, rows = 3, className = '' }: MarkdownEditorProps) => {
-  const [preview, setPreview] = useState(false);
+  const [mode, setMode] = useState<'write' | 'preview'>('write');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const apply = (before: string, after = before, fallback = 'text') => {
     const element = textareaRef.current;
@@ -108,20 +114,43 @@ export const MarkdownEditor = ({ id, label, value, onChange, placeholder, requir
       element.setSelectionRange(start + before.length, start + before.length + selected.length);
     });
   };
+  const applyLinePrefix = (prefix: string, fallback = 'list item') => {
+    const element = textareaRef.current;
+    if (!element) return;
+    const start = element.selectionStart;
+    const end = element.selectionEnd;
+    const selected = value.slice(start, end) || fallback;
+    const next = `${value.slice(0, start)}${prefix}${selected.replace(/\n/g, `\n${prefix}`)}${value.slice(end)}`;
+    onChange(next);
+    requestAnimationFrame(() => {
+      element.focus();
+      element.setSelectionRange(start + prefix.length, start + prefix.length + selected.length + (selected.split('\n').length - 1) * prefix.length);
+    });
+  };
+  const writeTabId = `${id}-write-tab`;
+  const previewTabId = `${id}-preview-tab`;
+  const writePanelId = `${id}-write-panel`;
+  const previewPanelId = `${id}-preview-panel`;
+  const toolbarButtonClassName = 'rounded p-1.5 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500/30';
+  const preserveSelection = (event: React.MouseEvent<HTMLButtonElement>) => event.preventDefault();
   return <div className={`rounded-lg border border-slate-200 bg-white shadow-sm focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/20 ${className}`}>
     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 px-2 py-1.5">
-      <div aria-label={`${label} formatting`} className="flex flex-wrap gap-0.5" role="toolbar">
-        <button aria-label="Bold" className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800" onClick={() => apply('**', '**', 'bold text')} type="button"><Bold aria-hidden="true" size={15} /></button>
-        <button aria-label="Italic" className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800" onClick={() => apply('*', '*', 'italic text')} type="button"><Italic aria-hidden="true" size={15} /></button>
-        <button aria-label="Bulleted list" className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800" onClick={() => apply('- ', '', 'list item')} type="button"><List aria-hidden="true" size={15} /></button>
-        <button aria-label="Numbered list" className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800" onClick={() => apply('1. ', '', 'list item')} type="button"><ListOrdered aria-hidden="true" size={15} /></button>
-        <button aria-label="Inline code" className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800" onClick={() => apply('`', '`', 'code')} type="button"><Code aria-hidden="true" size={15} /></button>
-        <button aria-label="Code block" className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800" onClick={() => apply('```\n', '\n```', 'code')} type="button"><Code aria-hidden="true" size={15} /></button>
-        <button aria-label="Link" className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-800" onClick={() => apply('[', '](https://)', 'link text')} type="button"><Link aria-hidden="true" size={15} /></button>
+      <div aria-label={`${label} editor mode`} className="flex" role="tablist">
+        <button aria-controls={writePanelId} aria-selected={mode === 'write'} className={`rounded px-2 py-1 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand-500/30 ${mode === 'write' ? 'bg-slate-100 text-slate-900' : 'text-slate-500 hover:text-slate-800'}`} id={writeTabId} onClick={() => setMode('write')} role="tab" type="button">Write</button>
+        <button aria-controls={previewPanelId} aria-selected={mode === 'preview'} className={`rounded px-2 py-1 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand-500/30 ${mode === 'preview' ? 'bg-slate-100 text-slate-900' : 'text-slate-500 hover:text-slate-800'}`} id={previewTabId} onClick={() => setMode('preview')} role="tab" type="button">Preview</button>
       </div>
-      <button aria-pressed={preview} className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-brand-700 hover:bg-brand-50 focus:outline-none focus:ring-2 focus:ring-brand-500/30" onClick={() => setPreview((current) => !current)} type="button"><Eye aria-hidden="true" size={14} />{preview ? 'Write' : 'Preview'}</button>
+      {mode === 'write' && <div aria-label={`${label} formatting`} className="flex flex-wrap gap-0.5" role="toolbar">
+        <button aria-label="Bold" className={toolbarButtonClassName} onClick={() => apply('**', '**', 'bold text')} onMouseDown={preserveSelection} title="Bold" type="button"><Bold aria-hidden="true" size={15} /></button>
+        <button aria-label="Italic" className={toolbarButtonClassName} onClick={() => apply('*', '*', 'italic text')} onMouseDown={preserveSelection} title="Italic" type="button"><Italic aria-hidden="true" size={15} /></button>
+        <button aria-label="Bulleted list" className={toolbarButtonClassName} onClick={() => applyLinePrefix('- ')} onMouseDown={preserveSelection} title="Bulleted list" type="button"><List aria-hidden="true" size={15} /></button>
+        <button aria-label="Numbered list" className={toolbarButtonClassName} onClick={() => applyLinePrefix('1. ')} onMouseDown={preserveSelection} title="Numbered list" type="button"><ListOrdered aria-hidden="true" size={15} /></button>
+        <button aria-label="Inline code" className={toolbarButtonClassName} onClick={() => apply('`', '`', 'code')} onMouseDown={preserveSelection} title="Inline code" type="button"><Code aria-hidden="true" size={15} /></button>
+        <button aria-label="Code block" className={toolbarButtonClassName} onClick={() => apply('```\n', '\n```', 'code')} onMouseDown={preserveSelection} title="Code block" type="button"><Code aria-hidden="true" size={15} /></button>
+        <button aria-label="Link" className={toolbarButtonClassName} onClick={() => apply('[', '](https://)', 'link text')} onMouseDown={preserveSelection} title="Link" type="button"><Link aria-hidden="true" size={15} /></button>
+        <button aria-label="Quote" className={toolbarButtonClassName} onClick={() => applyLinePrefix('> ', 'quote')} onMouseDown={preserveSelection} title="Quote" type="button"><Quote aria-hidden="true" size={15} /></button>
+      </div>}
     </div>
-    {preview ? <div aria-label={`${label} preview`} className="min-h-20 p-3 text-sm text-slate-800"><MarkdownContent value={value} />{!value && <span className="text-slate-400">Nothing to preview</span>}</div> : <textarea aria-label={label} className="block min-h-20 w-full resize-y rounded-b-lg border-0 px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none" id={id} maxLength={maxLength} name={id} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} ref={textareaRef} required={required} rows={rows} value={value} />}
+    {mode === 'preview' ? <div aria-labelledby={previewTabId} aria-label={`${label} preview`} className="min-h-20 p-3 text-sm text-slate-800" id={previewPanelId} role="tabpanel"><MarkdownContent value={value} />{!value && <span className="text-slate-400">Nothing to preview yet. Write some Markdown to see the result.</span>}</div> : <div aria-labelledby={writeTabId} id={writePanelId} role="tabpanel"><textarea aria-label={label} className="block min-h-20 w-full resize-y rounded-b-lg border-0 px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none" id={id} maxLength={maxLength} name={id} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} ref={textareaRef} required={required} rows={rows} value={value} /></div>}
     <p className="px-3 pb-2 text-xs text-slate-400">Markdown supported</p>
   </div>;
 };

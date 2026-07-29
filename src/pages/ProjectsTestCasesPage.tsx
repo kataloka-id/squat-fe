@@ -16,7 +16,7 @@ import { Toast,ToastType } from '@/src/components/projectsTestCases/ui/Toast.tsx
 import { SettingsPage } from '@/src/components/settings/SettingsPage.tsx';
 import { TeamPage } from '@/src/components/team/TeamPage.tsx';
 import { ProjectsService } from '@/src/api/projects.service.ts';
-import type { ProjectAssignmentRecord, ProjectTestCaseRecord } from '@/src/types/api.ts';
+import type { ProjectAssignmentRecord, ProjectTestCaseRecord, SectionRecord } from '@/src/types/api.ts';
 import { useSessionUser } from '@/src/auth/SessionContext.tsx';
 import { isCurrentProjectRequest } from '@/src/utils/projectStats.ts';
 import { Plus, Filter, Trash2, Search, Briefcase, Zap, Check, X, Upload } from 'lucide-react';
@@ -68,7 +68,7 @@ const App: React.FC = () => {
 
   // Displayed Test Cases (Filtered View)
   const [testCases, setTestCases] = useState<TestCase[]>([]);
-  const [sectionsByProject, setSectionsByProject] = useState<Record<string, string[]>>({});
+  const [sectionsByProject, setSectionsByProject] = useState<Record<string, SectionRecord[]>>({});
 
   const [isLoading, setIsLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -148,7 +148,7 @@ const App: React.FC = () => {
     () => projects.map((p) => ({ label: p.name, value: p.id })),
     [projects],
   );
-  const sections = useMemo(() => Array.from(new Set(Object.values(sectionsByProject).flat())).sort(), [sectionsByProject]);
+  const sections = useMemo(() => Array.from(new Set(Object.values(sectionsByProject).flat().map((section) => section.name))).sort(), [sectionsByProject]);
   const sectionOptions = useMemo(() => sections.map((s) => ({ label: s, value: s })), [sections]);
   const priorityOptions = useMemo(
     () => Object.values(Priority).map((p) => ({ label: p, value: p })),
@@ -177,9 +177,7 @@ const App: React.FC = () => {
     void refreshProjects();
   }, [refreshProjects]);
 
-  // The API scopes each project's catalog to the signed-in user's
-  // assignment. Fetch all assigned projects so changing the form's Project
-  // selector never exposes an unapproved or stale free-text section.
+  // The API scopes each project's catalog to the signed-in user's assignment.
   useEffect(() => {
     let active = true;
     if (projects.length === 0) {
@@ -191,6 +189,12 @@ const App: React.FC = () => {
       .catch((error) => { if (active) showToast(error?.message ?? 'Katalog Section tidak dapat dimuat.', 'error'); });
     return () => { active = false; };
   }, [projects]);
+
+  const refreshSectionsForProject = useCallback(async (projectId: string) => {
+    const response = await ProjectsService.listSections(projectId, { force: true });
+    setSectionsByProject((current) => ({ ...current, [projectId]: response.data }));
+    return response.data;
+  }, []);
 
   useEffect(() => {
     const refreshCatalog = () => {
@@ -351,11 +355,16 @@ const App: React.FC = () => {
   };
 
   const handleSave = async (data: Partial<TestCase>) => {
-    const projectId = editingCase?.projectId ?? data.projectId ?? filters.projectId[0];
+    const projectId = editingCase ? editingCase.projectId : data.projectId ?? filters.projectId[0];
     if (!projectId) { showToast('Pilih project terlebih dahulu.', 'error'); return; }
+    const sectionId = data.sectionId ?? editingCase?.sectionId;
+    if (!sectionId || !sectionsByProject[projectId]?.some((section) => section.id === sectionId)) {
+      showToast('Pilih Section yang valid untuk project ini.', 'error');
+      return;
+    }
     try {
       const payload = {
-        title: data.title ?? editingCase?.title ?? 'Untitled', section: data.section ?? editingCase?.section ?? 'Uncategorized',
+        title: data.title ?? editingCase?.title ?? 'Untitled', sectionId,
         priority: data.priority ?? editingCase?.priority ?? Priority.Medium, status: data.status ?? editingCase?.status ?? Status.Draft,
         automationType: data.automationType ?? editingCase?.automationType ?? AutomationType.Manual,
         automationReadiness: data.automationReadiness ?? editingCase?.automationReadiness ?? AutomationReadiness.Candidate,
@@ -365,7 +374,7 @@ const App: React.FC = () => {
         ? await ProjectsService.updateTestCase(projectId, editingCase.id, payload)
         : await ProjectsService.createTestCase(projectId, payload);
       const saved = response.data;
-      const testCase: TestCase = { id: saved.id, tcNumber: saved.tcNumber, projectKey: saved.projectKey, title: saved.title, projectId: saved.projectId ?? projectId, section: saved.section, priority: saved.priority as Priority, status: saved.status as Status, automationType: saved.automationType as AutomationType, automationReadiness: normalizeAutomationReadiness(saved.automationReadiness), steps: saved.steps, tags: saved.tags, createdBy: saved.createdBy ?? '—', updatedAt: saved.updatedAt ? new Date(saved.updatedAt) : new Date(), description: saved.description ?? undefined, preconditions: saved.preconditions ?? undefined, mainExpectedResult: saved.mainExpectedResult ?? undefined };
+      const testCase: TestCase = { id: saved.id, tcNumber: saved.tcNumber, projectKey: saved.projectKey, title: saved.title, projectId: saved.projectId ?? projectId, sectionId: saved.sectionId, section: saved.section, priority: saved.priority as Priority, status: saved.status as Status, automationType: saved.automationType as AutomationType, automationReadiness: normalizeAutomationReadiness(saved.automationReadiness), steps: saved.steps, tags: saved.tags, createdBy: saved.createdBy ?? '—', updatedAt: saved.updatedAt ? new Date(saved.updatedAt) : new Date(), description: saved.description ?? undefined, preconditions: saved.preconditions ?? undefined, mainExpectedResult: saved.mainExpectedResult ?? undefined };
       setTestCases((items) => editingCase ? items.map((item) => item.id === testCase.id ? { ...item, ...testCase } : item) : [testCase, ...items]);
       if (!editingCase) {
         ProjectsService.invalidateList();
@@ -838,6 +847,7 @@ const App: React.FC = () => {
         initialData={editingCase}
         projects={formProjects}
         sectionsByProject={sectionsByProject}
+        onProjectChange={refreshSectionsForProject}
         preselectedProjectId={filters.projectId[0]}
       />
 
@@ -846,7 +856,7 @@ const App: React.FC = () => {
         onClose={() => setIsImportOpen(false)}
         onImport={handleImport}
         projects={projects}
-        sectionsByProject={sectionsByProject}
+        sectionsByProject={Object.fromEntries(Object.entries(sectionsByProject).map(([projectId, sections]) => [projectId, sections.map((section) => section.name)]))}
         preselectedProjectId={filters.projectId[0]}
       />
 

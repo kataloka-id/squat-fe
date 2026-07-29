@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp, GripVertical, Plus, Save, Trash2, X } from 'lucide-react';
 import { Button } from './ui/Button';
 import { Select } from './ui/Select';
@@ -13,13 +13,15 @@ import {
 } from '../projectsTestCases/types.ts';
 import { formatTestCaseDisplayId } from '@/src/utils/testCaseDisplayId.ts';
 import { MarkdownEditor } from './ui/Markdown.tsx';
+import type { SectionRecord } from '@/src/types/api.ts';
 
 interface TestCaseFormProps {
   isOpen: boolean;
   initialData?: TestCase | null;
   projects: Project[];
-  sectionsByProject: Record<string, string[]>;
+  sectionsByProject: Record<string, SectionRecord[] | string[]>;
   preselectedProjectId?: string;
+  onProjectChange?: (projectId: string) => Promise<SectionRecord[]>;
   onClose: () => void;
   onSave: (data: Partial<TestCase>) => void;
 }
@@ -28,6 +30,10 @@ const inputClassName =
   'w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm transition-all placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20';
 const fieldLabelClassName = 'mb-1.5 block text-sm font-semibold text-slate-700';
 const sectionTitleClassName = 'text-sm font-semibold text-slate-900';
+const projectSections = (sectionsByProject: Record<string, SectionRecord[] | string[]>, projectId: string): SectionRecord[] =>
+  (sectionsByProject[projectId] ?? []).map((section) => typeof section === 'string'
+    ? { id: section, name: section, projectId }
+    : section);
 
 export const TestCaseForm: React.FC<TestCaseFormProps> = ({
   isOpen,
@@ -35,16 +41,23 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
   projects,
   sectionsByProject,
   preselectedProjectId,
+  onProjectChange,
   onClose,
   onSave,
 }) => {
+  const [loadedSectionsByProject, setLoadedSectionsByProject] = useState<Record<string, SectionRecord[]>>({});
+  const [isLoadingSections, setIsLoadingSections] = useState(false);
+  const [sectionsError, setSectionsError] = useState<string | null>(null);
+  const sectionRequestVersion = useRef(0);
+  const getProjectSections = (projectId: string) => loadedSectionsByProject[projectId] ?? projectSections(sectionsByProject, projectId);
   const selectedInitialProjectId =
     initialData?.projectId ?? preselectedProjectId ?? projects[0]?.id ?? '';
-  const initialSections = sectionsByProject[selectedInitialProjectId] ?? [];
+  const initialSections = getProjectSections(selectedInitialProjectId);
   const [formData, setFormData] = useState<Partial<TestCase>>({
     title: '',
     projectId: selectedInitialProjectId,
-    section: initialSections[0] || '',
+    sectionId: initialSections[0]?.id || '',
+    section: initialSections[0]?.name || '',
     priority: Priority.Medium,
     status: Status.Draft,
     automationType: AutomationType.Manual,
@@ -59,8 +72,13 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
 
   useEffect(() => {
     if (initialData) {
+      const matchingSection = getProjectSections(initialData.projectId).find((section) =>
+        section.id === initialData.sectionId || section.name === initialData.section,
+      );
       setFormData({
         ...initialData,
+        sectionId: matchingSection?.id ?? initialData.sectionId ?? '',
+        section: matchingSection?.name ?? initialData.section,
         automationReadiness: initialData.automationReadiness ?? AutomationReadiness.Candidate,
       });
       setSteps(initialData.steps || []);
@@ -70,7 +88,8 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
     setFormData({
       title: '',
       projectId: selectedInitialProjectId,
-      section: (sectionsByProject[selectedInitialProjectId] ?? [])[0] || '',
+      sectionId: getProjectSections(selectedInitialProjectId)[0]?.id || '',
+      section: getProjectSections(selectedInitialProjectId)[0]?.name || '',
       priority: Priority.Medium,
       status: Status.Draft,
       automationType: AutomationType.Manual,
@@ -79,7 +98,9 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
       tags: [],
     });
     setSteps([{ id: Date.now().toString(), action: '', expectedResult: '' }]);
-  }, [initialData, isOpen, projects, sectionsByProject, selectedInitialProjectId]);
+  // Form fields must survive catalog refreshes and project switches.  Only
+  // initialize when opening the dialog (or selecting a different record).
+  }, [initialData, isOpen, selectedInitialProjectId]);
 
   const handleChange = (
     event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
@@ -128,12 +149,40 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
-    if (!formData.title?.trim()) return;
+    const selectedSection = availableSections.find((section) => section.id === formData.sectionId);
+    if (!formData.title?.trim() || isLoadingSections || !selectedSection) return;
     onSave({ ...formData, steps });
   };
 
-  const availableSections = sectionsByProject[formData.projectId ?? ''] ?? [];
+  const availableSections = getProjectSections(formData.projectId ?? '');
   const editingProjectKey = projects.find((project) => project.id === initialData?.projectId)?.key;
+
+  const loadSectionsForProject = async (projectId: string) => {
+    const requestVersion = ++sectionRequestVersion.current;
+    setIsLoadingSections(true);
+    setSectionsError(null);
+
+    try {
+      const sections = await onProjectChange?.(projectId) ?? getProjectSections(projectId);
+      if (requestVersion !== sectionRequestVersion.current) return;
+      setLoadedSectionsByProject((current) => ({ ...current, [projectId]: sections }));
+      setFormData((previous) => previous.projectId === projectId
+        ? { ...previous, sectionId: sections[0]?.id ?? '', section: sections[0]?.name ?? '' }
+        : previous);
+    } catch (error) {
+      if (requestVersion !== sectionRequestVersion.current) return;
+      setSectionsError(error instanceof Error ? error.message : 'Section catalog could not be loaded.');
+    } finally {
+      if (requestVersion === sectionRequestVersion.current) setIsLoadingSections(false);
+    }
+  };
+
+  const handleProjectChange = (projectId: string) => {
+    // Clear the old project-scoped value before starting the request so it can
+    // neither be displayed nor submitted with the newly selected project.
+    setFormData((previous) => ({ ...previous, projectId, sectionId: '', section: '' }));
+    void loadSectionsForProject(projectId);
+  };
 
   if (!isOpen) return null;
 
@@ -150,7 +199,7 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
         <div
           aria-labelledby="test-case-form-title"
           aria-modal="true"
-          className="flex h-full w-full max-w-7xl flex-col overflow-hidden bg-white shadow-2xl sm:h-[calc(100dvh-2rem)] sm:rounded-2xl sm:border sm:border-slate-200"
+          className="flex h-full w-full max-w-[90rem] flex-col overflow-hidden bg-white shadow-2xl sm:h-[calc(100dvh-2rem)] sm:rounded-2xl sm:border sm:border-slate-200"
           onClick={(event) => event.stopPropagation()}
           role="dialog"
         >
@@ -186,8 +235,8 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
             id="testCaseForm"
             onSubmit={handleSubmit}
           >
-            <div className="grid min-h-full lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-              <div className="space-y-8 p-5 sm:p-7 lg:border-r lg:border-slate-200">
+            <div className="grid min-h-full bg-slate-50/60 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+              <div className="min-w-0 space-y-8 bg-white p-5 sm:p-7 lg:border-r lg:border-slate-200">
                 <section aria-labelledby="test-case-details-heading">
                   <div className="mb-5">
                     <h3 className={sectionTitleClassName} id="test-case-details-heading">
@@ -204,21 +253,11 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
                       </label>
                       <select
                         aria-describedby="project-assignment-help"
-                        className={`${inputClassName} ${projects.length > 1 ? 'cursor-pointer' : 'cursor-not-allowed bg-slate-100 text-slate-500'}`}
-                        disabled={projects.length <= 1}
+                        className={`${inputClassName} ${!initialData && projects.length > 1 ? 'cursor-pointer' : 'cursor-not-allowed bg-slate-100 text-slate-500'}`}
+                        disabled={Boolean(initialData) || projects.length <= 1}
                         id="test-case-project"
                         name="projectId"
-                        onChange={(event) => {
-                          const projectId = event.target.value;
-                          const projectSections = sectionsByProject[projectId] ?? [];
-                          setFormData((previous) => ({
-                            ...previous,
-                            projectId,
-                            section: projectSections.includes(previous.section ?? '')
-                              ? previous.section
-                              : (projectSections[0] ?? ''),
-                          }));
-                        }}
+                        onChange={(event) => handleProjectChange(event.target.value)}
                         value={formData.projectId ?? ''}
                       >
                         {projects.map((project) => (
@@ -236,13 +275,15 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
                       <label className={fieldLabelClassName} htmlFor="test-case-title">
                         Title <span className="text-red-500">*</span>
                       </label>
-                      <MarkdownEditor
+                      <input
+                        aria-label="Title"
+                        className={inputClassName}
                         id="test-case-title"
-                        label="Title"
-                        onChange={(title) => setFormData((previous) => ({ ...previous, title }))}
+                        name="title"
+                        onChange={handleChange}
                         placeholder="Describe the test scenario..."
                         required
-                        rows={2}
+                        type="text"
                         value={formData.title ?? ''}
                       />
                     </div>
@@ -283,26 +324,36 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
                         </label>
                         <select
                           className={inputClassName}
-                          disabled={availableSections.length === 0}
+                          disabled={isLoadingSections || availableSections.length === 0}
                           id="test-case-section"
-                          name="section"
-                          onChange={handleChange}
+                          name="sectionId"
+                          onChange={(event) => {
+                            const selected = availableSections.find((section) => section.id === event.target.value);
+                            setFormData((previous) => ({ ...previous, sectionId: selected?.id ?? '', section: selected?.name ?? '' }));
+                          }}
                           required
-                          value={formData.section ?? ''}
+                          value={formData.sectionId ?? ''}
                         >
-                          {availableSections.length === 0 ? (
+                          {isLoadingSections ? (
+                            <option value="">Loading sections…</option>
+                          ) : availableSections.length === 0 ? (
                             <option value="">No sections available</option>
                           ) : (
                             availableSections.map((section) => (
-                              <option key={section} value={section}>
-                                {section}
+                              <option key={section.id} value={section.id}>
+                                {section.name}
                               </option>
                             ))
                           )}
                         </select>
-                        <p className="mt-1.5 text-xs text-slate-400">
-                          Choose a section from the project catalog.
-                        </p>
+                        {sectionsError ? (
+                          <p className="mt-1.5 text-xs text-red-600" role="alert">
+                            {sectionsError}{' '}
+                            <button className="font-semibold underline" onClick={() => void loadSectionsForProject(formData.projectId ?? '')} type="button">
+                              Retry
+                            </button>
+                          </p>
+                        ) : <p className="mt-1.5 text-xs text-slate-400">Choose a section from the project catalog.</p>}
                       </div>
                       <div>
                         <label className={fieldLabelClassName} htmlFor="test-case-priority">
@@ -351,10 +402,10 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
 
                     <fieldset>
                       <legend className={fieldLabelClassName}>Automation Readiness</legend>
-                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-[minmax(0,1.45fr)_repeat(3,minmax(0,1fr))]">
                         {Object.values(AutomationReadiness).map((readiness) => (
                           <label
-                            className={`flex cursor-pointer items-center justify-center rounded-lg border px-3 py-2.5 text-sm font-medium transition-all ${formData.automationReadiness === readiness ? 'border-brand-300 bg-brand-50 text-brand-700 ring-1 ring-brand-500' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'}`}
+                            className={`flex min-h-11 cursor-pointer items-center justify-center whitespace-nowrap rounded-lg border px-3 py-2.5 text-sm font-medium transition-all ${formData.automationReadiness === readiness ? 'border-brand-300 bg-brand-50 text-brand-700 ring-1 ring-brand-500' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50'}`}
                             key={readiness}
                           >
                             <input
@@ -556,7 +607,7 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
                 </button>
               </section>
 
-              <section aria-labelledby="test-case-main-expected-result-heading" className="bg-white p-5 sm:p-7">
+              <section aria-labelledby="test-case-main-expected-result-heading" className="bg-white p-5 sm:p-7 lg:border-r lg:border-slate-200">
                 <div className="mb-3">
                   <h3 className={sectionTitleClassName} id="test-case-main-expected-result-heading">
                     Main Expected Result
@@ -588,7 +639,7 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
               <Button onClick={onClose} type="button" variant="secondary">
                 Cancel
               </Button>
-              <Button form="testCaseForm" icon={<Save size={16} />} type="submit">
+              <Button disabled={isLoadingSections || !availableSections.some((section) => section.id === formData.sectionId)} form="testCaseForm" icon={<Save size={16} />} type="submit">
                 {initialData ? 'Save Changes' : 'Create Case'}
               </Button>
             </div>
@@ -597,4 +648,4 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
       </div>
     </>
   );
-};
+  };
