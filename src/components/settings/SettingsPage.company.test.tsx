@@ -17,7 +17,10 @@ vi.mock('@/src/api/projects.service.ts', () => ({ ProjectsService: projects, Sec
 import { SettingsPage } from './SettingsPage.tsx';
 
 const me = { id: 'u1', email: 'admin@example.test', username: 'admin', roleSlug: 'admin', isActive: true };
-const renderSettings = (roleSlug = 'admin') => render(<SessionContext.Provider value={{ ...me, roleSlug, company }}><SettingsPage /></SessionContext.Provider>);
+const renderSettings = (roleSlug = 'admin') => {
+  users.getMe.mockResolvedValue({ data: { ...me, roleSlug } });
+  return render(<SessionContext.Provider value={{ ...me, roleSlug, company }}><SettingsPage /></SessionContext.Provider>);
+};
 
 describe('SettingsPage Company Profile', () => {
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
@@ -32,6 +35,24 @@ describe('SettingsPage Company Profile', () => {
     companies.listTypes.mockResolvedValue({ data: [{ id: 1, businessType: 'PT', isActive: true }] });
     companies.getManaged.mockResolvedValue({ data: { ...company, isActive: false } });
     roles.list.mockResolvedValue({ data: [] }); roles.assignable.mockResolvedValue({ data: [] }); users.list.mockResolvedValue({ data: [] }); projects.list.mockResolvedValue({ data: [] }); sections.list.mockResolvedValue({ data: [] });
+  });
+
+  it('keeps profile email and username disabled while allowing the new password to be shown', async () => {
+    const user = userEvent.setup();
+    renderSettings('qa');
+    const profileSection = (await screen.findByRole('heading', { name: 'Profil saya' })).closest('section')!;
+    const email = within(profileSection).getByLabelText('Email') as HTMLInputElement;
+    const username = within(profileSection).getByLabelText('Username') as HTMLInputElement;
+    const password = within(profileSection).getByLabelText('Kata sandi baru (opsional)') as HTMLInputElement;
+
+    expect(email.disabled).toBe(true);
+    expect(username.disabled).toBe(true);
+    expect(password.type).toBe('password');
+    await user.type(password, 'password123');
+    await user.click(within(profileSection).getByRole('button', { name: 'Tampilkan kata sandi baru' }));
+    expect(password.type).toBe('text');
+    expect(password.value).toBe('password123');
+    expect(within(profileSection).getByRole('button', { name: 'Sembunyikan kata sandi baru' }).getAttribute('aria-pressed')).toBe('true');
   });
 
   it('lets an admin update the agreed company profile fields', async () => {
@@ -121,11 +142,34 @@ describe('SettingsPage Company Profile', () => {
     expect(screen.getByRole('option', { name: 'Micro' })).not.toBeNull();
   });
 
-  it('does not offer project assignments to a company admin', async () => {
+  it('offers project assignments to a company admin', async () => {
     users.list.mockResolvedValue({ data: [{ ...me, id: 'u2', roleSlug: 'qa' }] });
     renderSettings('admin');
     await screen.findByRole('heading', { name: 'Akun pengguna' });
-    expect(screen.queryByRole('button', { name: 'Project' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Project' })).not.toBeNull();
+  });
+
+  it('removes project assignments when profile revalidation changes an admin session to kataloka_admin', async () => {
+    users.getMe.mockResolvedValue({ data: { ...me, roleSlug: 'kataloka_admin' } });
+    users.list.mockResolvedValue({ data: [{ ...me, id: 'u2', roleSlug: 'qa' }] });
+    render(<SessionContext.Provider value={{ ...me, company }}><SettingsPage /></SessionContext.Provider>);
+
+    await screen.findByRole('heading', { name: 'Akun pengguna' });
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Project' })).toBeNull());
+  });
+
+  it('removes an open assignment dialog when revalidation changes admin to kataloka_admin', async () => {
+    const user = userEvent.setup();
+    users.getMe.mockResolvedValueOnce({ data: me }).mockResolvedValueOnce({ data: { ...me, roleSlug: 'kataloka_admin' } });
+    users.list.mockResolvedValue({ data: [{ ...me, id: 'u2', roleSlug: 'qa' }] });
+    users.getProjectAssignments.mockResolvedValue({ data: { projectIds: [] } });
+    render(<SessionContext.Provider value={{ ...me, company }}><SettingsPage /></SessionContext.Provider>);
+
+    await user.click(await screen.findByRole('button', { name: 'Project' }));
+    expect(await screen.findByRole('dialog', { name: 'Assignment project' })).not.toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Muat ulang' }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Assignment project' })).toBeNull());
   });
 
   it('hides role CRUD from a company admin', async () => {
@@ -245,12 +289,27 @@ describe('SettingsPage Company Profile', () => {
     expect(screen.getByRole('columnheader', { name: 'Company' })).not.toBeNull();
     expect(screen.getByLabelText('Company untuk akun baru')).not.toBeNull();
     expect(screen.queryByRole('option', { name: 'Kataloka Admin' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Project' })).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'Project' })).toBeNull();
     expect(screen.getByRole('heading', { name: 'Role' })).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Tambah role' })).not.toBeNull();
     expect(screen.getByLabelText('Filter company')).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Lihat' })).not.toBeNull();
     expect(screen.getAllByRole('button', { name: 'Hapus' })[0].hasAttribute('disabled')).toBe(true);
+  });
+
+  it('keeps kataloka_admin selected with the Kataloka Administrator label when editing the user', async () => {
+    const user = userEvent.setup();
+    roles.list.mockResolvedValue({ data: [{ slug: 'kataloka_admin', name: 'Administrator', isActive: true }, { slug: 'admin', name: 'Administrator', isActive: true }] });
+    users.list.mockResolvedValue({ data: [{ ...me, roleSlug: 'kataloka_admin' }] });
+    renderSettings('kataloka_admin');
+
+    const userRow = (await screen.findByText('admin@example.test')).closest('tr')!;
+    await user.click(within(userRow).getByRole('button', { name: 'Ubah' }));
+
+    const roleSelect = within(userRow.nextElementSibling as HTMLTableRowElement).getByLabelText('Role') as HTMLSelectElement;
+    expect(roleSelect.value).toBe('kataloka_admin');
+    expect(within(roleSelect).getByRole('option', { name: 'Kataloka Administrator' }).getAttribute('value')).toBe('kataloka_admin');
+    expect(within(roleSelect).queryByRole('option', { name: 'Administrator' })?.getAttribute('value')).toBe('admin');
   });
 
   it('keeps self-delete disabled with an accessible hover and focus tooltip', async () => {
@@ -341,15 +400,46 @@ describe('SettingsPage Company Profile', () => {
     companies.createManaged.mockResolvedValue({ data: company });
     renderSettings('kataloka_admin');
     await screen.findByRole('heading', { name: 'Company Management' });
-    await user.type(screen.getAllByLabelText('Company name')[1], 'New Co');
-    await user.type(screen.getByLabelText('Address'), 'Bandung');
-    await user.type(screen.getByLabelText('Phone'), '0813');
-    await user.type(screen.getByLabelText('Business field'), 'Retail');
-    await user.type(screen.getByLabelText('Postal code'), '40100');
-    await user.selectOptions(screen.getByLabelText('Business type'), '1');
-    await user.selectOptions(screen.getByLabelText('Category'), '1');
+    await user.type(screen.getAllByLabelText(/Company name/)[1], 'New Co');
+    await user.type(screen.getByLabelText(/Address/), 'Bandung');
+    await user.type(screen.getByLabelText(/Phone/), '0813');
+    await user.type(screen.getByLabelText(/Business field/), 'Retail');
+    await user.type(screen.getByLabelText(/Postal code/), '40100');
+    await user.selectOptions(screen.getByLabelText('Business type (wajib)'), '1');
+    await user.selectOptions(screen.getByLabelText('Category (wajib)'), '1');
     await user.click(screen.getByRole('button', { name: 'Buat company' }));
     await waitFor(() => expect(companies.createManaged).toHaveBeenCalledWith(expect.objectContaining({ name: 'New Co', businessType: 1, category: 1, address: 'Bandung', phone: '0813', field: 'Retail', postalCode: '40100' })));
+  });
+
+  it('marks exactly the database-required company fields and explains the marker', async () => {
+    renderSettings('kataloka_admin');
+    const section = (await screen.findByRole('heading', { name: 'Company Management' })).closest('section')!;
+
+    const form = section.querySelector('form')!;
+    expect(within(section).getByText(/Field yang ditandai/).textContent).toContain('wajib diisi');
+    expect(form.querySelectorAll('[required]').length).toBe(7);
+    expect(form.querySelectorAll('[data-required-marker]').length).toBe(7);
+    for (const label of ['Company name', 'Address', 'Phone', 'Business field', 'Postal code', 'Business type', 'Category']) {
+      expect(within(section).getByLabelText(new RegExp(label)).getAttribute('required')).toBe('');
+    }
+    expect(within(section).getByLabelText('Email (opsional)').getAttribute('required')).toBeNull();
+  });
+
+  it('shows the agreed duplicate company phone message', async () => {
+    const user = userEvent.setup();
+    companies.createManaged.mockRejectedValue({ status: 409, message: 'Nomor telepon perusahaan sudah digunakan.' });
+    renderSettings('kataloka_admin');
+    const section = (await screen.findByRole('heading', { name: 'Company Management' })).closest('section')!;
+    await user.type(within(section).getByLabelText(/Company name/), 'New Co');
+    await user.type(within(section).getByLabelText(/Address/), 'Bandung');
+    await user.type(within(section).getByLabelText(/Phone/), '0813');
+    await user.type(within(section).getByLabelText(/Business field/), 'Retail');
+    await user.type(within(section).getByLabelText(/Postal code/), '40100');
+    await user.selectOptions(within(section).getByLabelText('Business type (wajib)'), '1');
+    await user.selectOptions(within(section).getByLabelText('Category (wajib)'), '1');
+    await user.click(within(section).getByRole('button', { name: 'Buat company' }));
+
+    expect((await screen.findByRole('alert')).textContent).toContain('Nomor telepon perusahaan sudah digunakan.');
   });
 
   it('places selected company details directly after Company controls', async () => {
