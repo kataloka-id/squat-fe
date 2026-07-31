@@ -52,6 +52,8 @@ export interface TestCase {
   title: string;
   projectId: string;
   sectionId?: string;
+  folderId?: string | null;
+  folderPath?: Array<{ id: string; name: string }>;
   section: string;
   priority: Priority;
   status: Status;

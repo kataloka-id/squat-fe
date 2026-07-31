@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   FileText, 
   PlayCircle, 
@@ -6,7 +6,9 @@ import {
   Settings, 
   Briefcase,
   Users,
-  LogOut
+  LogOut,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import {AuthService} from '@/src/api/auth.service.ts';
 import {useNavigate} from 'react-router-dom';
@@ -17,6 +19,7 @@ interface SidebarProps {
   currentView: string;
   // eslint-disable-next-line no-unused-vars -- this is a TypeScript callback parameter, not a runtime binding.
   onNavigate: (view: string) => void;
+  testCaseNavigation?: React.ReactNode;
 }
 
 const userInitials = (name: string) => {
@@ -37,8 +40,9 @@ const roleLabel = (role: string) => role
   .map((part) => part.toLowerCase() === 'qa' ? 'QA' : `${part[0]?.toUpperCase() ?? ''}${part.slice(1)}`)
   .join(' ') || 'User';
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, testCaseNavigation }) => {
   const [collapsed, setCollapsed] = useState(false);
+  const [testCasesExpanded, setTestCasesExpanded] = useState(currentView === 'test-cases');
   const sessionUser = useSessionUser();
   const company = sessionUser?.company;
   const companyName = company?.name?.trim() || 'Company';
@@ -57,6 +61,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
   ];
 
   const navigate = useNavigate();
+
+  useEffect(() => {
+    if (currentView === 'test-cases') setTestCasesExpanded(true);
+  }, [currentView]);
 
   const handleLogout = async () => {
     try {
@@ -97,16 +105,23 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
       <nav className="custom-scrollbar flex-1 space-y-2 overflow-y-auto overflow-x-hidden px-3 py-6">
         {menuItems.map((item) => {
           const isActive = currentView === item.id;
+          const isTestCases = item.id === 'test-cases';
           return (
-            <button
-              key={item.id}
-              onClick={() => onNavigate(item.id)}
-              className={`relative flex w-full items-center ${collapsed ? 'justify-center px-0 py-3' : 'px-3 py-3'} group rounded-xl transition-all duration-200 ${
+            <div key={item.id}>
+              <div className={`relative flex w-full items-center ${collapsed ? 'justify-center px-0 py-3' : 'px-3 py-3'} group rounded-xl transition-all duration-200 ${
                 isActive
                   ? 'bg-brand-600 font-medium text-white shadow-glow'
                   : 'text-slate-400 hover:bg-slate-800 hover:text-white'
-              } `}
-            >
+              } `}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onNavigate(item.id);
+                    if (isTestCases) setTestCasesExpanded(true);
+                  }}
+                  className={`flex min-w-0 flex-1 items-center ${collapsed ? 'justify-center' : ''} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500`}
+                  aria-current={isActive ? 'page' : undefined}
+                >
               <item.icon
                 className={`h-5 w-5 flex-shrink-0 transition-all duration-200 ${isActive ? 'text-white' : 'text-slate-500 group-hover:text-white'} `}
               />
@@ -116,11 +131,19 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
               >
                 {item.label}
               </span>
+                </button>
 
-              {/* Active Indicator Dot (Expanded only) */}
-              <div
-                className={`absolute right-2 h-1.5 w-1.5 rounded-full bg-white shadow-sm transition-all duration-300 ${isActive && !collapsed ? 'scale-100 opacity-100' : 'scale-0 opacity-0'}`}
-              ></div>
+              {isTestCases && !collapsed && (
+                <button
+                  type="button"
+                  aria-label={`${testCasesExpanded ? 'Collapse' : 'Expand'} Test Cases submenu`}
+                  aria-expanded={testCasesExpanded}
+                  onClick={() => setTestCasesExpanded((expanded) => !expanded)}
+                  className="ml-2 rounded p-1 text-slate-300 hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300"
+                >
+                  {testCasesExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                </button>
+              )}
 
               {/* Tooltip for collapsed state */}
               {collapsed && (
@@ -130,7 +153,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate }) => 
                   <div className="absolute -left-1 top-1/2 h-2 w-2 -translate-y-1/2 rotate-45 transform border-b border-l border-slate-700 bg-slate-900"></div>
                 </div>
               )}
-            </button>
+              </div>
+              {isTestCases && !collapsed && testCasesExpanded && (
+                <div className="mt-3 max-h-[48vh] overflow-y-auto overflow-x-hidden pb-5 pl-3 pr-1">{testCaseNavigation}</div>
+              )}
+            </div>
           );
         })}
       </nav>

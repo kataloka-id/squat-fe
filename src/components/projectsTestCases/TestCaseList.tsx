@@ -292,6 +292,7 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
                     </td>
                     <td className="px-6 py-4 align-middle">
                       <button className="line-clamp-1 text-left text-sm font-medium text-slate-900 transition-colors hover:text-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-500/20" onClick={() => onView?.(tc)} type="button">{markdownToPlainText(tc.title)}</button>
+                      {tc.folderPath?.length ? <p className="mt-0.5 truncate text-xs text-slate-400">{tc.folderPath.map((folder) => folder.name).join(' / ')}</p> : <p className="mt-0.5 text-xs text-slate-400">Unfiled</p>}
                       <div className="text-xs text-slate-500 mt-1 line-clamp-1 md:hidden">{tc.section}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 hidden md:table-cell align-middle">

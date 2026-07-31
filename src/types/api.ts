@@ -53,6 +53,8 @@ export interface AuthSessionResponse {
 export interface CompanyRecord {
   id: string;
   name: string;
+  /** Optional client display breadcrumb; the API tree supplies parent relationships. */
+  path?: string;
   hasLogo: boolean;
   logoVersion: string | null;
   profileColour: string | null;
@@ -157,6 +159,8 @@ export interface ProjectTestCaseRecord {
   projectKey?: string;
   title: string;
   projectId?: string;
+  folderId?: string | null;
+  folderPath?: Array<{ id: string; name: string }>;
   sectionId?: string;
   section: string;
   priority: string;
@@ -172,6 +176,33 @@ export interface ProjectTestCaseRecord {
   tags: string[];
   createdBy?: string;
   updatedAt?: string;
+}
+
+export interface TestCaseFolderRecord {
+  id: string;
+  projectId: string;
+  name: string;
+  parentId?: string | null;
+  depth?: number;
+  sortOrder?: number;
+  directTestCaseCount?: number;
+  totalTestCaseCount?: number;
+  children?: TestCaseFolderRecord[];
+}
+
+export interface TestCaseFolderTreeResponse {
+  allTestCaseCount: number;
+  unfiledTestCaseCount: number;
+  folders: TestCaseFolderRecord[];
+}
+
+export interface FolderDeleteImpact {
+  directTestCaseCount?: number;
+  totalTestCaseCount?: number;
+  directChildFolderCount?: number;
+  descendantFolderCount?: number;
+  descendantTestCaseCount?: number;
+  externalReferences?: { referenceCount: number; references: Array<{ sourceId: string; consumerId: string; sourceTitle?: string; consumerTitle?: string }> };
 }
 
 /** A reference returned with its current source-test-case display data. */

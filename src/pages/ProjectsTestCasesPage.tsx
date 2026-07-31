@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Sidebar } from '@/src/components/projectsTestCases/Layout/Sidebar.tsx';
 import { TestCaseList } from '@/src/components/projectsTestCases/TestCaseList.tsx';
 import { TestCaseForm } from '@/src/components/projectsTestCases/TestCaseForm.tsx';
@@ -6,6 +7,7 @@ import type { TestCaseSubmitMode } from '@/src/components/projectsTestCases/Test
 import { TestCaseDetail } from '@/src/components/projectsTestCases/TestCaseDetail.tsx';
 import { TestCaseImportDialog } from '@/src/components/projectsTestCases/TestCaseImportDialog.tsx';
 import { TestCaseStats } from '@/src/components/projectsTestCases/TestCaseStats.tsx';
+import { TestCaseFolderTree, type FolderScope } from '@/src/components/projectsTestCases/TestCaseFolderTree.tsx';
 import { ProjectBoard } from '@/src/components/projectsTestCases/ProjectBoard.tsx';
 import { ProjectForm } from '@/src/components/projectsTestCases/ProjectForm.tsx';
 import { UnderDevelopment } from '@/src/components/projectsTestCases/UnderDevelopment.tsx';
@@ -17,7 +19,7 @@ import { Toast,ToastType } from '@/src/components/projectsTestCases/ui/Toast.tsx
 import { SettingsPage } from '@/src/components/settings/SettingsPage.tsx';
 import { TeamPage } from '@/src/components/team/TeamPage.tsx';
 import { ProjectsService } from '@/src/api/projects.service.ts';
-import type { ProjectAssignmentRecord, ProjectTestCaseRecord, SectionRecord } from '@/src/types/api.ts';
+import type { FolderDeleteImpact, ProjectAssignmentRecord, ProjectTestCaseRecord, SectionRecord, TestCaseFolderRecord } from '@/src/types/api.ts';
 import { useSessionUser } from '@/src/auth/SessionContext.tsx';
 import { isCurrentProjectRequest } from '@/src/utils/projectStats.ts';
 import { getVisibleTestCases } from '@/src/utils/testCaseSorting.ts';
@@ -53,7 +55,7 @@ const toProject = (project: ProjectAssignmentRecord): Project => ({
 
 const toTestCase = (testCase: ProjectTestCaseRecord, projectId: string): TestCase => ({
   id: testCase.id, tcNumber: testCase.tcNumber, projectKey: testCase.projectKey, title: testCase.title,
-  projectId: testCase.projectId ?? projectId, sectionId: testCase.sectionId, section: testCase.section ?? 'Uncategorized',
+  projectId: testCase.projectId ?? projectId, sectionId: testCase.sectionId, section: testCase.section ?? 'Uncategorized', folderId: testCase.folderId, folderPath: testCase.folderPath,
   priority: Object.values(Priority).includes(testCase.priority as Priority) ? testCase.priority as Priority : Priority.Medium,
   status: Object.values(Status).includes(testCase.status as Status) ? testCase.status as Status : Status.Draft,
   automationType: Object.values(AutomationType).includes(testCase.automationType as AutomationType) ? testCase.automationType as AutomationType : AutomationType.Manual,
@@ -67,7 +69,11 @@ const toTestCase = (testCase: ProjectTestCaseRecord, projectId: string): TestCas
   steps: testCase.steps ?? [], tags: testCase.tags ?? [], updatedAt: testCase.updatedAt ? new Date(testCase.updatedAt) : new Date(), createdBy: testCase.createdBy ?? '—', description: testCase.description ?? undefined, preconditions: testCase.preconditions ?? undefined, mainExpectedResult: testCase.mainExpectedResult ?? undefined,
 });
 
-const App: React.FC = () => {
+const emptyFolderScope: FolderScope = { includeSubfolders: false };
+
+export const App: React.FC = () => {
+  const location = useLocation();
+  const navigate = useNavigate();
   const sessionUser = useSessionUser();
   const currentUserLabel = sessionUser?.username || sessionUser?.email || 'Current user';
   // --- View State ---
@@ -86,6 +92,14 @@ const App: React.FC = () => {
   // Displayed Test Cases (Filtered View)
   const [testCases, setTestCases] = useState<TestCase[]>([]);
   const [sectionsByProject, setSectionsByProject] = useState<Record<string, SectionRecord[]>>({});
+  const [foldersByProject, setFoldersByProject] = useState<Record<string, TestCaseFolderRecord[]>>({});
+  const [folderScope, setFolderScope] = useState<FolderScope>(emptyFolderScope);
+  // A scope is owned by the project from which it was selected.  Keeping that
+  // ownership separate makes a project switch safe even while React batches state updates.
+  const [folderScopeProjectId, setFolderScopeProjectId] = useState<string>();
+  const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(new Set());
+  const [foldersLoading, setFoldersLoading] = useState(false);
+  const [foldersError, setFoldersError] = useState<string | null>(null);
 
   const [isLoading, setIsLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -93,6 +107,8 @@ const App: React.FC = () => {
   // --- Bulk Action State ---
   const [bulkStatus, setBulkStatus] = useState<Status | ''>('');
   const [bulkPriority, setBulkPriority] = useState<Priority | ''>('');
+  const [bulkMoveDestination, setBulkMoveDestination] = useState('');
+  const [isBulkMoving, setIsBulkMoving] = useState(false);
 
   // --- Toast State ---
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
@@ -123,6 +139,10 @@ const App: React.FC = () => {
 
   const [isProjectFormOpen, setIsProjectFormOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
+  const [folderDeleteDialog, setFolderDeleteDialog] = useState<{ folder: TestCaseFolderRecord; impact: FolderDeleteImpact } | null>(null);
+  const [folderDeleteStrategy, setFolderDeleteStrategy] = useState<'MOVE_TO_PARENT' | 'MOVE_TEST_CASES_TO_UNFILED' | 'DELETE_ALL'>('MOVE_TO_PARENT');
+  const [folderDeleteConfirmation, setFolderDeleteConfirmation] = useState('');
+  const [folderDeleteBusy, setFolderDeleteBusy] = useState(false);
 
   // Confirmation State
   const [confirmState, setConfirmState] = useState<{
@@ -151,8 +171,12 @@ const App: React.FC = () => {
     automationType: [],
     automationReadiness: [],
   });
-  const deepLinkedTestCaseId = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('testCaseId');
-  const deepLinkedProjectId = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('projectId');
+  const query = useMemo(() => new URLSearchParams(location.search), [location.search]);
+  const deepLinkedTestCaseId = query.get('testCaseId');
+  const deepLinkedProjectId = query.get('projectId');
+  const deepLinkedFolderId = query.get('folderId');
+  const activeProjectId = filters.projectId.length === 1 ? filters.projectId[0] : undefined;
+  const activeFolderScope = activeProjectId && folderScopeProjectId === activeProjectId ? folderScope : emptyFolderScope;
   const [sortConfig, setSortConfig] = useState<{ field: SortField; order: SortOrder }>({
     field: 'updatedAt',
     order: 'desc',
@@ -186,9 +210,31 @@ const App: React.FC = () => {
     [],
   );
 
+  const clearFolderQuery = useCallback(() => {
+    if (!deepLinkedFolderId) return;
+    const next = new URLSearchParams(location.search);
+    next.delete('folderId');
+    navigate({ pathname: location.pathname, search: next.toString() ? `?${next.toString()}` : '' }, { replace: true });
+  }, [deepLinkedFolderId, location.pathname, location.search, navigate]);
+
+  const resetFolderScope = useCallback((clearQuery = false) => {
+    // Clear ownership synchronously with the scope so a new project can never
+    // issue a request using a folder selected in the previous project.
+    setFolderScopeProjectId(undefined);
+    setFolderScope(emptyFolderScope);
+    setExpandedFolderIds(new Set());
+    if (clearQuery) clearFolderQuery();
+  }, [clearFolderQuery]);
+
+  const changeProjects = useCallback((projectIds: string[], preserveFolderQuery = false) => {
+    resetFolderScope(!preserveFolderQuery);
+    setFilters((current) => ({ ...current, projectId: projectIds }));
+  }, [resetFolderScope]);
+
   // --- Handlers ---
 
   const handleNavigate = (view: string) => {
+    if (view !== 'test-cases') resetFolderScope(true);
     setCurrentView(view as any);
   };
 
@@ -200,9 +246,9 @@ const App: React.FC = () => {
   // The project remains server-authorized when its test-case list is fetched.
   useEffect(() => {
     if (!deepLinkedProjectId || !projects.some((project) => project.id === deepLinkedProjectId)) return;
-    setFilters((current) => current.projectId[0] === deepLinkedProjectId ? current : { ...current, projectId: [deepLinkedProjectId] });
+    if (filters.projectId[0] !== deepLinkedProjectId) changeProjects([deepLinkedProjectId], true);
     setCurrentView('test-cases');
-  }, [deepLinkedProjectId, projects]);
+  }, [changeProjects, deepLinkedProjectId, filters.projectId, projects]);
 
   // The API scopes each project's catalog to the signed-in user's assignment.
   useEffect(() => {
@@ -236,7 +282,7 @@ const App: React.FC = () => {
 
   const handleViewTestCases = (projectId: string) => {
     // Switch to test cases and filter by this project
-    setFilters((prev) => ({ ...prev, projectId: [projectId] }));
+    changeProjects([projectId]);
     setCurrentView('test-cases');
   };
 
@@ -264,7 +310,7 @@ const App: React.FC = () => {
 
       setIsLoading(true);
       try {
-        const responses = await Promise.all(filters.projectId.map((projectId) => ProjectsService.listTestCases(projectId)));
+        const responses = await Promise.all(filters.projectId.map((projectId) => filters.projectId.length === 1 ? ProjectsService.listTestCasesInFolder(projectId, activeFolderScope) : ProjectsService.listTestCases(projectId)));
         const projectData = responses.flatMap((response, index) => response.data.map((testCase: ProjectTestCaseRecord) => toTestCase(testCase, filters.projectId[index])));
         if (active) {
           setTestCases(projectData);
@@ -278,7 +324,7 @@ const App: React.FC = () => {
 
     void loadData();
     return () => { active = false; };
-  }, [filters.projectId]);
+  }, [activeFolderScope, filters.projectId]);
 
   const handleSort = (field: SortField) => {
     setSortConfig((prev) => ({
@@ -292,8 +338,19 @@ const App: React.FC = () => {
   };
 
   const handleToggleSelect = (id: string) => {
+    // A checkbox can only select an item rendered for the active project/folder scope.
+    if (filters.projectId.length !== 1 || !testCases.some((testCase) => testCase.id === id)) return;
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
+
+  // Selection is intentionally local to the Test Cases workspace and its project/folder scope.
+  // This prevents a stale selection being applied after navigation or a catalog switch.
+  useEffect(() => {
+    setSelectedIds([]);
+    setBulkStatus('');
+    setBulkPriority('');
+    setBulkMoveDestination('');
+  }, [activeFolderScope.folderId, activeFolderScope.includeSubfolders, activeFolderScope.unfiled, currentView, filters.projectId]);
 
   // Reset pagination when filters change
   useEffect(() => {
@@ -305,6 +362,90 @@ const App: React.FC = () => {
   const handleCreate = () => {
     setEditingCase(null);
     setIsFormOpen(true);
+  };
+
+  const scopedSelectedIds = useMemo(() => {
+    if (!activeProjectId) return [];
+    const visibleIds = new Set(testCases
+      .filter((testCase) => testCase.projectId === activeProjectId)
+      .map((testCase) => testCase.id));
+    return selectedIds.filter((id) => visibleIds.has(id));
+  }, [activeProjectId, selectedIds, testCases]);
+  const bulkMoveOptions = useMemo(
+    () => [
+      { label: 'Unfiled', value: '__unfiled__' },
+      ...((activeProjectId ? foldersByProject[activeProjectId] : []) ?? []).map((folder) => ({ label: folder.name, value: folder.id })),
+    ],
+    [activeProjectId, foldersByProject],
+  );
+  const refreshFolders = useCallback(async (projectId: string) => {
+    const response = await ProjectsService.listTestCaseFolders(projectId, { force: true });
+    const flatten = (nodes: TestCaseFolderRecord[]): TestCaseFolderRecord[] => nodes.flatMap(({ children, ...folder }) => [folder, ...flatten(children ?? [])]);
+    const folders = flatten(response.data.folders);
+    setFoldersByProject((current) => ({ ...current, [projectId]: folders }));
+    return folders;
+  }, []);
+  useEffect(() => {
+    if (!activeProjectId) {
+      setFoldersError(null);
+      return;
+    }
+    setFoldersLoading(true);
+    void refreshFolders(activeProjectId)
+      .then(() => setFoldersError(null))
+      .catch((error) => {
+        const message = error?.message ?? 'Folder tidak dapat dimuat.';
+        setFoldersError(message);
+        showToast(message, 'error');
+      })
+      .finally(() => setFoldersLoading(false));
+  }, [activeProjectId, refreshFolders, showToast]);
+  // URL folder scopes are only meaningful for their active project.  Wait for
+  // that project's folder catalog, then either apply the scope or remove the
+  // stale parameter before it can be sent to the test-case endpoint.
+  useEffect(() => {
+    if (!activeProjectId || !deepLinkedFolderId || !Object.hasOwn(foldersByProject, activeProjectId)) return;
+    if ((foldersByProject[activeProjectId] ?? []).some((folder) => folder.id === deepLinkedFolderId)) {
+      setFolderScopeProjectId(activeProjectId);
+      setFolderScope({ folderId: deepLinkedFolderId, includeSubfolders: false });
+      return;
+    }
+    resetFolderScope(true);
+  }, [activeProjectId, deepLinkedFolderId, foldersByProject, resetFolderScope]);
+  const createFolder = async (parentId?: string | null) => {
+    if (!activeProjectId) return; const name = window.prompt('Folder name'); if (!name?.trim()) return;
+    try { await ProjectsService.createTestCaseFolder(activeProjectId, { name: name.trim(), parentId }); await refreshFolders(activeProjectId); showToast('Folder created.'); }
+    catch (error) { showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Folder gagal dibuat.', 'error'); }
+  };
+  const renameFolder = async (folder: TestCaseFolderRecord) => {
+    if (!activeProjectId) return; const name = window.prompt('Rename folder', folder.name); if (!name?.trim() || name.trim() === folder.name) return;
+    try { await ProjectsService.updateTestCaseFolder(activeProjectId, folder.id, { name: name.trim() }); await refreshFolders(activeProjectId); showToast('Folder renamed.'); }
+    catch (error) { showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Folder gagal diubah.', 'error'); }
+  };
+  const deleteFolder = (folder: TestCaseFolderRecord) => {
+    if (!activeProjectId) return;
+    void ProjectsService.getTestCaseFolderDeleteImpact(activeProjectId, folder.id).then((response) => { setFolderDeleteStrategy('MOVE_TO_PARENT'); setFolderDeleteConfirmation(''); setFolderDeleteDialog({ folder, impact: response.data }); }).catch((error) => showToast(error?.message ?? 'Dampak penghapusan folder tidak dapat dimuat.', 'error'));
+  };
+  const confirmFolderDelete = async () => {
+    if (!activeProjectId || !folderDeleteDialog) return;
+    const { folder } = folderDeleteDialog; setFolderDeleteBusy(true);
+    try {
+      await ProjectsService.removeTestCaseFolder(activeProjectId, folder.id, { strategy: folderDeleteStrategy, confirmation: folderDeleteConfirmation });
+      const remainingFolders = await refreshFolders(activeProjectId);
+      if (activeFolderScope.folderId && !remainingFolders.some((item) => item.id === activeFolderScope.folderId)) resetFolderScope(true);
+      setFolderDeleteDialog(null);
+      showToast('Folder deleted.');
+    }
+    catch (error) { showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Folder tidak dapat dihapus. Konflik atau reusable precondition eksternal tidak mengubah data.', 'error'); }
+    finally { setFolderDeleteBusy(false); }
+  };
+  const moveSelected = async (folderId: string | null) => {
+    const scopedIds = scopedSelectedIds.filter((id) => testCases.some((testCase) => testCase.id === id && testCase.projectId === activeProjectId));
+    if (isBulkMoving || !activeProjectId || !scopedIds.length) return;
+    setIsBulkMoving(true);
+    try { await ProjectsService.bulkMoveTestCases(activeProjectId, { testCaseIds: scopedIds, destinationFolderId: folderId }); setSelectedIds([]); setFolderScope((value) => ({ ...value })); await refreshFolders(activeProjectId); showToast('Test cases moved.'); }
+    catch (error) { showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Bulk move gagal; tidak ada test case yang dipindahkan.', 'error'); }
+    finally { setIsBulkMoving(false); }
   };
 
   const handleImport = async (projectId: string, payload: TestCaseImportPayload) => {
@@ -372,7 +513,7 @@ const App: React.FC = () => {
     if (bulkPriority) updates.priority = bulkPriority;
 
     if (Object.keys(updates).length > 0) {
-      requestUpdate(selectedIds, updates);
+      requestUpdate(scopedSelectedIds, updates);
     }
   };
 
@@ -390,7 +531,7 @@ const App: React.FC = () => {
         priority: data.priority ?? editingCase?.priority ?? Priority.Medium, status: data.status ?? editingCase?.status ?? Status.Draft,
         automationType: data.automationType ?? editingCase?.automationType ?? AutomationType.Manual,
         automationReadiness: data.automationReadiness ?? editingCase?.automationReadiness ?? AutomationReadiness.Candidate,
-        isReusable: data.isReusable ?? editingCase?.isReusable ?? false,
+        isReusable: data.isReusable ?? editingCase?.isReusable ?? false, folderId: data.folderId ?? editingCase?.folderId ?? activeFolderScope.folderId ?? null,
         linkedPreconditions: data.linkedPreconditions ?? editingCase?.linkedPreconditions?.map((link) => ({ testCaseId: link.testCaseId, sortOrder: link.sortOrder })) ?? [],
         description: data.description ?? editingCase?.description ?? null, preconditions: data.preconditions ?? editingCase?.preconditions ?? null, mainExpectedResult: data.mainExpectedResult ?? editingCase?.mainExpectedResult ?? null, steps: data.steps ?? editingCase?.steps ?? [], tags: data.tags ?? editingCase?.tags ?? [],
       };
@@ -417,7 +558,7 @@ const App: React.FC = () => {
   };
 
   const initiateDelete = (id?: string) => {
-    const targetIds = id ? [id] : selectedIds;
+    const targetIds = id ? [id] : scopedSelectedIds;
     const count = targetIds.length;
 
     setConfirmState({
@@ -534,8 +675,9 @@ const App: React.FC = () => {
   );
 
   const handleToggleSelectAll = () => {
+    if (!activeProjectId) return;
     const pageIds = paginatedTestCases.map((tc) => tc.id);
-    const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id));
+    const allPageSelected = pageIds.length > 0 && pageIds.every((id) => scopedSelectedIds.includes(id));
 
     if (allPageSelected) {
       setSelectedIds((prev) => prev.filter((id) => !pageIds.includes(id)));
@@ -547,10 +689,35 @@ const App: React.FC = () => {
   const hasProjectSelected = filters.projectId.length > 0;
 
   const formProjects = projects;
+  const activeFolder = activeProjectId && activeFolderScope.folderId
+    ? (foldersByProject[activeProjectId] ?? []).find((folder) => folder.id === activeFolderScope.folderId)
+    : undefined;
+  const activeFolderBreadcrumb = useMemo(() => {
+    if (!activeProjectId || !activeFolderScope.folderId) return '';
+    const byId = new Map((foldersByProject[activeProjectId] ?? []).map((folder) => [folder.id, folder]));
+    const names: string[] = [];
+    for (let current = byId.get(activeFolderScope.folderId); current; current = current.parentId ? byId.get(current.parentId) : undefined) names.unshift(current.name);
+    return names.join(' / ');
+  }, [activeFolderScope.folderId, activeProjectId, foldersByProject]);
+  const folderNavigation = (
+    <TestCaseFolderTree
+      folders={activeProjectId ? foldersByProject[activeProjectId] ?? [] : []}
+      active={activeFolderScope}
+      disabled={!activeProjectId || foldersLoading || Boolean(foldersError)}
+      expandedFolderIds={expandedFolderIds}
+      onExpandedFolderIdsChange={setExpandedFolderIds}
+      loading={foldersLoading}
+      error={foldersError}
+      onSelect={(scope) => { setFolderScopeProjectId(activeProjectId); setFolderScope(scope); setSelectedIds([]); }}
+      onCreate={createFolder}
+      onRename={renameFolder}
+      onDelete={deleteFolder}
+    />
+  );
 
   return (
     <div className="flex h-screen bg-[#f8fafc] font-sans text-slate-900">
-      <Sidebar currentView={currentView} onNavigate={handleNavigate} />
+      <Sidebar currentView={currentView} onNavigate={handleNavigate} testCaseNavigation={folderNavigation} />
 
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden bg-[#f8fafc]">
         <main className="relative flex-1 overflow-auto p-8">
@@ -572,7 +739,7 @@ const App: React.FC = () => {
 
           {/* View: Test Cases */}
           {currentView === 'test-cases' && (
-            <div className="animate-in fade-in mx-auto w-full max-w-[1920px] space-y-6 duration-300">
+            <div className="animate-in fade-in mx-auto w-full max-w-[1920px] space-y-5 duration-300">
               {/* Page Header */}
               <div className="sm:flex sm:items-center sm:justify-between">
                 <div>
@@ -603,31 +770,43 @@ const App: React.FC = () => {
               {/* Stats Legend / Dashboard */}
               <TestCaseStats testCases={testCases} />
 
+              <section aria-label="Test case scope" className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-y border-slate-200 py-3">
+                <div className="min-w-0">
+                  <h2 className="truncate text-sm font-semibold text-slate-800">{activeFolderScope.unfiled ? 'Unfiled test cases' : activeFolderScope.folderId ? activeFolderBreadcrumb || 'Folder not found' : 'All test cases'}</h2>
+                  {activeFolderScope.folderId && <p className="mt-0.5 text-xs text-slate-500">{activeFolder?.directTestCaseCount ?? 0} direct / {activeFolder?.totalTestCaseCount ?? 0} total</p>}
+                  <p className="mt-1 text-xs text-slate-400">Select a folder to scope the list. Search and existing filters still apply.</p>
+                </div>
+                {activeFolderScope.folderId && (
+                  <label className="flex shrink-0 items-center gap-2 text-sm text-slate-600">
+                    <input className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500" type="checkbox" checked={activeFolderScope.includeSubfolders} onChange={(event) => setFolderScope((scope) => ({ ...scope, includeSubfolders: event.target.checked }))} />
+                    Include descendant folders
+                  </label>
+                )}
+              </section>
+
               {/* Filters Bar */}
-              <div className="relative z-30 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-slate-200/60 bg-white/60 p-1.5 shadow-sm backdrop-blur-sm">
-                <div className="flex flex-wrap items-center gap-2 p-1">
+              <div className="relative z-30 rounded-xl border border-slate-200/60 bg-white/60 p-2 shadow-sm backdrop-blur-sm">
+                <div className="flex flex-wrap items-center gap-2">
                   {/* Primary Filter: Project */}
-                  <div className="mr-2">
+                  <div>
                     <MultiSelect
                       label="Project"
                       options={projectOptions}
                       selectedValues={filters.projectId}
-                      onChange={(vals) => setFilters((prev) => ({ ...prev, projectId: vals }))}
+                      onChange={(vals) => changeProjects(vals)}
                       icon={<Briefcase className="h-3.5 w-3.5" />}
                     />
                   </div>
 
-                  <div className="mx-2 h-6 w-px bg-slate-300" />
-
                   {/* Search Input */}
-                  <div className="group relative mr-2">
+                  <div className="group relative min-w-[12rem] flex-1">
                     <Search
                       className={`absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 transition-colors ${!hasProjectSelected ? 'text-slate-300' : 'group-focus-within:text-brand-500 text-slate-400'}`}
                     />
                     <input
                       type="text"
                       placeholder="Search cases..."
-                      className={`w-48 rounded-lg border bg-white py-1.5 pl-9 pr-4 text-sm transition-all focus:outline-none focus:ring-2 lg:w-64 ${
+                      className={`w-full rounded-lg border bg-white py-1.5 pl-9 pr-4 text-sm transition-all focus:outline-none focus:ring-2 ${
                         !hasProjectSelected
                           ? 'cursor-not-allowed border-slate-100 bg-slate-50 text-slate-300 placeholder:text-slate-300'
                           : 'focus:ring-brand-500/20 focus:border-brand-500 border-slate-200 placeholder:text-slate-400'
@@ -717,15 +896,32 @@ const App: React.FC = () => {
                   )}
                 </div>
 
-                {selectedIds.length > 0 && (
-                  <div className="animate-in fade-in slide-in-from-right-5 bg-brand-50 border-brand-100 mr-1 flex items-center gap-2 rounded-lg border py-1.5 pl-3 pr-2 shadow-sm duration-200">
+                {scopedSelectedIds.length > 0 && (
+                  <div className="animate-in fade-in slide-in-from-right-5 mt-2 flex items-center gap-2 rounded-lg border border-brand-100 bg-brand-50 py-1.5 pl-3 pr-2 shadow-sm duration-200">
                     <span className="text-brand-800 mr-1 text-xs font-semibold">
-                      {selectedIds.length} Selected
+                      {scopedSelectedIds.length} Selected
                     </span>
                     <div className="bg-brand-200 mx-1 h-4 w-px"></div>
 
                     {/* Bulk Actions with CTA */}
                     <div className="flex items-center gap-2">
+                      {activeProjectId && (
+                        <div className="w-32" aria-busy={isBulkMoving}>
+                          <Select
+                            placeholder={isBulkMoving ? 'Moving…' : 'Move to…'}
+                            value={bulkMoveDestination}
+                            options={bulkMoveOptions}
+                            disabled={isBulkMoving}
+                            onChange={(value) => {
+                              const destination = String(value);
+                              setBulkMoveDestination('');
+                              void moveSelected(destination === '__unfiled__' ? null : destination);
+                            }}
+                            className="w-full text-xs"
+                          />
+                          {isBulkMoving && <span className="sr-only" role="status">Moving selected test cases</span>}
+                        </div>
+                      )}
                       <div className="w-32">
                         <Select
                           placeholder="Set Status"
@@ -761,7 +957,8 @@ const App: React.FC = () => {
                               setBulkPriority('');
                             }}
                             className="flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-slate-400 transition-colors hover:border-slate-200 hover:bg-slate-100 hover:text-slate-600"
-                            title="Clear selection"
+                            aria-label="Clear bulk fields"
+                            title="Clear bulk fields"
                           >
                             <X size={16} />
                           </button>
@@ -769,10 +966,19 @@ const App: React.FC = () => {
                       )}
                     </div>
 
+                    <button
+                      type="button"
+                      onClick={() => setSelectedIds([])}
+                      className="rounded-md px-2 py-1.5 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-100"
+                    >
+                      Unselect All
+                    </button>
+
                     <div className="bg-brand-200 mx-1 h-4 w-px"></div>
 
                     <button
                       onClick={() => initiateDelete()}
+                      aria-label="Delete selected test cases"
                       className="flex items-center gap-1.5 rounded-md p-1.5 text-xs font-medium text-red-600 transition-colors hover:bg-red-50 hover:text-red-700"
                       title="Delete Selected"
                     >
@@ -787,7 +993,7 @@ const App: React.FC = () => {
                 <TestCaseList
                   testCases={paginatedTestCases}
                   projects={projects}
-                  selectedIds={selectedIds}
+                  selectedIds={scopedSelectedIds}
                   sortField={sortConfig.field}
                   sortOrder={sortConfig.order}
                   onSort={handleSort}
@@ -867,6 +1073,23 @@ const App: React.FC = () => {
         initialData={editingProject}
         createdBy={currentUserLabel}
       />
+
+      {folderDeleteDialog && (
+        <div role="dialog" aria-modal="true" aria-labelledby="folder-delete-title" className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/40 p-4">
+          <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
+            <h2 id="folder-delete-title" className="text-lg font-bold">Delete folder “{folderDeleteDialog.folder.name}”</h2>
+            <p className="mt-2 text-sm text-slate-600">This folder has {folderDeleteDialog.impact.directTestCaseCount ?? 0} direct test case(s), {folderDeleteDialog.impact.directChildFolderCount ?? 0} child folder(s), and {folderDeleteDialog.impact.descendantFolderCount ?? 0} descendant folder(s) containing {folderDeleteDialog.impact.totalTestCaseCount ?? 0} test case(s). Every delete is transactional.</p>
+            {(folderDeleteDialog.impact.externalReferences?.referenceCount ?? 0) > 0 && <div role="alert" className="mt-3 rounded bg-amber-50 p-3 text-sm text-amber-800"><p>{folderDeleteDialog.impact.externalReferences?.referenceCount} reusable-precondition reference(s) outside this subtree may block permanent deletion. Remove or replace those links first.</p><ul className="mt-1 list-disc pl-5">{folderDeleteDialog.impact.externalReferences?.references.map((reference) => <li key={`${reference.sourceId}-${reference.consumerId}`}>{reference.sourceTitle ?? reference.sourceId} → {reference.consumerTitle ?? reference.consumerId}</li>)}</ul></div>}
+            <fieldset className="mt-4 space-y-2"><legend className="text-sm font-semibold">Delete strategy</legend>
+              <label className="flex gap-2 text-sm"><input type="radio" checked={folderDeleteStrategy === 'MOVE_TO_PARENT'} onChange={() => setFolderDeleteStrategy('MOVE_TO_PARENT')} /> Move direct test cases and child folders to the parent</label>
+              <label className="flex gap-2 text-sm"><input type="radio" checked={folderDeleteStrategy === 'MOVE_TEST_CASES_TO_UNFILED'} onChange={() => setFolderDeleteStrategy('MOVE_TEST_CASES_TO_UNFILED')} /> Move direct test cases to Unfiled; move child folders to the parent</label>
+              <label className="flex gap-2 text-sm text-red-700"><input type="radio" checked={folderDeleteStrategy === 'DELETE_ALL'} onChange={() => setFolderDeleteStrategy('DELETE_ALL')} /> Permanently delete the folder subtree and contained test cases</label>
+            </fieldset>
+            <label className="mt-4 block text-sm font-semibold">Type <span className="font-mono">DELETE</span> to confirm<input autoFocus value={folderDeleteConfirmation} onChange={(event) => setFolderDeleteConfirmation(event.target.value)} className="mt-1 block w-full rounded border border-slate-300 px-3 py-2 font-mono" /></label>
+            <div className="mt-5 flex justify-end gap-2"><Button variant="secondary" onClick={() => setFolderDeleteDialog(null)} disabled={folderDeleteBusy}>Cancel</Button><Button variant="danger" onClick={() => void confirmFolderDelete()} disabled={folderDeleteConfirmation !== 'DELETE' || folderDeleteBusy}>{folderDeleteBusy ? 'Deleting…' : 'Delete folder'}</Button></div>
+          </div>
+        </div>
+      )}
 
       <ConfirmationModal
         isOpen={confirmState.isOpen}
