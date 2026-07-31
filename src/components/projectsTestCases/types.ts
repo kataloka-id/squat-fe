@@ -58,6 +58,9 @@ export interface TestCase {
   automationType: AutomationType;
   /** Optional only at the type boundary so legacy records can still be opened. */
   automationReadiness?: AutomationReadiness;
+  /** Whether this case is eligible to be linked as a reusable precondition. */
+  isReusable?: boolean;
+  linkedPreconditions?: LinkedPrecondition[];
   preconditions?: string;
   /** Optional context for the test case, stored as raw Markdown. */
   description?: string;
@@ -67,6 +70,20 @@ export interface TestCase {
   tags: string[];
   updatedAt: Date;
   createdBy: string;
+}
+
+export interface LinkedPrecondition {
+  id?: string;
+  testCaseId: string;
+  sortOrder: number;
+  /** Current source fields returned by the API; save requests contain only ID/order. */
+  projectKey?: string;
+  tcNumber?: number;
+  title?: string;
+  section?: string;
+  status?: Status;
+  automationType?: AutomationType;
+  isDeprecated?: boolean;
 }
 
 export interface Project {

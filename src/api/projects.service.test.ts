@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const api = vi.hoisted(() => ({ post: vi.fn(), patch: vi.fn() }));
+const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn() }));
 
 vi.mock('./axios.ts', () => ({ default: api }));
 vi.mock('./read-cache.ts', () => ({
@@ -42,6 +42,18 @@ describe('ProjectsService cache invalidation', () => {
         automationReadiness, automationType, status,
       }));
     }
+  });
+
+  it('uses the project-scoped reusable selector and persists only linked reference IDs and sort orders', async () => {
+    api.get.mockResolvedValue({ data: [] });
+    api.post.mockResolvedValue({ data: { id: 'case-1' } });
+    await ProjectsService.listReusableTestCases('project-1', { search: 'login', excludeTestCaseId: 'case-1' });
+    await ProjectsService.createTestCase('project-1', {
+      title: 'Case', sectionId: 'section-1', priority: 'Medium', status: Status.Ready, automationType: AutomationType.Manual, automationReadiness: AutomationReadiness.Candidate,
+      isReusable: true, linkedPreconditions: [{ testCaseId: 'case-2', sortOrder: 1 }], steps: [], tags: [],
+    });
+    expect(api.get).toHaveBeenCalledWith('/v1/projects/project-1/test-cases/reusable', { params: { search: 'login', excludeTestCaseId: 'case-1' } });
+    expect(api.post).toHaveBeenCalledWith('/v1/projects/project-1/test-cases', expect.objectContaining({ isReusable: true, linkedPreconditions: [{ testCaseId: 'case-2', sortOrder: 1 }] }));
   });
 
   it('scopes section catalog mutations to a project', async () => {

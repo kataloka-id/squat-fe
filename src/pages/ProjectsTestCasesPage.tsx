@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { Sidebar } from '@/src/components/projectsTestCases/Layout/Sidebar.tsx';
 import { TestCaseList } from '@/src/components/projectsTestCases/TestCaseList.tsx';
 import { TestCaseForm } from '@/src/components/projectsTestCases/TestCaseForm.tsx';
+import type { TestCaseSubmitMode } from '@/src/components/projectsTestCases/TestCaseForm.tsx';
 import { TestCaseDetail } from '@/src/components/projectsTestCases/TestCaseDetail.tsx';
 import { TestCaseImportDialog } from '@/src/components/projectsTestCases/TestCaseImportDialog.tsx';
 import { TestCaseStats } from '@/src/components/projectsTestCases/TestCaseStats.tsx';
@@ -19,6 +20,7 @@ import { ProjectsService } from '@/src/api/projects.service.ts';
 import type { ProjectAssignmentRecord, ProjectTestCaseRecord, SectionRecord } from '@/src/types/api.ts';
 import { useSessionUser } from '@/src/auth/SessionContext.tsx';
 import { isCurrentProjectRequest } from '@/src/utils/projectStats.ts';
+import { getVisibleTestCases } from '@/src/utils/testCaseSorting.ts';
 import { Plus, Filter, Trash2, Search, Briefcase, Zap, Check, X, Upload } from 'lucide-react';
 import type { TestCaseImportPayload } from '@/src/types/api.ts';
 import {
@@ -30,7 +32,6 @@ import {
   Status,
   AutomationType,
   AutomationReadiness,
-  matchesAutomationReadinessFilter,
   normalizeAutomationReadiness,
   Project,
 } from '../components/projectsTestCases/types.ts';
@@ -48,6 +49,22 @@ const toProject = (project: ProjectAssignmentRecord): Project => ({
   updatedAt: project.updatedAt ? new Date(project.updatedAt) : new Date(),
   members: [],
   stats: { testCasesCount: project.testCasesCount ?? 0, passRate: 0 },
+});
+
+const toTestCase = (testCase: ProjectTestCaseRecord, projectId: string): TestCase => ({
+  id: testCase.id, tcNumber: testCase.tcNumber, projectKey: testCase.projectKey, title: testCase.title,
+  projectId: testCase.projectId ?? projectId, sectionId: testCase.sectionId, section: testCase.section ?? 'Uncategorized',
+  priority: Object.values(Priority).includes(testCase.priority as Priority) ? testCase.priority as Priority : Priority.Medium,
+  status: Object.values(Status).includes(testCase.status as Status) ? testCase.status as Status : Status.Draft,
+  automationType: Object.values(AutomationType).includes(testCase.automationType as AutomationType) ? testCase.automationType as AutomationType : AutomationType.Manual,
+  automationReadiness: normalizeAutomationReadiness(testCase.automationReadiness), isReusable: testCase.isReusable ?? false,
+  linkedPreconditions: (testCase.linkedPreconditions ?? []).map((link) => ({
+    id: link.id, testCaseId: link.testCaseId, sortOrder: link.sortOrder, projectKey: link.projectKey, tcNumber: link.tcNumber, title: link.title, section: link.section,
+    status: Object.values(Status).includes(link.status as Status) ? link.status as Status : Status.Draft,
+    automationType: Object.values(AutomationType).includes(link.automationType as AutomationType) ? link.automationType as AutomationType : AutomationType.Manual,
+    isDeprecated: link.isDeprecated,
+  })),
+  steps: testCase.steps ?? [], tags: testCase.tags ?? [], updatedAt: testCase.updatedAt ? new Date(testCase.updatedAt) : new Date(), createdBy: testCase.createdBy ?? '—', description: testCase.description ?? undefined, preconditions: testCase.preconditions ?? undefined, mainExpectedResult: testCase.mainExpectedResult ?? undefined,
 });
 
 const App: React.FC = () => {
@@ -134,6 +151,8 @@ const App: React.FC = () => {
     automationType: [],
     automationReadiness: [],
   });
+  const deepLinkedTestCaseId = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('testCaseId');
+  const deepLinkedProjectId = typeof window === 'undefined' ? null : new URLSearchParams(window.location.search).get('projectId');
   const [sortConfig, setSortConfig] = useState<{ field: SortField; order: SortOrder }>({
     field: 'updatedAt',
     order: 'desc',
@@ -176,6 +195,14 @@ const App: React.FC = () => {
   useEffect(() => {
     void refreshProjects();
   }, [refreshProjects]);
+
+  // Linked-precondition source actions open a focused, independent workspace tab.
+  // The project remains server-authorized when its test-case list is fetched.
+  useEffect(() => {
+    if (!deepLinkedProjectId || !projects.some((project) => project.id === deepLinkedProjectId)) return;
+    setFilters((current) => current.projectId[0] === deepLinkedProjectId ? current : { ...current, projectId: [deepLinkedProjectId] });
+    setCurrentView('test-cases');
+  }, [deepLinkedProjectId, projects]);
 
   // The API scopes each project's catalog to the signed-in user's assignment.
   useEffect(() => {
@@ -238,15 +265,12 @@ const App: React.FC = () => {
       setIsLoading(true);
       try {
         const responses = await Promise.all(filters.projectId.map((projectId) => ProjectsService.listTestCases(projectId)));
-        const projectData = responses.flatMap((response, index) => response.data.map((testCase: ProjectTestCaseRecord): TestCase => ({
-          id: testCase.id, tcNumber: testCase.tcNumber, projectKey: testCase.projectKey, title: testCase.title, projectId: testCase.projectId ?? filters.projectId[index], section: testCase.section ?? 'Uncategorized',
-          priority: Object.values(Priority).includes(testCase.priority as Priority) ? testCase.priority as Priority : Priority.Medium,
-          status: Object.values(Status).includes(testCase.status as Status) ? testCase.status as Status : Status.Draft,
-          automationType: Object.values(AutomationType).includes(testCase.automationType as AutomationType) ? testCase.automationType as AutomationType : AutomationType.Manual,
-          automationReadiness: normalizeAutomationReadiness(testCase.automationReadiness),
-          steps: testCase.steps ?? [], tags: testCase.tags ?? [], updatedAt: testCase.updatedAt ? new Date(testCase.updatedAt) : new Date(), createdBy: testCase.createdBy ?? '—', description: testCase.description ?? undefined, preconditions: testCase.preconditions ?? undefined, mainExpectedResult: testCase.mainExpectedResult ?? undefined,
-        })));
-        if (active) setTestCases(projectData);
+        const projectData = responses.flatMap((response, index) => response.data.map((testCase: ProjectTestCaseRecord) => toTestCase(testCase, filters.projectId[index])));
+        if (active) {
+          setTestCases(projectData);
+          const deepLinkedCase = deepLinkedTestCaseId ? projectData.find((testCase) => testCase.id === deepLinkedTestCaseId) : undefined;
+          if (deepLinkedCase) setViewingCase(deepLinkedCase);
+        }
       } catch (error) {
         if (active) { setTestCases([]); showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Test cases tidak dapat dimuat.', 'error'); }
       } finally { if (active) setIsLoading(false); }
@@ -286,13 +310,7 @@ const App: React.FC = () => {
   const handleImport = async (projectId: string, payload: TestCaseImportPayload) => {
     const response = await ProjectsService.importTestCases(projectId, payload);
     const refreshed = await ProjectsService.listTestCases(projectId, { force: true });
-    const imported = refreshed.data.map((testCase: ProjectTestCaseRecord): TestCase => ({
-      id: testCase.id, tcNumber: testCase.tcNumber, projectKey: testCase.projectKey, title: testCase.title, projectId: testCase.projectId ?? projectId, section: testCase.section ?? 'Uncategorized',
-      priority: Object.values(Priority).includes(testCase.priority as Priority) ? testCase.priority as Priority : Priority.Medium,
-      status: Object.values(Status).includes(testCase.status as Status) ? testCase.status as Status : Status.Draft,
-      automationType: Object.values(AutomationType).includes(testCase.automationType as AutomationType) ? testCase.automationType as AutomationType : AutomationType.Manual,
-      automationReadiness: normalizeAutomationReadiness(testCase.automationReadiness), steps: testCase.steps ?? [], tags: testCase.tags ?? [], updatedAt: testCase.updatedAt ? new Date(testCase.updatedAt) : new Date(), createdBy: testCase.createdBy ?? '—', description: testCase.description ?? undefined, preconditions: testCase.preconditions ?? undefined, mainExpectedResult: testCase.mainExpectedResult ?? undefined,
-    }));
+    const imported = refreshed.data.map((testCase: ProjectTestCaseRecord) => toTestCase(testCase, projectId));
     setTestCases((current) => [...current.filter((testCase) => testCase.projectId !== projectId), ...imported]);
     ProjectsService.invalidateList();
     await refreshProjects();
@@ -309,18 +327,22 @@ const App: React.FC = () => {
   const handleView = (tc: TestCase) => setViewingCase(tc);
 
   // Executes the actual update state change (called after confirmation)
-  const performUpdate = async (ids: string[], updates: Partial<TestCase>) => {
+  const performUpdate = async (ids: string[], updates: Partial<TestCase>): Promise<boolean> => {
     try {
       await Promise.all(ids.map(async (id) => {
         const current = testCases.find((testCase) => testCase.id === id);
         if (!current) return;
         const response = await ProjectsService.updateTestCase(current.projectId, id, { ...current, ...updates, description: updates.description ?? current.description ?? null, preconditions: updates.preconditions ?? current.preconditions ?? null, mainExpectedResult: updates.mainExpectedResult ?? current.mainExpectedResult ?? null });
         const saved = response.data;
-        setTestCases((items) => items.map((item) => item.id === id ? { ...item, ...saved, projectId: saved.projectId ?? current.projectId, priority: saved.priority as Priority, status: saved.status as Status, automationType: saved.automationType as AutomationType, automationReadiness: normalizeAutomationReadiness(saved.automationReadiness), description: saved.description ?? undefined, preconditions: saved.preconditions ?? undefined, mainExpectedResult: saved.mainExpectedResult ?? undefined, updatedAt: saved.updatedAt ? new Date(saved.updatedAt) : new Date() } : item));
+        setTestCases((items) => items.map((item) => item.id === id ? { ...item, ...toTestCase(saved, current.projectId) } : item));
       }));
       setBulkStatus(''); setBulkPriority('');
       showToast(ids.length === 1 ? 'Test case updated successfully.' : `Updated ${ids.length} test cases successfully.`);
-    } catch (error) { showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Test case gagal diperbarui.', 'error'); }
+      return true;
+    } catch (error) {
+      showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Test case gagal diperbarui.', 'error');
+      return false;
+    }
   };
 
   // Initiates update with Confirmation Modal
@@ -354,13 +376,13 @@ const App: React.FC = () => {
     }
   };
 
-  const handleSave = async (data: Partial<TestCase>) => {
+  const handleSave = async (data: Partial<TestCase>, mode: TestCaseSubmitMode = 'close'): Promise<boolean> => {
     const projectId = editingCase ? editingCase.projectId : data.projectId ?? filters.projectId[0];
-    if (!projectId) { showToast('Pilih project terlebih dahulu.', 'error'); return; }
+    if (!projectId) { showToast('Pilih project terlebih dahulu.', 'error'); return false; }
     const sectionId = data.sectionId ?? editingCase?.sectionId;
     if (!sectionId || !sectionsByProject[projectId]?.some((section) => section.id === sectionId)) {
       showToast('Pilih Section yang valid untuk project ini.', 'error');
-      return;
+      return false;
     }
     try {
       const payload = {
@@ -368,21 +390,30 @@ const App: React.FC = () => {
         priority: data.priority ?? editingCase?.priority ?? Priority.Medium, status: data.status ?? editingCase?.status ?? Status.Draft,
         automationType: data.automationType ?? editingCase?.automationType ?? AutomationType.Manual,
         automationReadiness: data.automationReadiness ?? editingCase?.automationReadiness ?? AutomationReadiness.Candidate,
+        isReusable: data.isReusable ?? editingCase?.isReusable ?? false,
+        linkedPreconditions: data.linkedPreconditions ?? editingCase?.linkedPreconditions?.map((link) => ({ testCaseId: link.testCaseId, sortOrder: link.sortOrder })) ?? [],
         description: data.description ?? editingCase?.description ?? null, preconditions: data.preconditions ?? editingCase?.preconditions ?? null, mainExpectedResult: data.mainExpectedResult ?? editingCase?.mainExpectedResult ?? null, steps: data.steps ?? editingCase?.steps ?? [], tags: data.tags ?? editingCase?.tags ?? [],
       };
       const response = editingCase
         ? await ProjectsService.updateTestCase(projectId, editingCase.id, payload)
         : await ProjectsService.createTestCase(projectId, payload);
       const saved = response.data;
-      const testCase: TestCase = { id: saved.id, tcNumber: saved.tcNumber, projectKey: saved.projectKey, title: saved.title, projectId: saved.projectId ?? projectId, sectionId: saved.sectionId, section: saved.section, priority: saved.priority as Priority, status: saved.status as Status, automationType: saved.automationType as AutomationType, automationReadiness: normalizeAutomationReadiness(saved.automationReadiness), steps: saved.steps, tags: saved.tags, createdBy: saved.createdBy ?? '—', updatedAt: saved.updatedAt ? new Date(saved.updatedAt) : new Date(), description: saved.description ?? undefined, preconditions: saved.preconditions ?? undefined, mainExpectedResult: saved.mainExpectedResult ?? undefined };
+      const testCase = toTestCase(saved, projectId);
       setTestCases((items) => editingCase ? items.map((item) => item.id === testCase.id ? { ...item, ...testCase } : item) : [testCase, ...items]);
       if (!editingCase) {
         ProjectsService.invalidateList();
         await refreshProjects();
       }
       showToast(editingCase ? 'Test case updated successfully.' : 'New test case created.');
-      setIsFormOpen(false); setEditingCase(null);
-    } catch (error) { showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Test case gagal disimpan.', 'error'); }
+      if (mode === 'close') {
+        setIsFormOpen(false);
+        setEditingCase(null);
+      }
+      return true;
+    } catch (error) {
+      showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Test case gagal disimpan.', 'error');
+      return false;
+    }
   };
 
   const initiateDelete = (id?: string) => {
@@ -493,57 +524,14 @@ const App: React.FC = () => {
   // --- Derived State ---
 
   const filteredTestCases = useMemo(() => {
-    // Start with the displayed set (which is already filtered by project in useEffect)
-    let result = [...testCases];
-
-    // Filter by Search, Section, Priority, Status
-    if (filters.search) {
-      const q = filters.search.toLowerCase();
-      result = result.filter(
-        (tc) => tc.title.toLowerCase().includes(q) || tc.id.toLowerCase().includes(q),
-      );
-    }
-    // Note: Project ID filtering is handled in useEffect against global state
-
-    if (filters.section.length > 0) {
-      result = result.filter((tc) => filters.section.includes(tc.section));
-    }
-    if (filters.priority.length > 0) {
-      result = result.filter((tc) => filters.priority.includes(tc.priority));
-    }
-    if (filters.status.length > 0) {
-      result = result.filter((tc) => filters.status.includes(tc.status));
-    }
-    if (filters.automationType.length > 0) {
-      result = result.filter((tc) => filters.automationType.includes(tc.automationType));
-    }
-    if (filters.automationReadiness.length > 0) {
-      result = result.filter((tc) => matchesAutomationReadinessFilter(tc.automationReadiness, filters.automationReadiness));
-    }
-
-    // Sort
-    result.sort((a, b) => {
-      let aVal = a[sortConfig.field];
-      let bVal = b[sortConfig.field];
-
-      if (typeof aVal === 'string') aVal = aVal.toLowerCase();
-      if (typeof bVal === 'string') bVal = bVal.toLowerCase();
-
-      if (aVal < bVal) return sortConfig.order === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortConfig.order === 'asc' ? 1 : -1;
-      return 0;
-    });
-
-    return result;
+    // Project filtering happens when testCases is loaded; this pipeline handles the table's remaining filters.
+    return getVisibleTestCases(testCases, filters, sortConfig, 1, -1);
   }, [testCases, filters, sortConfig]);
 
-  const paginatedTestCases = useMemo(() => {
-    if (itemsPerPage === -1) {
-      return filteredTestCases;
-    }
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    return filteredTestCases.slice(startIndex, startIndex + itemsPerPage);
-  }, [filteredTestCases, currentPage, itemsPerPage]);
+  const paginatedTestCases = useMemo(
+    () => getVisibleTestCases(testCases, filters, sortConfig, currentPage, itemsPerPage),
+    [testCases, filters, sortConfig, currentPage, itemsPerPage],
+  );
 
   const handleToggleSelectAll = () => {
     const pageIds = paginatedTestCases.map((tc) => tc.id);
@@ -808,7 +796,12 @@ const App: React.FC = () => {
                   onView={handleView}
                   onEdit={handleEdit}
                   onDelete={initiateDelete}
-                  onUpdate={(id, updates) => requestUpdate([id], updates)}
+                  onUpdate={(id, updates) => {
+                    if ('automationType' in updates || 'automationReadiness' in updates) {
+                      return performUpdate([id], updates);
+                    }
+                    requestUpdate([id], updates);
+                  }}
                   loading={isLoading}
                   hasProjectSelected={hasProjectSelected}
                   canManage
