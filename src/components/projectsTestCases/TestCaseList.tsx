@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { 
   ChevronDown, 
   ChevronUp, 
@@ -6,9 +6,10 @@ import {
   Trash2, 
   Briefcase,
   Search,
-  LayoutList
+  LayoutList,
+  LoaderCircle,
 } from 'lucide-react';
-import { normalizeAutomationReadiness, TestCase, SortField, SortOrder, Project, Priority, Status } from '../projectsTestCases/types.ts';
+import { normalizeAutomationReadiness, TestCase, SortField, SortOrder, Project, Priority, Status, AutomationType, AutomationReadiness } from '../projectsTestCases/types.ts';
 import { Badge } from './ui/Badge';
 import { formatTestCaseDisplayId } from '@/src/utils/testCaseDisplayId.ts';
 import { markdownToPlainText } from '@/src/utils/markdown.ts';
@@ -44,20 +45,25 @@ interface TestCaseListProps {
   canManage?: boolean;
 }
 
-// Inline dropdown for editing Status/Priority
+// Inline dropdown for editing badge-backed enum values.
 const InlineBadgeSelect = ({ 
   type, 
   value, 
   options, 
-  onChange 
+  onChange,
+  label,
 }: { 
-  type: 'priority' | 'status', 
+  type: 'priority' | 'status' | 'automation' | 'automationReadiness', 
   value: string, 
   options: string[], 
-  onChange: (val: string) => void 
+  onChange: (val: string) => void | Promise<void>,
+  label: string,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [alignRight, setAlignRight] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -69,28 +75,48 @@ const InlineBadgeSelect = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  useLayoutEffect(() => {
+    if (!isOpen || !menuRef.current) return;
+    setAlignRight(menuRef.current.getBoundingClientRect().right > window.innerWidth - 8);
+  }, [isOpen]);
+
   return (
     <div className="relative inline-block" ref={containerRef}>
-      <Badge 
-        type={type} 
-        value={value} 
-        onClick={() => setIsOpen(!isOpen)} 
-        className="cursor-pointer ring-offset-1 focus-within:ring-2 focus-within:ring-brand-500/20"
-      />
+      <button
+        type="button"
+        aria-label={`Change ${label}`}
+        aria-expanded={isOpen}
+        disabled={isSaving}
+        onClick={() => setIsOpen(!isOpen)}
+        className="rounded-md ring-offset-1 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:cursor-wait"
+      >
+        {isSaving ? <LoaderCircle aria-label={`Saving ${label}`} className="h-4 w-4 animate-spin text-slate-500" /> : <Badge type={type} value={value} className="cursor-pointer" />}
+      </button>
       {isOpen && (
-        <div className="absolute top-full left-0 mt-1 z-50 w-32 bg-white rounded-lg shadow-xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden">
+        <div ref={menuRef} role="listbox" aria-label={`${label} options`} className={`absolute top-full ${alignRight ? 'right-0' : 'left-0'} mt-1 z-50 w-max min-w-full max-w-[calc(100vw-2rem)] bg-white rounded-lg shadow-xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden`}>
           <div className="py-1">
             {options.map((opt) => (
-              <div 
+              <button
+                type="button"
+                role="option"
+                aria-selected={value === opt}
                 key={opt}
-                onClick={() => {
-                  onChange(opt);
+                disabled={isSaving}
+                onClick={async () => {
+                  setIsSaving(true);
                   setIsOpen(false);
+                  try {
+                    await onChange(opt);
+                  } catch {
+                    // The update owner reports the error and leaves the previous table value intact.
+                  } finally {
+                    setIsSaving(false);
+                  }
                 }}
-                className="px-3 py-1.5 hover:bg-slate-50 cursor-pointer flex items-center"
+                className="flex w-full shrink-0 cursor-pointer items-center px-3 py-1.5 text-left whitespace-nowrap hover:bg-slate-50 disabled:cursor-wait"
               >
                 <Badge type={type} value={opt} className="pointer-events-none" />
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -183,7 +209,7 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
   }
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-soft flex flex-col h-full min-h-[500px] relative overflow-hidden">
+    <div className="bg-white rounded-xl border border-slate-200 shadow-soft flex flex-col h-full min-h-[500px] relative overflow-visible">
       <div className="overflow-x-auto overflow-y-visible flex-1">
         <table className="min-w-full divide-y divide-slate-100">
           <thead className="bg-slate-50 sticky top-0 z-20 shadow-sm">
@@ -272,16 +298,16 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
                       {tc.section}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap align-middle">
-                      {canManage ? <InlineBadgeSelect type="priority" value={tc.priority} options={Object.values(Priority)} onChange={(val) => onUpdate(tc.id, { priority: val as Priority })} /> : <Badge type="priority" value={tc.priority} />}
+                      {canManage ? <InlineBadgeSelect type="priority" label="Priority" value={tc.priority} options={Object.values(Priority)} onChange={(val) => onUpdate(tc.id, { priority: val as Priority })} /> : <Badge type="priority" value={tc.priority} />}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap align-middle">
-                       {canManage ? <InlineBadgeSelect type="status" value={tc.status} options={Object.values(Status)} onChange={(val) => onUpdate(tc.id, { status: val as Status })} /> : <Badge type="status" value={tc.status} />}
+                       {canManage ? <InlineBadgeSelect type="status" label="Status" value={tc.status} options={Object.values(Status)} onChange={(val) => onUpdate(tc.id, { status: val as Status })} /> : <Badge type="status" value={tc.status} />}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap align-middle">
-                       <Badge type="automation" value={tc.automationType} />
+                       {canManage ? <InlineBadgeSelect type="automation" label="Testing Type" value={tc.automationType} options={Object.values(AutomationType)} onChange={(val) => onUpdate(tc.id, { automationType: val as AutomationType })} /> : <Badge type="automation" value={tc.automationType} />}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap align-middle">
-                       <Badge type="automationReadiness" value={normalizeAutomationReadiness(tc.automationReadiness)} />
+                       {canManage ? <InlineBadgeSelect type="automationReadiness" label="Automation Readiness" value={normalizeAutomationReadiness(tc.automationReadiness)} options={Object.values(AutomationReadiness)} onChange={(val) => onUpdate(tc.id, { automationReadiness: val as AutomationReadiness })} /> : <Badge type="automationReadiness" value={normalizeAutomationReadiness(tc.automationReadiness)} />}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 font-mono hidden lg:table-cell align-middle">
                       {new Date(tc.updatedAt).toLocaleDateString()}

@@ -1,14 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { Priority, Status, AutomationReadiness, AutomationType } from '../types.ts';
 
 interface BadgeProps {
-  type: 'priority' | 'status' | 'tag' | 'automation' | 'automationReadiness';
+  type: 'priority' | 'status' | 'tag' | 'automation' | 'automationReadiness' | 'section';
   value: string;
+  label?: string;
   onClick?: () => void;
   className?: string;
 }
 
-export const Badge: React.FC<BadgeProps> = ({ type, value, onClick, className = '' }) => {
+export const Badge: React.FC<BadgeProps> = ({ type, value, label, onClick, className = '' }) => {
   // Base style: rounded-md for a more technical feel than full rounded-full
   let containerStyles = "inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium border transition-colors duration-200 ";
   let dotStyles = "mr-1.5 h-2 w-2 rounded-full";
@@ -96,6 +97,8 @@ export const Badge: React.FC<BadgeProps> = ({ type, value, onClick, className = 
         containerStyles += " bg-slate-50 text-slate-600 border-slate-200";
         dotColor = "bg-slate-400";
     }
+  } else if (type === 'section') {
+    containerStyles += " bg-slate-50 text-slate-600 border-slate-200" + (onClick ? " hover:bg-slate-100" : "");
   } else {
     // Tags
     return (
@@ -106,9 +109,11 @@ export const Badge: React.FC<BadgeProps> = ({ type, value, onClick, className = 
   }
 
   return (
-    <span className={`${containerStyles} ${className}`} onClick={onClick}>
-      <span className={dotStyles + " " + dotColor}></span>
-      {value}
+    <span className={`${containerStyles}${label ? ' min-h-7 max-w-full gap-1.5 px-2.5 py-1 leading-4' : ''} ${className}`} onClick={onClick}>
+      {label && <span className="shrink-0 font-semibold text-current opacity-70">{label}</span>}
+      {label && <span aria-hidden="true" className="h-3 w-px shrink-0 bg-current opacity-20" />}
+      {type !== 'section' && <span className={dotStyles + " " + dotColor}></span>}
+      <span className="min-w-0 break-words">{value}</span>
     </span>
   );
 };

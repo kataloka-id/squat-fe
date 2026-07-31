@@ -163,6 +163,8 @@ export interface ProjectTestCaseRecord {
   status: string;
   automationType: string;
   automationReadiness?: string;
+  isReusable?: boolean;
+  linkedPreconditions?: LinkedPreconditionRecord[];
   description?: string | null;
   preconditions?: string | null;
   mainExpectedResult?: string | null;
@@ -170,6 +172,33 @@ export interface ProjectTestCaseRecord {
   tags: string[];
   createdBy?: string;
   updatedAt?: string;
+}
+
+/** A reference returned with its current source-test-case display data. */
+export interface LinkedPreconditionRecord {
+  id?: string;
+  testCaseId: string;
+  sortOrder: number;
+  projectKey?: string;
+  tcNumber?: number;
+  title?: string;
+  section?: string;
+  status?: string;
+  automationType?: string;
+  isReusable?: boolean;
+  isDeprecated?: boolean;
+}
+
+export interface ReusableTestCaseRecord {
+  id: string;
+  tcNumber?: number;
+  projectKey?: string;
+  title: string;
+  section: string;
+  sectionId?: string;
+  status: string;
+  automationType: string;
+  warning?: boolean;
 }
 
 export interface TestCaseImportIssue {

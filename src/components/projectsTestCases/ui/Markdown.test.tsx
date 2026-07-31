@@ -95,7 +95,7 @@ describe('Markdown authoring', () => {
         expect.objectContaining({ id: 'second', action: '*Second action*', expectedResult: '`second`' }),
         expect.objectContaining({ id: 'first', action: '**First action**', expectedResult: '`first`' }),
       ],
-    }));
+    }), 'close');
   });
 
   it('reorders raw Markdown steps with the keyboard-accessible move control', () => {
@@ -109,7 +109,7 @@ describe('Markdown authoring', () => {
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ steps: [
       expect.objectContaining({ id: 'second', action: '*Second*', expectedResult: '`two`' }),
       expect.objectContaining({ id: 'first', action: '**First**', expectedResult: '`one`' }),
-    ] }));
+    ] }), 'close');
   });
 
   it('retains the required title validation before submission', () => {
@@ -155,7 +155,7 @@ describe('Markdown authoring', () => {
     const { container } = render(<TestCaseForm initialData={initialData} isOpen onClose={() => {}} onSave={onSave} projects={[project]} sectionsByProject={{ [project.id]: ['General'] }} />);
     expect((within(container).getByLabelText('Candidate') as HTMLInputElement).checked).toBe(true);
     fireEvent.submit(container.querySelector('form')!);
-    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ automationType: AutomationType.API, automationReadiness: AutomationReadiness.Candidate, status: Status.Review }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ automationType: AutomationType.API, automationReadiness: AutomationReadiness.Candidate, status: Status.Review }), 'close');
   });
 
   it('submits an optional Description as raw Markdown after Title and before configuration', () => {
@@ -170,7 +170,7 @@ describe('Markdown authoring', () => {
     fireEvent.change(title, { target: { value: 'Case' } });
     fireEvent.change(description, { target: { value: '**Purpose**\n\n- scope' } });
     fireEvent.submit(container.querySelector('form')!);
-    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ description: '**Purpose**\n\n- scope' }));
+    expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ description: '**Purpose**\n\n- scope' }), 'close');
   });
 
   it('keeps legacy cases without Description editable', () => {
@@ -215,7 +215,7 @@ describe('Markdown authoring', () => {
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
       mainExpectedResult: '**Overall success**',
       steps: [expect.objectContaining({ expectedResult: '`step success`' })],
-    }));
+    }), 'close');
   });
 
   it('initializes legacy cases without a main expected result and preserves an empty optional value', () => {

@@ -1,8 +1,10 @@
 import api from './axios';
 import { getCached, invalidateReadCache, type ReadOptions } from './read-cache';
-import type { ApiResponse, ProjectAssignmentRecord, ProjectMemberRecord, ProjectPayload, ProjectTestCaseRecord, SectionRecord, TestCaseImportPayload, TestCaseImportResult } from '@/src/types/api.ts';
+import type { ApiResponse, ProjectAssignmentRecord, ProjectMemberRecord, ProjectPayload, ProjectTestCaseRecord, ReusableTestCaseRecord, SectionRecord, TestCaseImportPayload, TestCaseImportResult } from '@/src/types/api.ts';
 
-type TestCasePayload = Pick<ProjectTestCaseRecord, 'title' | 'sectionId' | 'priority' | 'status' | 'automationType' | 'automationReadiness' | 'description' | 'preconditions' | 'mainExpectedResult' | 'steps' | 'tags'>;
+export type TestCasePayload = Pick<ProjectTestCaseRecord, 'title' | 'sectionId' | 'priority' | 'status' | 'automationType' | 'automationReadiness' | 'isReusable' | 'description' | 'preconditions' | 'mainExpectedResult' | 'steps' | 'tags'> & {
+  linkedPreconditions?: Array<{ testCaseId: string; sortOrder: number }>;
+};
 
 export const ProjectsService = {
   // The backend scopes this collection to the authenticated caller.  Do not
@@ -28,6 +30,8 @@ export const ProjectsService = {
   },
   listTestCases: (projectId: string, options?: ReadOptions) =>
     getCached(`/v1/projects/${projectId}/test-cases`, () => api.get(`/v1/projects/${projectId}/test-cases`) as Promise<ApiResponse<ProjectTestCaseRecord[]>>, options),
+  listReusableTestCases: (projectId: string, query: { search?: string; sectionId?: string; status?: string; excludeTestCaseId?: string } = {}) =>
+    api.get(`/v1/projects/${projectId}/test-cases/reusable`, { params: query }) as Promise<ApiResponse<ReusableTestCaseRecord[]>>,
   listSections: (projectId: string, options?: ReadOptions) =>
     getCached(`/v1/projects/${projectId}/sections`, () => api.get(`/v1/projects/${projectId}/sections`) as Promise<ApiResponse<SectionRecord[]>>, options),
   createTestCase: async (projectId: string, payload: TestCasePayload) => {
