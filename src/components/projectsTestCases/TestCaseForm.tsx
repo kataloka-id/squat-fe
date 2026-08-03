@@ -1,5 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { AlertTriangle, ChevronDown, ChevronUp, ExternalLink, GripVertical, Plus, Save, Trash2, X } from 'lucide-react';
+import {
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  ExternalLink,
+  GripVertical,
+  Plus,
+  Save,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { Button } from './ui/Button';
 import { Select } from './ui/Select';
 import {
@@ -14,8 +24,10 @@ import {
 } from '../projectsTestCases/types.ts';
 import { formatTestCaseDisplayId } from '@/src/utils/testCaseDisplayId.ts';
 import { MarkdownEditor } from './ui/Markdown.tsx';
+import { Attachments } from './Attachments.tsx';
 import { ProjectsService } from '@/src/api/projects.service.ts';
 import type { ReusableTestCaseRecord, SectionRecord } from '@/src/types/api.ts';
+import { removeAttachmentMarkdownReferences } from '@/src/utils/attachmentMarkdown.ts';
 
 interface TestCaseFormProps {
   isOpen: boolean;
@@ -25,9 +37,14 @@ interface TestCaseFormProps {
   preselectedProjectId?: string;
   onProjectChange?: (projectId: string) => Promise<SectionRecord[]>;
   onClose: () => void;
-  onSave: (data: Partial<TestCase>, mode: TestCaseSubmitMode) => Promise<boolean | void> | boolean | void;
+  onSave: (
+    data: Partial<TestCase>,
+    mode: TestCaseSubmitMode,
+  ) => Promise<boolean | void> | boolean | void;
   /** The containing page may hide editing actions for read-only project members. */
   canEdit?: boolean;
+  // eslint-disable-next-line no-unused-vars -- TypeScript callback parameters, not runtime bindings.
+  onNotify?: (message: string, type: 'success' | 'error') => void;
 }
 
 export type TestCaseSubmitMode = 'close' | 'create-another';
@@ -36,10 +53,13 @@ const inputClassName =
   'w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm transition-all placeholder:text-slate-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20';
 const fieldLabelClassName = 'mb-1.5 block text-sm font-semibold text-slate-700';
 const sectionTitleClassName = 'text-sm font-semibold text-slate-900';
-const projectSections = (sectionsByProject: Record<string, SectionRecord[] | string[]>, projectId: string): SectionRecord[] =>
-  (sectionsByProject[projectId] ?? []).map((section) => typeof section === 'string'
-    ? { id: section, name: section, projectId }
-    : section);
+const projectSections = (
+  sectionsByProject: Record<string, SectionRecord[] | string[]>,
+  projectId: string,
+): SectionRecord[] =>
+  (sectionsByProject[projectId] ?? []).map((section) =>
+    typeof section === 'string' ? { id: section, name: section, projectId } : section,
+  );
 
 export const TestCaseForm: React.FC<TestCaseFormProps> = ({
   isOpen,
@@ -51,15 +71,19 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
   onClose,
   onSave,
   canEdit = true,
+  onNotify = () => {},
 }) => {
-  const [loadedSectionsByProject, setLoadedSectionsByProject] = useState<Record<string, SectionRecord[]>>({});
+  const [loadedSectionsByProject, setLoadedSectionsByProject] = useState<
+    Record<string, SectionRecord[]>
+  >({});
   const [isLoadingSections, setIsLoadingSections] = useState(false);
   const [submitMode, setSubmitMode] = useState<TestCaseSubmitMode | null>(null);
   const [sectionsError, setSectionsError] = useState<string | null>(null);
   const sectionRequestVersion = useRef(0);
   const isSubmittingRef = useRef(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
-  const getProjectSections = (projectId: string) => loadedSectionsByProject[projectId] ?? projectSections(sectionsByProject, projectId);
+  const getProjectSections = (projectId: string) =>
+    loadedSectionsByProject[projectId] ?? projectSections(sectionsByProject, projectId);
   const selectedInitialProjectId =
     initialData?.projectId ?? preselectedProjectId ?? projects[0]?.id ?? '';
   const initialSections = getProjectSections(selectedInitialProjectId);
@@ -91,8 +115,8 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
 
   useEffect(() => {
     if (initialData) {
-      const matchingSection = getProjectSections(initialData.projectId).find((section) =>
-        section.id === initialData.sectionId || section.name === initialData.section,
+      const matchingSection = getProjectSections(initialData.projectId).find(
+        (section) => section.id === initialData.sectionId || section.name === initialData.section,
       );
       setFormData({
         ...initialData,
@@ -101,7 +125,9 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
         automationReadiness: initialData.automationReadiness ?? AutomationReadiness.Candidate,
       });
       setSteps(initialData.steps || []);
-      setLinkedPreconditions([...(initialData.linkedPreconditions ?? [])].sort((a, b) => a.sortOrder - b.sortOrder));
+      setLinkedPreconditions(
+        [...(initialData.linkedPreconditions ?? [])].sort((a, b) => a.sortOrder - b.sortOrder),
+      );
       return;
     }
 
@@ -119,8 +145,8 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
     });
     setSteps([{ id: Date.now().toString(), action: '', expectedResult: '' }]);
     setLinkedPreconditions([]);
-  // Form fields must survive catalog refreshes and project switches.  Only
-  // initialize when opening the dialog (or selecting a different record).
+    // Form fields must survive catalog refreshes and project switches.  Only
+    // initialize when opening the dialog (or selecting a different record).
   }, [initialData, isOpen, selectedInitialProjectId]);
 
   const handleChange = (
@@ -133,6 +159,26 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
   const handleStepChange = (id: string, field: 'action' | 'expectedResult', value: string) => {
     setSteps((previous) =>
       previous.map((step) => (step.id === id ? { ...step, [field]: value } : step)),
+    );
+  };
+
+  /** Removes a deleted attachment from every Markdown field in this form draft. */
+  const removeDeletedAttachmentReferences = (attachmentId: string) => {
+    setFormData((previous) => ({
+      ...previous,
+      description: removeAttachmentMarkdownReferences(previous.description ?? '', attachmentId),
+      preconditions: removeAttachmentMarkdownReferences(previous.preconditions ?? '', attachmentId),
+      mainExpectedResult: removeAttachmentMarkdownReferences(
+        previous.mainExpectedResult ?? '',
+        attachmentId,
+      ),
+    }));
+    setSteps((previous) =>
+      previous.map((step) => ({
+        ...step,
+        action: removeAttachmentMarkdownReferences(step.action, attachmentId),
+        expectedResult: removeAttachmentMarkdownReferences(step.expectedResult, attachmentId),
+      })),
     );
   };
 
@@ -198,7 +244,14 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
     setSubmitMode(mode);
     try {
       const succeeded = await onSave(
-        { ...formData, steps, linkedPreconditions: linkedPreconditions.map((link, index) => ({ testCaseId: link.testCaseId, sortOrder: index + 1 })) },
+        {
+          ...formData,
+          steps,
+          linkedPreconditions: linkedPreconditions.map((link, index) => ({
+            testCaseId: link.testCaseId,
+            sortOrder: index + 1,
+          })),
+        },
         mode,
       );
       if (succeeded === false || mode !== 'create-another') return;
@@ -236,11 +289,20 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
     setIsLoadingReusableCases(true);
     setReusableCasesError(null);
     try {
-      const response = await ProjectsService.listReusableTestCases(projectId, { search: search || undefined, excludeTestCaseId: initialData?.id });
+      const response = await ProjectsService.listReusableTestCases(projectId, {
+        search: search || undefined,
+        excludeTestCaseId: initialData?.id,
+      });
       const linkedIds = new Set(linkedPreconditions.map((link) => link.testCaseId));
-      setReusableCandidates(response.data.filter((testCase) => testCase.id !== initialData?.id && !linkedIds.has(testCase.id)));
+      setReusableCandidates(
+        response.data.filter(
+          (testCase) => testCase.id !== initialData?.id && !linkedIds.has(testCase.id),
+        ),
+      );
     } catch (error) {
-      setReusableCasesError(error instanceof Error ? error.message : 'Reusable test cases could not be loaded.');
+      setReusableCasesError(
+        error instanceof Error ? error.message : 'Reusable test cases could not be loaded.',
+      );
     } finally {
       setIsLoadingReusableCases(false);
     }
@@ -254,14 +316,20 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
   };
 
   const addSelectedReusableCases = () => {
-    const selected = reusableCandidates.filter((testCase) => selectedReusableIds.includes(testCase.id));
+    const selected = reusableCandidates.filter((testCase) =>
+      selectedReusableIds.includes(testCase.id),
+    );
     setLinkedPreconditions((previous) => [
       ...previous,
       ...selected.map((testCase, index) => ({
         testCaseId: testCase.id,
         sortOrder: previous.length + index + 1,
-        projectKey: testCase.projectKey, tcNumber: testCase.tcNumber, title: testCase.title, section: testCase.section,
-        status: testCase.status as Status, automationType: testCase.automationType as AutomationType,
+        projectKey: testCase.projectKey,
+        tcNumber: testCase.tcNumber,
+        title: testCase.title,
+        section: testCase.section,
+        status: testCase.status as Status,
+        automationType: testCase.automationType as AutomationType,
       })),
     ]);
     setIsReusableSelectorOpen(false);
@@ -269,6 +337,10 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
 
   const availableSections = getProjectSections(formData.projectId ?? '');
   const editingProjectKey = projects.find((project) => project.id === initialData?.projectId)?.key;
+  const attachmentContext =
+    formData.projectId && initialData?.id
+      ? { projectId: formData.projectId, testCaseId: initialData.id }
+      : undefined;
 
   const loadSectionsForProject = async (projectId: string) => {
     const requestVersion = ++sectionRequestVersion.current;
@@ -276,15 +348,19 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
     setSectionsError(null);
 
     try {
-      const sections = await onProjectChange?.(projectId) ?? getProjectSections(projectId);
+      const sections = (await onProjectChange?.(projectId)) ?? getProjectSections(projectId);
       if (requestVersion !== sectionRequestVersion.current) return;
       setLoadedSectionsByProject((current) => ({ ...current, [projectId]: sections }));
-      setFormData((previous) => previous.projectId === projectId
-        ? { ...previous, sectionId: sections[0]?.id ?? '', section: sections[0]?.name ?? '' }
-        : previous);
+      setFormData((previous) =>
+        previous.projectId === projectId
+          ? { ...previous, sectionId: sections[0]?.id ?? '', section: sections[0]?.name ?? '' }
+          : previous,
+      );
     } catch (error) {
       if (requestVersion !== sectionRequestVersion.current) return;
-      setSectionsError(error instanceof Error ? error.message : 'Section catalog could not be loaded.');
+      setSectionsError(
+        error instanceof Error ? error.message : 'Section catalog could not be loaded.',
+      );
     } finally {
       if (requestVersion === sectionRequestVersion.current) setIsLoadingSections(false);
     }
@@ -408,9 +484,12 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
                         Description
                       </label>
                       <MarkdownEditor
+                        attachmentContext={attachmentContext}
                         id="test-case-description"
                         label="Description"
-                        onChange={(description) => setFormData((previous) => ({ ...previous, description }))}
+                        onChange={(description) =>
+                          setFormData((previous) => ({ ...previous, description }))
+                        }
                         placeholder="Describe the purpose, context, and scope of this test case..."
                         rows={4}
                         value={formData.description ?? ''}
@@ -443,8 +522,14 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
                           id="test-case-section"
                           name="sectionId"
                           onChange={(event) => {
-                            const selected = availableSections.find((section) => section.id === event.target.value);
-                            setFormData((previous) => ({ ...previous, sectionId: selected?.id ?? '', section: selected?.name ?? '' }));
+                            const selected = availableSections.find(
+                              (section) => section.id === event.target.value,
+                            );
+                            setFormData((previous) => ({
+                              ...previous,
+                              sectionId: selected?.id ?? '',
+                              section: selected?.name ?? '',
+                            }));
                           }}
                           required
                           value={formData.sectionId ?? ''}
@@ -464,11 +549,19 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
                         {sectionsError ? (
                           <p className="mt-1.5 text-xs text-red-600" role="alert">
                             {sectionsError}{' '}
-                            <button className="font-semibold underline" onClick={() => void loadSectionsForProject(formData.projectId ?? '')} type="button">
+                            <button
+                              className="font-semibold underline"
+                              onClick={() => void loadSectionsForProject(formData.projectId ?? '')}
+                              type="button"
+                            >
                               Retry
                             </button>
                           </p>
-                        ) : <p className="mt-1.5 text-xs text-slate-400">Choose a section from the project catalog.</p>}
+                        ) : (
+                          <p className="mt-1.5 text-xs text-slate-400">
+                            Choose a section from the project catalog.
+                          </p>
+                        )}
                       </div>
                       <div>
                         <label className={fieldLabelClassName} htmlFor="test-case-priority">
@@ -535,7 +628,9 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
                           </label>
                         ))}
                       </div>
-                      <p className="mt-2 text-sm text-slate-500">Indicate whether this test case is suitable and ready for automation.</p>
+                      <p className="mt-2 text-sm text-slate-500">
+                        Indicate whether this test case is suitable and ready for automation.
+                      </p>
                     </fieldset>
 
                     <fieldset>
@@ -567,12 +662,24 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
                         checked={formData.isReusable ?? false}
                         className="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                         disabled={!canEdit}
-                        onChange={(event) => setFormData((previous) => ({ ...previous, isReusable: event.target.checked }))}
+                        onChange={(event) =>
+                          setFormData((previous) => ({
+                            ...previous,
+                            isReusable: event.target.checked,
+                          }))
+                        }
                         type="checkbox"
                       />
                       <span>
-                        <span className="block text-sm font-semibold text-slate-800">Reusable Test Case</span>
-                        <span className="mt-0.5 block text-xs text-slate-500" id="test-case-reusable-help">Allow this test case to be reused as a precondition.</span>
+                        <span className="block text-sm font-semibold text-slate-800">
+                          Reusable Test Case
+                        </span>
+                        <span
+                          className="mt-0.5 block text-xs text-slate-500"
+                          id="test-case-reusable-help"
+                        >
+                          Allow this test case to be reused as a precondition.
+                        </span>
                       </span>
                     </label>
                   </div>
@@ -588,10 +695,13 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
                     </p>
                   </div>
                   <MarkdownEditor
+                    attachmentContext={attachmentContext}
                     className="min-h-28"
                     id="test-case-preconditions"
                     label="Preconditions"
-                    onChange={(preconditions) => setFormData((previous) => ({ ...previous, preconditions }))}
+                    onChange={(preconditions) =>
+                      setFormData((previous) => ({ ...previous, preconditions }))
+                    }
                     placeholder="E.g. User must be logged in..."
                     rows={3}
                     value={formData.preconditions ?? ''}
@@ -600,37 +710,130 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
                   <div className="mt-6 border-t border-slate-200 pt-5">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
-                        <h4 className="text-sm font-semibold text-slate-900">Linked Reusable Test Cases</h4>
-                        <p className="mt-1 text-xs text-slate-500">References stay current with the source test case.</p>
+                        <h4 className="text-sm font-semibold text-slate-900">
+                          Linked Reusable Test Cases
+                        </h4>
+                        <p className="mt-1 text-xs text-slate-500">
+                          References stay current with the source test case.
+                        </p>
                       </div>
-                      <Button disabled={!canEdit} onClick={openReusableSelector} size="sm" type="button" icon={<Plus size={15} />}>Link Test Case</Button>
+                      <Button
+                        disabled={!canEdit}
+                        onClick={openReusableSelector}
+                        size="sm"
+                        type="button"
+                        icon={<Plus size={15} />}
+                      >
+                        Link Test Case
+                      </Button>
                     </div>
-                    <p aria-live="polite" className="sr-only">{preconditionMoveAnnouncement}</p>
+                    <p aria-live="polite" className="sr-only">
+                      {preconditionMoveAnnouncement}
+                    </p>
                     <div className="mt-3 space-y-2">
                       {linkedPreconditions.map((link, index) => {
                         const displayId = formatTestCaseDisplayId(link);
                         const isDeprecated = link.isDeprecated || link.status === Status.Deprecated;
                         return (
-                          <article className="group flex items-start gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm" draggable={canEdit} key={link.testCaseId} onDragEnd={() => setDraggedPreconditionId(null)} onDragOver={(event) => event.preventDefault()} onDragStart={() => setDraggedPreconditionId(link.testCaseId)} onDrop={() => { if (draggedPreconditionId) moveLinkedPrecondition(draggedPreconditionId, link.testCaseId); setDraggedPreconditionId(null); }}>
-                            <span aria-hidden="true" className="mt-1 cursor-move text-slate-300 group-hover:text-slate-500"><GripVertical size={16} /></span>
-                            <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">{index + 1}</span>
+                          <article
+                            className="group flex items-start gap-2 rounded-xl border border-slate-200 bg-white p-3 shadow-sm"
+                            draggable={canEdit}
+                            key={link.testCaseId}
+                            onDragEnd={() => setDraggedPreconditionId(null)}
+                            onDragOver={(event) => event.preventDefault()}
+                            onDragStart={() => setDraggedPreconditionId(link.testCaseId)}
+                            onDrop={() => {
+                              if (draggedPreconditionId)
+                                moveLinkedPrecondition(draggedPreconditionId, link.testCaseId);
+                              setDraggedPreconditionId(null);
+                            }}
+                          >
+                            <span
+                              aria-hidden="true"
+                              className="mt-1 cursor-move text-slate-300 group-hover:text-slate-500"
+                            >
+                              <GripVertical size={16} />
+                            </span>
+                            <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
+                              {index + 1}
+                            </span>
                             <div className="min-w-0 flex-1">
-                              <p className="truncate text-sm font-semibold text-slate-800"><span className="font-mono text-xs text-slate-500">{displayId}</span> — {link.title ?? 'Linked test case'}</p>
-                              <p className="mt-1 text-xs text-slate-500">{link.status ?? 'Status unavailable'}{link.section ? ` · ${link.section}` : ''}{link.automationType ? ` · ${link.automationType}` : ''}</p>
-                              {isDeprecated && <p className="mt-1 flex items-center gap-1 text-xs text-amber-700"><AlertTriangle size={13} /> This linked test case is deprecated.</p>}
+                              <p className="truncate text-sm font-semibold text-slate-800">
+                                <span className="font-mono text-xs text-slate-500">
+                                  {displayId}
+                                </span>{' '}
+                                — {link.title ?? 'Linked test case'}
+                              </p>
+                              <p className="mt-1 text-xs text-slate-500">
+                                {link.status ?? 'Status unavailable'}
+                                {link.section ? ` · ${link.section}` : ''}
+                                {link.automationType ? ` · ${link.automationType}` : ''}
+                              </p>
+                              {isDeprecated && (
+                                <p className="mt-1 flex items-center gap-1 text-xs text-amber-700">
+                                  <AlertTriangle size={13} /> This linked test case is deprecated.
+                                </p>
+                              )}
                             </div>
                             <div className="flex shrink-0 items-center gap-0.5">
-                              <a aria-label={`Open ${displayId} in a new tab`} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500/20" href={`/workspace?projectId=${encodeURIComponent(formData.projectId ?? '')}&testCaseId=${encodeURIComponent(link.testCaseId)}`} rel="noreferrer" target="_blank"><ExternalLink size={15} /></a>
-                              {canEdit && <>
-                                <button aria-label={`Move linked precondition ${index + 1} up`} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40" disabled={index === 0} onClick={() => moveLinkedPreconditionByOffset(link.testCaseId, -1)} type="button"><ChevronUp size={15} /></button>
-                                <button aria-label={`Move linked precondition ${index + 1} down`} className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40" disabled={index === linkedPreconditions.length - 1} onClick={() => moveLinkedPreconditionByOffset(link.testCaseId, 1)} type="button"><ChevronDown size={15} /></button>
-                                <button aria-label={`Remove linked precondition ${index + 1}`} className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600" onClick={() => setLinkedPreconditions((previous) => previous.filter((item) => item.testCaseId !== link.testCaseId))} type="button"><Trash2 size={15} /></button>
-                              </>}
+                              <a
+                                aria-label={`Open ${displayId} in a new tab`}
+                                className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
+                                href={`/workspace?projectId=${encodeURIComponent(formData.projectId ?? '')}&testCaseId=${encodeURIComponent(link.testCaseId)}`}
+                                rel="noreferrer"
+                                target="_blank"
+                              >
+                                <ExternalLink size={15} />
+                              </a>
+                              {canEdit && (
+                                <>
+                                  <button
+                                    aria-label={`Move linked precondition ${index + 1} up`}
+                                    className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40"
+                                    disabled={index === 0}
+                                    onClick={() =>
+                                      moveLinkedPreconditionByOffset(link.testCaseId, -1)
+                                    }
+                                    type="button"
+                                  >
+                                    <ChevronUp size={15} />
+                                  </button>
+                                  <button
+                                    aria-label={`Move linked precondition ${index + 1} down`}
+                                    className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-40"
+                                    disabled={index === linkedPreconditions.length - 1}
+                                    onClick={() =>
+                                      moveLinkedPreconditionByOffset(link.testCaseId, 1)
+                                    }
+                                    type="button"
+                                  >
+                                    <ChevronDown size={15} />
+                                  </button>
+                                  <button
+                                    aria-label={`Remove linked precondition ${index + 1}`}
+                                    className="rounded-md p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                                    onClick={() =>
+                                      setLinkedPreconditions((previous) =>
+                                        previous.filter(
+                                          (item) => item.testCaseId !== link.testCaseId,
+                                        ),
+                                      )
+                                    }
+                                    type="button"
+                                  >
+                                    <Trash2 size={15} />
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </article>
                         );
                       })}
-                      {linkedPreconditions.length === 0 && <p className="rounded-lg border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-500">No reusable test cases linked.</p>}
+                      {linkedPreconditions.length === 0 && (
+                        <p className="rounded-lg border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-500">
+                          No reusable test cases linked.
+                        </p>
+                      )}
                     </div>
                   </div>
                 </section>
@@ -655,7 +858,9 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
                 </div>
 
                 <div className="space-y-3">
-                  <p aria-live="polite" className="sr-only">{stepMoveAnnouncement}</p>
+                  <p aria-live="polite" className="sr-only">
+                    {stepMoveAnnouncement}
+                  </p>
                   {steps.map((step, index) => (
                     <article
                       className="group rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:border-brand-200"
@@ -723,11 +928,10 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
                             Action
                           </label>
                           <MarkdownEditor
+                            attachmentContext={attachmentContext}
                             id={`test-step-action-${step.id}`}
                             label={`Step ${index + 1} action`}
-                            onChange={(event) =>
-                              handleStepChange(step.id, 'action', event)
-                            }
+                            onChange={(event) => handleStepChange(step.id, 'action', event)}
                             placeholder="What action will be performed?"
                             rows={3}
                             value={step.action}
@@ -741,11 +945,10 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
                             Expected result
                           </label>
                           <MarkdownEditor
+                            attachmentContext={attachmentContext}
                             id={`test-step-result-${step.id}`}
                             label={`Step ${index + 1} expected result`}
-                            onChange={(event) =>
-                              handleStepChange(step.id, 'expectedResult', event)
-                            }
+                            onChange={(event) => handleStepChange(step.id, 'expectedResult', event)}
                             placeholder="What is the expected result?"
                             rows={3}
                             value={step.expectedResult}
@@ -775,7 +978,10 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
                 </button>
               </section>
 
-              <section aria-labelledby="test-case-main-expected-result-heading" className="bg-white p-5 sm:p-7 lg:border-r lg:border-slate-200">
+              <section
+                aria-labelledby="test-case-main-expected-result-heading"
+                className="bg-white p-5 sm:p-7 lg:border-r lg:border-slate-200"
+              >
                 <div className="mb-3">
                   <h3 className={sectionTitleClassName} id="test-case-main-expected-result-heading">
                     Main Expected Result
@@ -785,14 +991,25 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
                   </p>
                 </div>
                 <MarkdownEditor
+                  attachmentContext={attachmentContext}
                   id="test-case-main-expected-result"
                   label="Main Expected Result"
                   maxLength={10000}
-                  onChange={(mainExpectedResult) => setFormData((previous) => ({ ...previous, mainExpectedResult }))}
+                  onChange={(mainExpectedResult) =>
+                    setFormData((previous) => ({ ...previous, mainExpectedResult }))
+                  }
                   placeholder="Describe the overall expected outcome..."
                   rows={4}
                   value={formData.mainExpectedResult ?? ''}
                 />
+                {attachmentContext && (
+                  <Attachments
+                    onDeleted={removeDeletedAttachmentReferences}
+                    onNotify={onNotify}
+                    projectId={attachmentContext.projectId}
+                    testCaseId={attachmentContext.testCaseId!}
+                  />
+                )}
               </section>
             </div>
           </form>
@@ -804,52 +1021,172 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
                 : 'Unsaved draft'}
             </p>
             <div className="flex flex-col gap-2 sm:flex-row sm:gap-3">
-              <Button disabled={Boolean(submitMode)} onClick={onClose} type="button" variant="secondary">
+              <Button
+                disabled={Boolean(submitMode)}
+                onClick={onClose}
+                type="button"
+                variant="secondary"
+              >
                 Cancel
               </Button>
               {!initialData && (
                 <Button
-                  disabled={Boolean(submitMode) || isLoadingSections || !availableSections.some((section) => section.id === formData.sectionId)}
+                  disabled={
+                    Boolean(submitMode) ||
+                    isLoadingSections ||
+                    !availableSections.some((section) => section.id === formData.sectionId)
+                  }
                   onClick={(event) => void handleSubmit(event, 'create-another')}
                   type="button"
                   variant="secondary"
                 >
-                  {submitMode === 'create-another' ? 'Creating & Adding Another…' : 'Create & Add Another'}
+                  {submitMode === 'create-another'
+                    ? 'Creating & Adding Another…'
+                    : 'Create & Add Another'}
                 </Button>
               )}
-              <Button disabled={Boolean(submitMode) || isLoadingSections || !availableSections.some((section) => section.id === formData.sectionId)} form="testCaseForm" icon={<Save size={16} />} type="submit">
-                {submitMode === 'close' ? 'Creating…' : initialData ? 'Save Changes' : 'Create Case'}
+              <Button
+                disabled={
+                  Boolean(submitMode) ||
+                  isLoadingSections ||
+                  !availableSections.some((section) => section.id === formData.sectionId)
+                }
+                form="testCaseForm"
+                icon={<Save size={16} />}
+                type="submit"
+              >
+                {submitMode === 'close'
+                  ? 'Creating…'
+                  : initialData
+                    ? 'Save Changes'
+                    : 'Create Case'}
               </Button>
             </div>
           </footer>
         </div>
       </div>
       {isReusableSelectorOpen && (
-        <div aria-labelledby="reusable-test-case-selector-title" aria-modal="true" className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4" role="dialog">
+        <div
+          aria-labelledby="reusable-test-case-selector-title"
+          aria-modal="true"
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 p-4"
+          role="dialog"
+        >
           <div className="max-h-[min(42rem,calc(100dvh-2rem))] w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
-              <div><h3 className="text-base font-bold text-slate-900" id="reusable-test-case-selector-title">Link Reusable Test Cases</h3><p className="mt-1 text-xs text-slate-500">Only reusable cases from this project are available.</p></div>
-              <button aria-label="Close reusable test case selector" className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" onClick={() => setIsReusableSelectorOpen(false)} type="button"><X size={18} /></button>
+              <div>
+                <h3
+                  className="text-base font-bold text-slate-900"
+                  id="reusable-test-case-selector-title"
+                >
+                  Link Reusable Test Cases
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Only reusable cases from this project are available.
+                </p>
+              </div>
+              <button
+                aria-label="Close reusable test case selector"
+                className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                onClick={() => setIsReusableSelectorOpen(false)}
+                type="button"
+              >
+                <X size={18} />
+              </button>
             </div>
             <div className="p-5">
-              <label className="sr-only" htmlFor="reusable-test-case-search">Search reusable test cases</label>
-              <input className={inputClassName} id="reusable-test-case-search" onChange={(event) => { const search = event.target.value; setReusableSearch(search); void loadReusableCases(search); }} placeholder="Search by test case key, title, or section" value={reusableSearch} />
-              {reusableCasesError && <p className="mt-3 text-sm text-red-600" role="alert">{reusableCasesError}</p>}
+              <label className="sr-only" htmlFor="reusable-test-case-search">
+                Search reusable test cases
+              </label>
+              <input
+                className={inputClassName}
+                id="reusable-test-case-search"
+                onChange={(event) => {
+                  const search = event.target.value;
+                  setReusableSearch(search);
+                  void loadReusableCases(search);
+                }}
+                placeholder="Search by test case key, title, or section"
+                value={reusableSearch}
+              />
+              {reusableCasesError && (
+                <p className="mt-3 text-sm text-red-600" role="alert">
+                  {reusableCasesError}
+                </p>
+              )}
               <div className="mt-4 max-h-80 divide-y divide-slate-100 overflow-y-auto rounded-xl border border-slate-200">
-                {isLoadingReusableCases ? <p className="p-4 text-sm text-slate-500">Loading reusable test cases…</p> : reusableCandidates.length === 0 ? <p className="p-4 text-sm text-slate-500">No reusable test cases found.</p> : reusableCandidates.map((testCase) => {
-                  const disabled = testCase.status === Status.Deprecated;
-                  const checked = selectedReusableIds.includes(testCase.id);
-                  return <label className={`flex gap-3 p-4 ${disabled ? 'cursor-not-allowed bg-slate-50 opacity-65' : 'cursor-pointer hover:bg-slate-50'}`} key={testCase.id}>
-                    <input aria-label={`Link ${formatTestCaseDisplayId(testCase)} — ${testCase.title}`} checked={checked} disabled={disabled} onChange={() => setSelectedReusableIds((previous) => checked ? previous.filter((id) => id !== testCase.id) : [...previous, testCase.id])} type="checkbox" />
-                    <span className="min-w-0"><span className="block truncate text-sm font-semibold text-slate-800"><span className="font-mono text-xs text-slate-500">{formatTestCaseDisplayId(testCase)}</span> — {testCase.title}</span><span className="mt-1 block text-xs text-slate-500">{testCase.section} · {testCase.status} · {testCase.automationType}</span>{testCase.status === Status.Draft || testCase.status === Status.Review ? <span className="mt-1 flex items-center gap-1 text-xs text-amber-700"><AlertTriangle size={13} /> {testCase.status} test case</span> : null}{disabled ? <span className="mt-1 block text-xs text-amber-700">Deprecated test cases cannot be newly linked.</span> : null}</span>
-                  </label>;
-                })}
+                {isLoadingReusableCases ? (
+                  <p className="p-4 text-sm text-slate-500">Loading reusable test cases…</p>
+                ) : reusableCandidates.length === 0 ? (
+                  <p className="p-4 text-sm text-slate-500">No reusable test cases found.</p>
+                ) : (
+                  reusableCandidates.map((testCase) => {
+                    const disabled = testCase.status === Status.Deprecated;
+                    const checked = selectedReusableIds.includes(testCase.id);
+                    return (
+                      <label
+                        className={`flex gap-3 p-4 ${disabled ? 'cursor-not-allowed bg-slate-50 opacity-65' : 'cursor-pointer hover:bg-slate-50'}`}
+                        key={testCase.id}
+                      >
+                        <input
+                          aria-label={`Link ${formatTestCaseDisplayId(testCase)} — ${testCase.title}`}
+                          checked={checked}
+                          disabled={disabled}
+                          onChange={() =>
+                            setSelectedReusableIds((previous) =>
+                              checked
+                                ? previous.filter((id) => id !== testCase.id)
+                                : [...previous, testCase.id],
+                            )
+                          }
+                          type="checkbox"
+                        />
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-semibold text-slate-800">
+                            <span className="font-mono text-xs text-slate-500">
+                              {formatTestCaseDisplayId(testCase)}
+                            </span>{' '}
+                            — {testCase.title}
+                          </span>
+                          <span className="mt-1 block text-xs text-slate-500">
+                            {testCase.section} · {testCase.status} · {testCase.automationType}
+                          </span>
+                          {testCase.status === Status.Draft || testCase.status === Status.Review ? (
+                            <span className="mt-1 flex items-center gap-1 text-xs text-amber-700">
+                              <AlertTriangle size={13} /> {testCase.status} test case
+                            </span>
+                          ) : null}
+                          {disabled ? (
+                            <span className="mt-1 block text-xs text-amber-700">
+                              Deprecated test cases cannot be newly linked.
+                            </span>
+                          ) : null}
+                        </span>
+                      </label>
+                    );
+                  })
+                )}
               </div>
             </div>
-            <div className="flex justify-end gap-3 border-t border-slate-200 px-5 py-4"><Button onClick={() => setIsReusableSelectorOpen(false)} type="button" variant="secondary">Cancel</Button><Button disabled={selectedReusableIds.length === 0} onClick={addSelectedReusableCases} type="button">Link selected</Button></div>
+            <div className="flex justify-end gap-3 border-t border-slate-200 px-5 py-4">
+              <Button
+                onClick={() => setIsReusableSelectorOpen(false)}
+                type="button"
+                variant="secondary"
+              >
+                Cancel
+              </Button>
+              <Button
+                disabled={selectedReusableIds.length === 0}
+                onClick={addSelectedReusableCases}
+                type="button"
+              >
+                Link selected
+              </Button>
+            </div>
           </div>
         </div>
       )}
     </>
   );
-  };
+};

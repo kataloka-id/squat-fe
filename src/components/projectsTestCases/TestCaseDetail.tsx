@@ -5,6 +5,7 @@ import { markdownToPlainText } from '@/src/utils/markdown.ts';
 import { MarkdownContent } from './ui/Markdown.tsx';
 import { Badge } from './ui/Badge.tsx';
 import { Button } from './ui/Button.tsx';
+import { Attachments } from './Attachments.tsx';
 
 type TestCaseDetailProps = {
   testCase: TestCase | null;
@@ -12,6 +13,8 @@ type TestCaseDetailProps = {
   onClose: () => void;
   // eslint-disable-next-line no-unused-vars -- TypeScript callback parameter, not a runtime binding.
   onEdit: (testCase: TestCase) => void;
+  // eslint-disable-next-line no-unused-vars -- TypeScript callback parameter, not a runtime binding.
+  onNotify?: (message: string, type: 'success' | 'error') => void;
 };
 
 const MarkdownSection = ({ title, value, emptyText }: { title: string; value?: string; emptyText: string }) => (
@@ -56,7 +59,7 @@ const LinkedPreconditions = ({ links, projectId }: { links: LinkedPrecondition[]
 );
 
 /** Read-only test case detail that renders stored Markdown as safe React nodes. */
-export const TestCaseDetail = ({ testCase, project, onClose, onEdit }: TestCaseDetailProps) => {
+export const TestCaseDetail = ({ testCase, project, onClose, onEdit, onNotify = () => {} }: TestCaseDetailProps) => {
   if (!testCase) return null;
   const linkedPreconditions = [...(testCase.linkedPreconditions ?? [])].sort((a, b) => a.sortOrder - b.sortOrder);
   const hasLinkedPreconditions = linkedPreconditions.length > 0;
@@ -93,6 +96,7 @@ export const TestCaseDetail = ({ testCase, project, onClose, onEdit }: TestCaseD
             {testCase.steps.length ? <ol className="mt-3 space-y-4">{testCase.steps.map((step, index) => <li className="rounded-lg border border-slate-200 p-4" key={step.id}><p className="text-xs font-semibold text-slate-500">Step {index + 1}</p><MarkdownContent className="mt-2 text-sm text-slate-700" value={step.action} /><p className="mt-3 text-xs font-semibold text-slate-500">Expected Result</p><MarkdownContent className="mt-2 text-sm text-slate-700" value={step.expectedResult} /></li>)}</ol> : <p className="mt-2 text-sm text-slate-400">No test steps provided.</p>}
           </section>
           <MarkdownSection emptyText="No main expected result provided." title="Main Expected Result" value={testCase.mainExpectedResult} />
+          <Attachments canDelete={false} onNotify={onNotify} projectId={testCase.projectId} testCaseId={testCase.id} />
         </div>
 
         <footer className="flex justify-end border-t border-slate-200 px-5 py-4 sm:px-7"><Button icon={<Edit3 size={16} />} onClick={() => onEdit(testCase)} type="button">Edit Test Case</Button></footer>

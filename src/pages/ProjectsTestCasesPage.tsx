@@ -1047,6 +1047,7 @@ export const App: React.FC = () => {
         projects={formProjects}
         sectionsByProject={sectionsByProject}
         onProjectChange={refreshSectionsForProject}
+        onNotify={showToast}
         preselectedProjectId={filters.projectId[0]}
       />
 
@@ -1062,6 +1063,7 @@ export const App: React.FC = () => {
       <TestCaseDetail
         onClose={() => setViewingCase(null)}
         onEdit={handleEdit}
+        onNotify={showToast}
         project={projects.find((project) => project.id === viewingCase?.projectId)}
         testCase={viewingCase}
       />
