@@ -1,15 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), delete: vi.fn() }));
-const cache = vi.hoisted(() => ({ getCached: vi.fn(), invalidateReadCache: vi.fn() }));
 
 vi.mock('./axios.ts', () => ({ default: api }));
-vi.mock('./read-cache.ts', () => cache);
 
 import { AttachmentsService } from './attachments.service.ts';
+import { invalidateReadCache } from './read-cache.ts';
 
 describe('AttachmentsService', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    invalidateReadCache();
+  });
 
   it('uses the agreed upload and complete endpoints', async () => {
     const payload = { projectId: 'project-1', testCaseId: 'case-1', fileName: 'failure.png', mimeType: 'image/png', fileSize: 42 };
@@ -23,15 +25,17 @@ describe('AttachmentsService', () => {
   });
 
   it('scopes reads and cache invalidation to the test case', async () => {
-    cache.getCached.mockResolvedValue({ data: [] });
+    api.get.mockResolvedValue({ data: [] });
     api.delete.mockResolvedValue({ data: null });
 
     await AttachmentsService.listForTestCase('project-1', 'case-1', { force: true });
     await AttachmentsService.remove('attachment-1', 'project-1', 'case-1');
 
-    expect(cache.getCached).toHaveBeenCalledWith('/v1/projects/project-1/test-cases/case-1/attachments', expect.any(Function), { force: true });
+    expect(api.get).toHaveBeenCalledWith('/v1/projects/project-1/test-cases/case-1/attachments');
     expect(api.delete).toHaveBeenCalledWith('/v1/attachments/attachment-1');
-    expect(cache.invalidateReadCache).toHaveBeenCalledWith('/v1/projects/project-1/test-cases/case-1/attachments');
+
+    await AttachmentsService.listForTestCase('project-1', 'case-1');
+    expect(api.get).toHaveBeenCalledTimes(2);
   });
 
   it('requests a short-lived private view URL from the attachment endpoint', async () => {
@@ -40,9 +44,31 @@ describe('AttachmentsService', () => {
     expect(api.get).toHaveBeenCalledWith('/v1/attachments/attachment-1/url');
   });
 
-  it('gets the server-configured attachment size limit from the authenticated API', async () => {
-    api.get.mockResolvedValue({ data: { maxFileSizeBytes: 20 * 1024 * 1024 } });
-    await AttachmentsService.getConfig();
+  it('shares and deduplicates attachment config reads until the default cache TTL expires', async () => {
+    vi.useFakeTimers();
+    const response = { data: { maxFileSizeBytes: 20 * 1024 * 1024 } };
+    let resolveRequest!: () => void;
+    api.get.mockImplementation(
+      () => new Promise<typeof response>((resolve) => { resolveRequest = () => resolve(response); }),
+    );
+
+    const firstEditor = AttachmentsService.getConfig();
+    const strictModeRemount = AttachmentsService.getConfig();
+
+    expect(api.get).toHaveBeenCalledTimes(1);
     expect(api.get).toHaveBeenCalledWith('/v1/attachments/config');
+
+    resolveRequest();
+    await expect(Promise.all([firstEditor, strictModeRemount])).resolves.toEqual([response, response]);
+
+    await expect(AttachmentsService.getConfig()).resolves.toEqual(response);
+    expect(api.get).toHaveBeenCalledTimes(1);
+
+    vi.advanceTimersByTime(30_000);
+    api.get.mockResolvedValue(response);
+
+    await expect(AttachmentsService.getConfig()).resolves.toEqual(response);
+    expect(api.get).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
   });
 });
