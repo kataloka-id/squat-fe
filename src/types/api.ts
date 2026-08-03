@@ -119,6 +119,34 @@ export interface ApiResponse<T> {
   data: T;
 }
 
+export interface AttachmentRecord {
+  id: string;
+  projectId: string;
+  testCaseId: string | null;
+  originalFileName: string;
+  mimeType: string;
+  fileSize: number;
+  status: 'PENDING' | 'READY' | 'FAILED' | 'DELETING';
+  createdAt: string;
+}
+
+export interface AttachmentUploadRequest {
+  projectId: string;
+  /** Omit for a project-level attachment while a new test case is still unsaved. */
+  testCaseId?: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+}
+
+export interface AttachmentUploadUrlResponse {
+  attachment: AttachmentRecord;
+  uploadUrl: string;
+  method: 'PUT';
+  requiredHeaders: { 'Content-Type': string };
+  expiresIn: number;
+}
+
 export interface ProjectAssignmentRecord {
   id: string;
   name: string;
@@ -202,7 +230,15 @@ export interface FolderDeleteImpact {
   directChildFolderCount?: number;
   descendantFolderCount?: number;
   descendantTestCaseCount?: number;
-  externalReferences?: { referenceCount: number; references: Array<{ sourceId: string; consumerId: string; sourceTitle?: string; consumerTitle?: string }> };
+  externalReferences?: {
+    referenceCount: number;
+    references: Array<{
+      sourceId: string;
+      consumerId: string;
+      sourceTitle?: string;
+      consumerTitle?: string;
+    }>;
+  };
 }
 
 /** A reference returned with its current source-test-case display data. */
