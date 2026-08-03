@@ -4,6 +4,7 @@ import type { ApiResponse, AttachmentRecord, AttachmentUploadRequest, Attachment
 
 const testCaseAttachmentPath = (projectId: string, testCaseId: string) =>
   `/v1/projects/${projectId}/test-cases/${testCaseId}/attachments`;
+const attachmentConfigPath = '/v1/attachments/config';
 
 export const AttachmentsService = {
   createUploadUrl: (payload: AttachmentUploadRequest) =>
@@ -17,7 +18,10 @@ export const AttachmentsService = {
   getViewUrl: (attachmentId: string) =>
     api.get(`/v1/attachments/${attachmentId}/url`) as Promise<ApiResponse<{ url: string; expiresIn: number }>>,
   getConfig: () =>
-    api.get('/v1/attachments/config') as Promise<ApiResponse<{ maxFileSizeBytes: number }>>,
+    getCached(
+      attachmentConfigPath,
+      () => api.get(attachmentConfigPath) as Promise<ApiResponse<{ maxFileSizeBytes: number }>>,
+    ),
   remove: async (attachmentId: string, projectId: string, testCaseId: string) => {
     const response = await api.delete(`/v1/attachments/${attachmentId}`) as ApiResponse<null>;
     invalidateReadCache(testCaseAttachmentPath(projectId, testCaseId));
