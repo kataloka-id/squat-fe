@@ -41,13 +41,14 @@ describe('TestCaseList column layout', () => {
 
     const table = container.querySelector('table');
     expect(table?.className).toContain('table-fixed');
-    expect(table?.className).toContain('min-w-[78rem]');
+    expect(table?.className).toContain('min-w-[86rem]');
 
     const columns = Array.from(container.querySelectorAll('col'));
     expect(columns).toHaveLength(11);
     expect(columns[3].className).toBe(''); // Title has no fixed width and receives remaining space.
     expect(columns[1].className).toContain('w-32'); // TC Number includes its sort indicator.
     expect(columns[5].className).toContain('w-28'); // Priority includes its sort indicator.
+    expect(columns[4].className).toContain('w-40'); // Section keeps enough room for a readable value without crowding Priority.
     expect(columns[7].className).toContain('w-36'); // Testing Type includes its sort indicator.
     expect(columns[8].className).toContain('w-52'); // Automation Readiness can show its badge, menu trigger, and sort indicator.
     expect(columns[9].className).toContain('w-[6.75rem]'); // Dates remain untruncated.
@@ -61,6 +62,39 @@ describe('TestCaseList column layout', () => {
     expect(screen.getByText(testCase.title)).not.toBeNull();
     expect(screen.getByText(shortTitleTestCase.title)).not.toBeNull();
     expect(screen.getAllByRole('button', { name: 'Change Automation Readiness' })).toHaveLength(2);
+
+    // At the 86rem table minimum, fixed columns consume 74.75rem, leaving
+    // 11.25rem for Title—more than Section's 10rem allocation.
+    const tableMinimumRem = 86;
+    const fixedColumnsRem = 74.75;
+    const sectionColumnRem = 10;
+    expect(tableMinimumRem - fixedColumnsRem).toBeGreaterThan(sectionColumnRem);
+  });
+
+  it('truncates a long Section inside its column and exposes its full value on hover', () => {
+    const longSection = '/template-manager';
+    const { container } = render(
+      <TestCaseList
+        testCases={[{ ...testCase, section: longSection }]}
+        projects={[]}
+        selectedIds={[]}
+        sortField="id"
+        sortOrder="asc"
+        onSort={() => {}}
+        onToggleSelect={() => {}}
+        onToggleSelectAll={() => {}}
+        onEdit={() => {}}
+        onDelete={() => {}}
+        onUpdate={() => {}}
+        hasProjectSelected
+      />,
+    );
+
+    const section = container.querySelector(`span[title="${longSection}"]`);
+    expect(section?.className).toContain('block');
+    expect(section?.className).toContain('truncate');
+    expect(section?.parentElement?.className).toContain('min-w-0');
+    expect(section?.parentElement?.className).toContain('md:table-cell');
   });
 
   it.each([
