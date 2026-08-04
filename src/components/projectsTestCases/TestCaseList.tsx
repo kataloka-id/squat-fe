@@ -251,13 +251,13 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-soft flex flex-col h-full min-h-[500px] relative overflow-visible">
       <div className="overflow-x-auto overflow-y-visible flex-1">
-        <table className="min-w-[78rem] w-full table-fixed divide-y divide-slate-100">
+        <table className="min-w-[86rem] w-full table-fixed divide-y divide-slate-100">
           <colgroup>
             {canManage && <col className="w-14" />}
             <col className="w-32" />
             <col className="hidden w-[5.5rem] sm:table-column" />
             <col />
-            <col className="hidden w-28 md:table-column" />
+            <col className="hidden w-40 md:table-column" />
             <col className="w-28" />
             <col className="w-[6.5rem]" />
             <col className="w-36" />
@@ -280,7 +280,7 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
               <TableHead field="id" label="TC Number" />
               <TableHead field="projectId" label="Project" className="hidden sm:table-cell" sortable={false} />
               <TableHead field="title" label="Title" className="min-w-0" />
-              <TableHead field="section" label="Section" className="hidden md:table-cell" />
+              <TableHead field="section" label="Section" className="hidden min-w-40 md:table-cell" />
               <TableHead field="priority" label="Priority" />
               <TableHead field="status" label="Status" />
               <TableHead field="automationType" label="Testing Type" />
@@ -346,10 +346,10 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
                     <td className="min-w-0 px-4 py-4 align-middle">
                       <button className="line-clamp-1 text-left text-sm font-medium text-slate-900 transition-colors hover:text-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-500/20" onClick={() => onView?.(tc)} type="button">{markdownToPlainText(tc.title)}</button>
                       {tc.folderPath?.length ? <p className="mt-0.5 truncate text-xs text-slate-400">{tc.folderPath.map((folder) => folder.name).join(' / ')}</p> : <p className="mt-0.5 text-xs text-slate-400">Unfiled</p>}
-                      <div className="text-xs text-slate-500 mt-1 line-clamp-1 md:hidden">{tc.section}</div>
+                      <div className="mt-1 line-clamp-1 text-xs text-slate-500 md:hidden" title={tc.section}>{tc.section}</div>
                     </td>
-                    <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500 hidden md:table-cell align-middle">
-                      {tc.section}
+                    <td className="hidden min-w-0 px-4 py-4 text-sm text-slate-500 md:table-cell align-middle">
+                      <span className="block truncate" title={tc.section}>{tc.section}</span>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap align-middle">
                       {canManage ? <InlineBadgeSelect type="priority" label="Priority" value={tc.priority} options={Object.values(Priority)} onChange={(val) => onUpdate(tc.id, { priority: val as Priority })} /> : <Badge type="priority" value={tc.priority} />}
