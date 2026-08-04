@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   ChevronDown, 
   ChevronUp, 
@@ -61,13 +62,15 @@ const InlineBadgeSelect = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [alignRight, setAlignRight] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (!containerRef.current?.contains(target) && !menuRef.current?.contains(target)) {
         setIsOpen(false);
       }
     };
@@ -76,13 +79,42 @@ const InlineBadgeSelect = ({
   }, []);
 
   useLayoutEffect(() => {
-    if (!isOpen || !menuRef.current) return;
-    setAlignRight(menuRef.current.getBoundingClientRect().right > window.innerWidth - 8);
+    if (!isOpen || !menuRef.current || !triggerRef.current) return;
+
+    const updatePosition = () => {
+      const triggerRect = triggerRef.current?.getBoundingClientRect();
+      const menu = menuRef.current;
+      if (!triggerRect || !menu) return;
+
+      const viewportPadding = 8;
+      const menuWidth = menu.offsetWidth;
+      const menuHeight = menu.offsetHeight;
+      const left = Math.max(viewportPadding, Math.min(triggerRect.left, window.innerWidth - menuWidth - viewportPadding));
+      const below = triggerRect.bottom + 4;
+      const above = triggerRect.top - menuHeight - 4;
+      const maximumTop = Math.max(viewportPadding, window.innerHeight - menuHeight - viewportPadding);
+      const top = below + menuHeight <= window.innerHeight - viewportPadding
+        ? below
+        : above >= viewportPadding
+          ? above
+          : Math.min(Math.max(viewportPadding, below), maximumTop);
+
+      setMenuPosition({ top, left });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
   }, [isOpen]);
 
   return (
     <div className="relative inline-block" ref={containerRef}>
       <button
+        ref={triggerRef}
         type="button"
         aria-label={`Change ${label}`}
         aria-expanded={isOpen}
@@ -92,8 +124,8 @@ const InlineBadgeSelect = ({
       >
         {isSaving ? <LoaderCircle aria-label={`Saving ${label}`} className="h-4 w-4 animate-spin text-slate-500" /> : <Badge type={type} value={value} className="cursor-pointer" />}
       </button>
-      {isOpen && (
-        <div ref={menuRef} role="listbox" aria-label={`${label} options`} className={`absolute top-full ${alignRight ? 'right-0' : 'left-0'} mt-1 z-50 w-max min-w-full max-w-[calc(100vw-2rem)] bg-white rounded-lg shadow-xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden`}>
+      {isOpen && createPortal(
+        <div ref={menuRef} role="listbox" aria-label={`${label} options`} style={{ top: menuPosition?.top ?? 0, left: menuPosition?.left ?? 0, minWidth: triggerRef.current?.getBoundingClientRect().width, visibility: menuPosition ? 'visible' : 'hidden' }} className="fixed z-50 max-h-[calc(100vh-1rem)] w-max max-w-[calc(100vw-2rem)] overflow-x-hidden overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl animate-in fade-in zoom-in-95 duration-150">
           <div className="py-1">
             {options.map((opt) => (
               <button
@@ -120,7 +152,7 @@ const InlineBadgeSelect = ({
             ))}
           </div>
         </div>
-      )}
+      , document.body)}
     </div>
   );
 };
@@ -170,19 +202,27 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) return null; // Cleaner look: don't show inactive sort icons
     return sortOrder === 'asc' 
-      ? <ChevronUp className="w-3.5 h-3.5 text-brand-600" /> 
-      : <ChevronDown className="w-3.5 h-3.5 text-brand-600" />;
+      ? <ChevronUp aria-label="Sorted ascending" className="h-3.5 w-3.5 shrink-0 text-brand-600" />
+      : <ChevronDown aria-label="Sorted descending" className="h-3.5 w-3.5 shrink-0 text-brand-600" />;
   };
 
   const TableHead = ({ field, label, className = '', sortable = true }: { field: SortField, label: string, className?: string, sortable?: boolean }) => (
     <th 
-      className={`px-6 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider ${sortable ? 'cursor-pointer group hover:text-slate-700' : ''} transition-colors select-none align-top bg-slate-50 ${className}`}
-      onClick={() => sortable && onSort(field)}
+      className={`px-4 py-4 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap ${sortable ? 'cursor-pointer group hover:text-slate-700' : ''} transition-colors select-none align-top bg-slate-50 ${className}`}
+      aria-sort={sortable && sortField === field ? (sortOrder === 'asc' ? 'ascending' : 'descending') : undefined}
     >
-      <div className="flex items-center gap-1.5">
-        {label}
-        {sortable && <SortIcon field={field} />}
-      </div>
+      {sortable ? (
+        <button
+          type="button"
+          onClick={() => onSort(field)}
+          className="flex w-full min-w-0 items-center gap-1.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+        >
+          <span>{label}</span>
+          <SortIcon field={field} />
+        </button>
+      ) : (
+        <div className="flex min-w-0 items-center gap-1.5">{label}</div>
+      )}
     </th>
   );
 
@@ -211,10 +251,23 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-soft flex flex-col h-full min-h-[500px] relative overflow-visible">
       <div className="overflow-x-auto overflow-y-visible flex-1">
-        <table className="min-w-full divide-y divide-slate-100">
+        <table className="min-w-[78rem] w-full table-fixed divide-y divide-slate-100">
+          <colgroup>
+            {canManage && <col className="w-14" />}
+            <col className="w-32" />
+            <col className="hidden w-[5.5rem] sm:table-column" />
+            <col />
+            <col className="hidden w-28 md:table-column" />
+            <col className="w-28" />
+            <col className="w-[6.5rem]" />
+            <col className="w-36" />
+            <col className="w-52" />
+            <col className="hidden w-[6.75rem] lg:table-column" />
+            {canManage && <col className="w-[5.5rem]" />}
+          </colgroup>
           <thead className="bg-slate-50 sticky top-0 z-20 shadow-sm">
             <tr>
-              {canManage && <th className="px-6 py-4 text-left w-12 align-top bg-slate-50">
+              {canManage && <th className="px-4 py-4 text-left align-top bg-slate-50">
                 <input
                   type="checkbox"
                   className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 h-4 w-4 cursor-pointer transition-all accent-brand-600 bg-white"
@@ -224,16 +277,16 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
                   disabled={loading || testCases.length === 0}
                 />
               </th>}
-              <TableHead field="id" label="TC Number" className="w-24" />
-              <TableHead field="projectId" label="Project" className="w-24 hidden sm:table-cell" sortable={false} />
-              <TableHead field="title" label="Title" />
+              <TableHead field="id" label="TC Number" />
+              <TableHead field="projectId" label="Project" className="hidden sm:table-cell" sortable={false} />
+              <TableHead field="title" label="Title" className="min-w-0" />
               <TableHead field="section" label="Section" className="hidden md:table-cell" />
               <TableHead field="priority" label="Priority" />
               <TableHead field="status" label="Status" />
               <TableHead field="automationType" label="Testing Type" />
               <TableHead field="automationReadiness" label="Automation Readiness" />
               <TableHead field="updatedAt" label="Updated" className="hidden lg:table-cell" />
-              {canManage && <th className="px-6 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider align-top bg-slate-50"></th>}
+              {canManage && <th className="px-4 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider align-top bg-slate-50"></th>}
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-slate-50">
@@ -267,7 +320,7 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
                     key={tc.id} 
                     className={`group transition-all duration-150 ease-in-out ${isSelected ? 'bg-brand-50/30' : 'hover:bg-slate-50'}`}
                   >
-                    {canManage && <td className="px-6 py-4 whitespace-nowrap align-middle">
+                    {canManage && <td className="px-4 py-4 whitespace-nowrap align-middle">
                       <input
                         type="checkbox"
                         className="rounded border-slate-300 text-brand-600 focus:ring-brand-500 h-4 w-4 cursor-pointer transition-all accent-brand-600 bg-white"
@@ -275,7 +328,7 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
                         onChange={() => onToggleSelect(tc.id)}
                       />
                     </td>}
-                    <td className="px-6 py-4 whitespace-nowrap align-middle">
+                    <td className="px-4 py-4 whitespace-nowrap align-middle">
                       <span 
                         className="font-mono text-xs font-medium text-slate-600 bg-slate-100 px-2 py-1 rounded cursor-pointer hover:bg-brand-100 hover:text-brand-700 transition-colors border border-slate-200"
                         onClick={() => onView?.(tc)}
@@ -283,37 +336,37 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
                         {formatTestCaseDisplayId(tc, project?.key)}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap hidden sm:table-cell align-middle">
+                    <td className="px-4 py-4 whitespace-nowrap hidden sm:table-cell align-middle">
                       <div className="flex items-center gap-1.5" title={projectName}>
                          <span className="font-mono text-[10px] font-bold text-white bg-slate-900 px-2 py-1 rounded shadow-sm tracking-tight cursor-default">
                             {projectKey}
                          </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 align-middle">
+                    <td className="min-w-0 px-4 py-4 align-middle">
                       <button className="line-clamp-1 text-left text-sm font-medium text-slate-900 transition-colors hover:text-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-500/20" onClick={() => onView?.(tc)} type="button">{markdownToPlainText(tc.title)}</button>
                       {tc.folderPath?.length ? <p className="mt-0.5 truncate text-xs text-slate-400">{tc.folderPath.map((folder) => folder.name).join(' / ')}</p> : <p className="mt-0.5 text-xs text-slate-400">Unfiled</p>}
                       <div className="text-xs text-slate-500 mt-1 line-clamp-1 md:hidden">{tc.section}</div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 hidden md:table-cell align-middle">
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500 hidden md:table-cell align-middle">
                       {tc.section}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap align-middle">
+                    <td className="px-4 py-4 whitespace-nowrap align-middle">
                       {canManage ? <InlineBadgeSelect type="priority" label="Priority" value={tc.priority} options={Object.values(Priority)} onChange={(val) => onUpdate(tc.id, { priority: val as Priority })} /> : <Badge type="priority" value={tc.priority} />}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap align-middle">
+                    <td className="px-4 py-4 whitespace-nowrap align-middle">
                        {canManage ? <InlineBadgeSelect type="status" label="Status" value={tc.status} options={Object.values(Status)} onChange={(val) => onUpdate(tc.id, { status: val as Status })} /> : <Badge type="status" value={tc.status} />}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap align-middle">
+                    <td className="px-4 py-4 whitespace-nowrap align-middle">
                        {canManage ? <InlineBadgeSelect type="automation" label="Testing Type" value={tc.automationType} options={Object.values(AutomationType)} onChange={(val) => onUpdate(tc.id, { automationType: val as AutomationType })} /> : <Badge type="automation" value={tc.automationType} />}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap align-middle">
+                    <td className="px-4 py-4 whitespace-nowrap align-middle">
                        {canManage ? <InlineBadgeSelect type="automationReadiness" label="Automation Readiness" value={normalizeAutomationReadiness(tc.automationReadiness)} options={Object.values(AutomationReadiness)} onChange={(val) => onUpdate(tc.id, { automationReadiness: val as AutomationReadiness })} /> : <Badge type="automationReadiness" value={normalizeAutomationReadiness(tc.automationReadiness)} />}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500 font-mono hidden lg:table-cell align-middle">
+                    <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500 font-mono hidden lg:table-cell align-middle">
                       {new Date(tc.updatedAt).toLocaleDateString()}
                     </td>
-                    {canManage && <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium align-middle">
+                    {canManage && <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium align-middle">
                       <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button 
                           onClick={() => onEdit(tc)}
