@@ -13,6 +13,7 @@ import {
 import { createPortal } from 'react-dom';
 import {
   Background,
+  BaseEdge,
   Controls,
   Handle,
   MarkerType,
@@ -21,6 +22,7 @@ import {
   ReactFlowProvider,
   useReactFlow,
   type Edge,
+  type EdgeProps,
   type Node,
   type NodeProps,
 } from '@xyflow/react';
@@ -168,7 +170,7 @@ const graphEdgeStyle = (value: unknown) => {
     case 'requires':
       return {
         color: '#4f46e5',
-        dash: undefined,
+        dash: '7 3',
         width: 3,
         colorClass: 'stroke-brand-600',
         arrowClass: 'fill-brand-600',
@@ -184,12 +186,12 @@ const graphEdgeStyle = (value: unknown) => {
     case 'alternative':
       return { color: '#0284c7', dash: '2 4', width: 2, colorClass: 'stroke-sky-600', arrowClass: 'fill-sky-600' };
     case 'blocks':
-      return { color: '#dc2626', dash: '8 3', width: 4, colorClass: 'stroke-red-600', arrowClass: 'fill-red-600' };
+      return { color: '#dc2626', dash: '8 3', width: 3, colorClass: 'stroke-red-600', arrowClass: 'fill-red-600' };
     default:
       return {
         color: '#64748b',
         dash: undefined,
-        width: 2,
+        width: 4,
         colorClass: 'stroke-slate-500',
         arrowClass: 'fill-slate-500',
       };
@@ -1356,10 +1358,13 @@ type GraphEdge = {
 };
 type GraphPosition = { x: number; y: number; height: number; level: number };
 type GraphHandle = { id: string; left: string };
+type GraphStageGroup = { id: string; label: string; x: number; y: number; width: number; height: number };
 type IndexedGraphEdge = GraphEdge & { id: string; index: number };
 type GraphIndexes = {
   nodeIds: Set<string>;
   edges: IndexedGraphEdge[];
+  edgeById: Map<string, IndexedGraphEdge>;
+  byRelationship: Map<DependencyRelationshipType, IndexedGraphEdge[]>;
   incoming: Map<string, IndexedGraphEdge[]>;
   outgoing: Map<string, IndexedGraphEdge[]>;
 };
@@ -1383,14 +1388,18 @@ export const createGraphIndexes = (
   const nodeIds = new Set(graph.nodes.map((node) => node.id));
   const incoming = new Map<string, IndexedGraphEdge[]>();
   const outgoing = new Map<string, IndexedGraphEdge[]>();
+  const edgeById = new Map<string, IndexedGraphEdge>();
+  const byRelationship = new Map<DependencyRelationshipType, IndexedGraphEdge[]>();
   const edges = graph.edges.flatMap((edge, index) => {
     if (!nodeIds.has(edge.sourceFlowId) || !nodeIds.has(edge.targetFlowId)) return [];
     const indexedEdge = { ...edge, id: graphEdgeId(edge, index), index };
+    edgeById.set(indexedEdge.id, indexedEdge);
+    appendGraphIndex(byRelationship, relationshipType(edge.relationshipType), indexedEdge);
     appendGraphIndex(incoming, edge.targetFlowId, indexedEdge);
     appendGraphIndex(outgoing, edge.sourceFlowId, indexedEdge);
     return [indexedEdge];
   });
-  return { nodeIds, edges, incoming, outgoing };
+  return { nodeIds, edges, edgeById, byRelationship, incoming, outgoing };
 };
 
 // SVG text does not apply CSS wrapping. Estimate at the 13px title font using
@@ -1449,23 +1458,49 @@ const graphNodeHeight = (node: UserFlow) =>
       graphTitleLines(node.title).length * GRAPH_NODE_TITLE_LINE_HEIGHT + GRAPH_NODE_BOTTOM_PADDING,
   );
 
+const graphNodeOrder = (left: UserFlow, right: UserFlow) =>
+  left.flowKey.localeCompare(right.flowKey, undefined, { numeric: true }) || left.id.localeCompare(right.id);
+
+// Optional and alternative paths are retained in the graph model, but are
+// progressively disclosed so the normal path is readable at first glance.
+// eslint-disable-next-line react-refresh/only-export-components -- focused graph visibility tests use this policy.
+export const isSecondaryGraphRelationship = (value: unknown) =>
+  relationshipType(value) === 'optional' || relationshipType(value) === 'alternative';
+
+// eslint-disable-next-line react-refresh/only-export-components -- focused graph visibility tests use this policy.
+export const isGraphEdgeVisible = (
+  relationship: unknown,
+  edge: Pick<Edge, 'source' | 'target'>,
+  activeNodeId?: string,
+  secondaryExpanded = false,
+) => !isSecondaryGraphRelationship(relationship) || secondaryExpanded || edge.source === activeNodeId || edge.target === activeNodeId;
+
 // The graph is intentionally laid out from topology rather than from API order.
 // This keeps a chain vertical and makes each branching level expand evenly from center.
 // eslint-disable-next-line react-refresh/only-export-components -- exported for focused topology tests.
 export const calculateGraphLayout = (nodes: UserFlow[], edges: GraphEdge[]) => {
+  const orderedNodes = [...nodes].sort(graphNodeOrder);
+  const nodeById = new Map(orderedNodes.map((node) => [node.id, node]));
   const nodeIds = new Set(nodes.map((node) => node.id));
   const children = new Map<string, string[]>();
+  const parents = new Map<string, string[]>();
   const incomingCount = new Map(nodes.map((node) => [node.id, 0]));
 
-  nodes.forEach((node) => children.set(node.id, []));
+  orderedNodes.forEach((node) => { children.set(node.id, []); parents.set(node.id, []); });
   edges.forEach((edge) => {
     if (!nodeIds.has(edge.sourceFlowId) || !nodeIds.has(edge.targetFlowId)) return;
     children.get(edge.sourceFlowId)?.push(edge.targetFlowId);
+    parents.get(edge.targetFlowId)?.push(edge.sourceFlowId);
     incomingCount.set(edge.targetFlowId, (incomingCount.get(edge.targetFlowId) || 0) + 1);
   });
+  children.forEach((targets) => targets.sort((left, right) => {
+    const leftNode = nodeById.get(left)!;
+    const rightNode = nodeById.get(right)!;
+    return graphNodeOrder(leftNode, rightNode);
+  }));
 
   const depth = new Map<string, number>();
-  const queue = nodes.filter((node) => incomingCount.get(node.id) === 0).map((node) => node.id);
+  const queue = orderedNodes.filter((node) => incomingCount.get(node.id) === 0).map((node) => node.id);
   queue.forEach((id) => depth.set(id, 0));
   const processed = new Set<string>();
 
@@ -1474,7 +1509,7 @@ export const calculateGraphLayout = (nodes: UserFlow[], edges: GraphEdge[]) => {
   while (queue.length || processed.size < nodes.length) {
     const sourceId = queue.shift();
     if (!sourceId) {
-      const cycleStart = nodes.find((node) => !processed.has(node.id));
+      const cycleStart = orderedNodes.find((node) => !processed.has(node.id));
       if (!cycleStart) break;
       depth.set(cycleStart.id, Math.max(-1, ...depth.values()) + 1);
       queue.push(cycleStart.id);
@@ -1491,11 +1526,29 @@ export const calculateGraphLayout = (nodes: UserFlow[], edges: GraphEdge[]) => {
   }
 
   const levels = new Map<number, UserFlow[]>();
-  nodes.forEach((node) => {
+  orderedNodes.forEach((node) => {
     const nodeDepth = depth.get(node.id) || 0;
     levels.set(nodeDepth, [...(levels.get(nodeDepth) || []), node]);
   });
   const orderedLevels = [...levels.entries()].sort(([left], [right]) => left - right);
+  // Stable ordering by flow key is the baseline. A barycentric pass then keeps
+  // siblings below their parents where possible, reducing crossings without
+  // relying on non-deterministic force layout.
+  const orderById = new Map<string, number>();
+  orderedLevels.forEach(([, level], levelIndex) => {
+    level.sort((left, right) => {
+      const parentOrder = (node: UserFlow) => {
+        const parentPositions = (parents.get(node.id) || [])
+          .map((sourceId) => orderById.get(sourceId))
+          .filter((order): order is number => order !== undefined);
+        return parentPositions.length ? parentPositions.reduce((total, order) => total + order, 0) / parentPositions.length : Number.POSITIVE_INFINITY;
+      };
+      const leftParentOrder = levelIndex ? parentOrder(left) : Number.POSITIVE_INFINITY;
+      const rightParentOrder = levelIndex ? parentOrder(right) : Number.POSITIVE_INFINITY;
+      return leftParentOrder - rightParentOrder || graphNodeOrder(left, right);
+    });
+    level.forEach((node, index) => orderById.set(node.id, index));
+  });
   const widestLevel = Math.max(1, ...orderedLevels.map(([, level]) => level.length));
   const contentWidth = widestLevel * GRAPH_NODE_WIDTH + (widestLevel - 1) * GRAPH_HORIZONTAL_GAP;
   const levelHeights = orderedLevels.map(([, level]) => Math.max(...level.map(graphNodeHeight)));
@@ -1530,6 +1583,27 @@ export const calculateGraphLayout = (nodes: UserFlow[], edges: GraphEdge[]) => {
     // and other card data can refresh without disrupting the user's viewport.
     signature: `${[...positions.entries()].map(([id, position]) => `${id}:${position.x}:${position.y}:${position.height}`).join(',')}|${edges.filter((edge) => nodeIds.has(edge.sourceFlowId) && nodeIds.has(edge.targetFlowId)).map((edge) => `${edge.sourceFlowId}:${edge.targetFlowId}`).join(',')}`,
   };
+};
+
+// eslint-disable-next-line react-refresh/only-export-components -- focused grouping tests use the calculated containers.
+export const calculateGraphStageGroups = (
+  nodes: UserFlow[],
+  layout: ReturnType<typeof calculateGraphLayout>,
+): GraphStageGroup[] => {
+  const groups = new Map<string, UserFlow[]>();
+  nodes.forEach((node) => {
+    const label = node.area?.trim() || `Level ${(layout.positions.get(node.id)?.level || 0) + 1}`;
+    appendGraphIndex(groups, label, node);
+  });
+  const groupId = (label: string) => `stage-${[...label].map((character) => character.codePointAt(0)?.toString(36)).join('-')}`;
+  return [...groups.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([label, members]) => {
+    const positions = members.map((node) => layout.positions.get(node.id)).filter((position): position is GraphPosition => Boolean(position));
+    const left = Math.min(...positions.map((position) => position.x));
+    const top = Math.min(...positions.map((position) => position.y));
+    const right = Math.max(...positions.map((position) => position.x + GRAPH_NODE_WIDTH));
+    const bottom = Math.max(...positions.map((position) => position.y + position.height));
+    return { id: groupId(label), label, x: left - 24, y: top - 34, width: right - left + 48, height: bottom - top + 58 };
+  });
 };
 
 export const GraphView = ({
@@ -1574,6 +1648,7 @@ export const GraphView = ({
 type FlowGraphNodeData = {
   flow: UserFlow;
   onOpen?: (flow: UserFlow) => void;
+  onSelect?: (flow: UserFlow) => void;
   targetHandles: GraphHandle[];
   sourceHandles: GraphHandle[];
 };
@@ -1584,23 +1659,30 @@ const graphHandlePositions = (ids: string[]) =>
     left: `${((index + 1) / (ids.length + 1)) * 100}%`,
   }));
 
+const graphTargetHandleId = (edge: IndexedGraphEdge, graphIndexes: GraphIndexes) =>
+  (graphIndexes.incoming.get(edge.targetFlowId)?.length || 0) > 1
+    ? `target-bundle-${edge.targetFlowId}`
+    : `target-${edge.index}`;
+
 // eslint-disable-next-line react-refresh/only-export-components -- exported for focused graph mapping tests.
 export const mapGraphNodes = (
   graph: { nodes: UserFlow[]; edges: GraphEdge[] },
   layout: ReturnType<typeof calculateGraphLayout>,
   onOpen?: (flow: UserFlow) => void,
   graphIndexes = createGraphIndexes(graph),
+  onSelect?: (flow: UserFlow) => void,
 ): Node<FlowGraphNodeData>[] =>
   graph.nodes.flatMap((flow) => {
     const position = layout.positions.get(flow.id);
+    const incoming = graphIndexes.incoming.get(flow.id) || [];
     const targetHandles = graphHandlePositions(
-      (graphIndexes.incoming.get(flow.id) || []).map((edge) => `target-${edge.index}`),
+      incoming.length > 1 ? [`target-bundle-${flow.id}`] : incoming.map((edge) => `target-${edge.index}`),
     );
     const sourceHandles = graphHandlePositions(
       (graphIndexes.outgoing.get(flow.id) || []).map((edge) => `source-${edge.index}`),
     );
     return position
-      ? [{ id: flow.id, type: 'flow', position: { x: position.x, y: position.y }, data: { flow, onOpen, targetHandles, sourceHandles } }]
+      ? [{ id: flow.id, type: 'flow', position: { x: position.x, y: position.y }, data: { flow, onOpen, onSelect, targetHandles, sourceHandles } }]
       : [];
   });
 
@@ -1612,22 +1694,43 @@ export const mapGraphEdges = (
   graphIndexes.edges.map((edge) => {
       const style = graphEdgeStyle(edge.relationshipType);
       const type = relationshipType(edge.relationshipType);
+      const bundledEdges = graphIndexes.incoming.get(edge.targetFlowId) || [];
+      const bundled = bundledEdges.length > 1;
+      const bundleLeader = bundled && bundledEdges[0]?.id === edge.id;
       return {
         id: edge.id,
         source: edge.sourceFlowId,
         target: edge.targetFlowId,
         sourceHandle: `source-${edge.index}`,
-        targetHandle: `target-${edge.index}`,
-        type: 'bezier',
+        targetHandle: graphTargetHandleId(edge, graphIndexes),
+        // Bottom-to-top handles and SmoothStep produce consistent vertical →
+        // horizontal → vertical routes. Merge targets use one custom visual
+        // trunk: every source retains its own inspectable edge identity.
+        type: bundled ? 'bundle' : 'smoothstep',
         animated: false,
         ariaLabel: `${relationshipLabel(type)} relationship`,
         style: { stroke: style.color, strokeWidth: style.width, strokeDasharray: style.dash },
-        // React Flow attaches this marker to the native bezier path, so its tip
+        pathOptions: { borderRadius: 12, offset: 24 },
+        data: { bundled, bundleLeader },
+        // React Flow attaches this marker to the native SmoothStep path, so its tip
         // remains at the target handle coordinate. A compact base marker with
         // strokeWidth units keeps arrowheads proportionate to every line weight.
         markerEnd: { type: MarkerType.ArrowClosed, color: style.color, width: 12.5, height: 12.5, markerUnits: 'strokeWidth' },
       };
   });
+
+type BundledEdgeData = { bundled: boolean; bundleLeader: boolean };
+
+// The leader owns the shared vertical trunk and arrow. Other relationships draw
+// only their orthogonal source arms into that junction. They remain real React
+// Flow edges (with IDs, aria labels, hover and selection behavior), while the
+// visual merge no longer redraws the same long route for every source.
+const BundledGraphEdge = ({ sourceX, sourceY, targetX, targetY, markerEnd, style, data }: EdgeProps<Edge<BundledEdgeData>>) => {
+  const junctionY = targetY - 34;
+  const sourceArm = `M ${sourceX},${sourceY} L ${sourceX},${junctionY} L ${targetX},${junctionY}`;
+  const path = data?.bundleLeader ? `${sourceArm} L ${targetX},${targetY}` : sourceArm;
+  return <BaseEdge path={path} markerEnd={data?.bundleLeader ? markerEnd : undefined} style={style} />;
+};
 
 const FlowGraphNode = memo(({ data }: NodeProps<Node<FlowGraphNodeData>>) => {
   const { flow } = data;
@@ -1649,12 +1752,14 @@ const FlowGraphNode = memo(({ data }: NodeProps<Node<FlowGraphNodeData>>) => {
         // graph visual props, so relying on React Flow's delegated node click can
         // lose the click that follows the first pointer enter.
         event.stopPropagation();
+        data.onSelect?.(flow);
         data.onOpen?.(flow);
       }}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
           event.stopPropagation();
+          data.onSelect?.(flow);
           data.onOpen?.(flow);
         }
       }}
@@ -1691,6 +1796,18 @@ const FlowGraphNode = memo(({ data }: NodeProps<Node<FlowGraphNodeData>>) => {
 });
 
 const graphNodeTypes = { flow: FlowGraphNode };
+
+const GraphStageGroupNode = memo(({ data }: NodeProps<Node<GraphStageGroup>>) => (
+  <div
+    aria-hidden="true"
+    className="h-full w-full rounded-2xl border border-slate-200/70 bg-slate-50/55 px-3 pt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400"
+    style={{ pointerEvents: 'none' }}
+  >
+    {data.label}
+  </div>
+));
+
+const graphStageNodeTypes = { stage: GraphStageGroupNode };
 
 // The dependency graph is an inspection surface: its cards own activation,
 // while React Flow only owns viewport navigation and rendering.
@@ -1749,6 +1866,58 @@ const createGraphHighlightIndexes = (edges: Edge[]) => {
   return { nodeHighlights, edgeHighlights };
 };
 
+const graphRelationshipPriority = (value: unknown) => {
+  switch (relationshipType(value)) {
+    case 'next': return 0;
+    case 'requires': return 1;
+    case 'blocks': return 2;
+    case 'optional': return 3;
+    default: return 4;
+  }
+};
+
+// eslint-disable-next-line react-refresh/only-export-components -- the visual leader policy is covered by focused graph tests.
+export const resolveGraphEdgeVisuals = (
+  baseEdges: Edge[],
+  graphIndexes: GraphIndexes,
+  hovered: GraphHighlight | null,
+  selectedNodeId?: string,
+  secondaryExpanded = false,
+): Edge[] => {
+  const resolved = baseEdges.map((edge) => {
+    const isHighlighted = hovered?.edgeIds.has(edge.id);
+    const visible = isGraphEdgeVisible(
+      graphIndexes.edgeById.get(edge.id)?.relationshipType,
+      edge,
+      selectedNodeId || hovered?.primaryNodeId,
+      secondaryExpanded,
+    );
+    return {
+      ...edge,
+      hidden: !visible,
+      style: {
+        ...edge.style,
+        opacity: !visible ? 0 : hovered && !isHighlighted ? 0.3 : 1,
+        strokeWidth: isHighlighted
+          ? Math.max(Number(edge.style?.strokeWidth || 0) + 1, 3)
+          : edge.style?.strokeWidth,
+        transition: 'opacity 200ms ease, stroke 200ms ease, stroke-width 200ms ease',
+      },
+      zIndex: isHighlighted ? 1 : 0,
+    };
+  });
+  const leaderByTarget = new Map<string, string>();
+  resolved.filter((edge) => !edge.hidden && edge.type === 'bundle').forEach((edge) => {
+    const currentLeaderId = leaderByTarget.get(edge.target);
+    const currentLeader = currentLeaderId ? graphIndexes.edgeById.get(currentLeaderId) : undefined;
+    const candidate = graphIndexes.edgeById.get(edge.id);
+    if (!currentLeader || (candidate && graphRelationshipPriority(candidate.relationshipType) < graphRelationshipPriority(currentLeader.relationshipType))) leaderByTarget.set(edge.target, edge.id);
+  });
+  return resolved.map((edge) => edge.type === 'bundle'
+    ? { ...edge, data: { ...(edge.data as BundledEdgeData), bundleLeader: leaderByTarget.get(edge.target) === edge.id } }
+    : edge);
+};
+
 const GraphFlowCanvas = ({
   graph,
   layout,
@@ -1771,16 +1940,33 @@ const GraphFlowCanvas = ({
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [showGuide, guideTrigger]);
   const [hovered, setHovered] = useState<GraphHighlight | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | undefined>();
+  const selectNode = useCallback((flow: UserFlow) => setSelectedNodeId(flow.id), []);
+  const [secondaryExpanded, setSecondaryExpanded] = useState(false);
   // Keep the current highlight while moving between nodes, edges, and the canvas.
   // React Flow emits leave events for each element during those internal transitions.
   const clearCanvasHover = useCallback(() => setHovered(null), []);
   const graphIndexes = useMemo(() => createGraphIndexes(graph), [graph]);
   const baseNodes = useMemo(
-    () => mapGraphNodes(graph, layout, onOpen, graphIndexes),
-    [graph, graphIndexes, layout, onOpen],
+    () => mapGraphNodes(graph, layout, onOpen, graphIndexes, selectNode),
+    [graph, graphIndexes, layout, onOpen, selectNode],
   );
   const baseEdges = useMemo(() => mapGraphEdges(graph, graphIndexes), [graph, graphIndexes]);
+  const stageNodes = useMemo<Node<GraphStageGroup>[]>(
+    () => calculateGraphStageGroups(graph.nodes, layout).map((group) => ({
+      id: group.id,
+      type: 'stage',
+      position: { x: group.x, y: group.y },
+      data: group,
+      style: { width: group.width, height: group.height, zIndex: 0, pointerEvents: 'none' },
+      draggable: false,
+      selectable: false,
+      focusable: false,
+    })),
+    [graph.nodes, layout],
+  );
   const highlightIndexes = useMemo(() => createGraphHighlightIndexes(baseEdges), [baseEdges]);
+  const activeNodeId = selectedNodeId || hovered?.primaryNodeId;
   const nodes = useMemo(
     () =>
       baseNodes.map((node) => ({
@@ -1794,34 +1980,19 @@ const GraphFlowCanvas = ({
         // is not marked selectable during a hover repaint.
         style: {
           cursor: 'pointer',
-          ...(hovered?.primaryNodeId === node.id
+          zIndex: 1,
+          ...(activeNodeId === node.id
             ? { boxShadow: '0 0 0 3px rgb(124 58 237 / 0.9)' }
             : hovered?.nodeIds.has(node.id)
               ? { boxShadow: '0 0 0 2px rgb(167 139 250 / 0.8)' }
               : {}),
         },
       })),
-    [baseNodes, hovered],
+    [activeNodeId, baseNodes, hovered],
   );
   const edges = useMemo(
-    () =>
-      baseEdges.map((edge) => {
-        const isHighlighted = hovered?.edgeIds.has(edge.id);
-        return {
-          ...edge,
-          style: {
-            ...edge.style,
-            opacity: hovered && !isHighlighted ? 0.4 : 1,
-            strokeWidth: isHighlighted
-              ? Math.max(Number(edge.style?.strokeWidth || 0) + 1, 3)
-              : edge.style?.strokeWidth,
-            transition: 'opacity 200ms ease, stroke 200ms ease, stroke-width 200ms ease',
-          },
-          markerEnd: edge.markerEnd,
-          zIndex: isHighlighted ? 1 : 0,
-        };
-      }),
-    [baseEdges, hovered],
+    () => resolveGraphEdgeVisuals(baseEdges, graphIndexes, hovered, selectedNodeId, secondaryExpanded),
+    [baseEdges, graphIndexes, hovered, secondaryExpanded, selectedNodeId],
   );
   const setNodeHover = useCallback((nodeId: string) => {
     const nextHighlight = highlightIndexes.nodeHighlights.get(nodeId) || null;
@@ -1838,21 +2009,21 @@ const GraphFlowCanvas = ({
   return (
     <section className="rounded-xl border bg-white p-5">
       <div className="flex flex-wrap justify-between gap-3">
-        <div><h2 className="font-semibold">Dependency Graph</h2><p className="text-sm text-slate-500">Arrows point from the source flow to its related flow.</p></div>
-        <Button size="sm" variant="secondary" className="h-8 px-3" onClick={(event) => { setGuideTrigger(event.currentTarget); setShowGuide(true); }}>How to read this graph</Button>
+        <div><h2 className="font-semibold">Dependency Graph</h2><p className="text-sm text-slate-500">Arrows point from the source flow to its related flow. Optional and alternative paths appear on selection or when expanded.</p></div>
+        <div className="flex gap-2"><Button size="sm" variant="secondary" className="h-8 px-3" onClick={() => setSecondaryExpanded((current) => !current)} aria-pressed={secondaryExpanded}>{secondaryExpanded ? 'Hide secondary paths' : 'Show secondary paths'}</Button><Button size="sm" variant="secondary" className="h-8 px-3" onClick={(event) => { setGuideTrigger(event.currentTarget); setShowGuide(true); }}>How to read this graph</Button></div>
       </div>
       <p className="mt-3 text-xs text-slate-500"><span className="mr-2 inline-block h-2 w-2 rounded-full bg-emerald-500" />Healthy <span className="ml-3 mr-2 inline-block h-2 w-2 rounded-full bg-amber-500" />At risk <span className="ml-3 mr-2 inline-block h-2 w-2 rounded-full bg-red-500" />Broken <span className="ml-3 mr-2 inline-block h-2 w-2 rounded-full bg-slate-400" />Unknown</p>
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2" aria-label="Connection legend"><span className="text-xs font-medium text-slate-700">Connections</span>{relationshipLegend.map(({ label, value, style }) => <span key={value} className="inline-flex items-center gap-1.5 text-xs text-slate-600"><svg aria-hidden="true" className="h-3 w-9 shrink-0 overflow-visible"><line x1="1" x2="35" y1="6" y2="6" stroke={style.color} strokeWidth={style.width} strokeDasharray={style.dash} strokeLinecap="round" /></svg>{label}</span>)}</div>
       {graph.edges.length === 0 && <p className="mt-3 rounded bg-slate-50 p-3 text-sm text-slate-600">These flows do not have dependencies yet. Open a flow and add its next flow in the Dependencies tab.</p>}
-      <div className="mt-5 h-[clamp(520px,65vh,800px)] min-h-[520px] overflow-hidden rounded-lg border" data-testid="react-flow-graph">
-        <ReactFlowProvider><FlowViewport nodes={nodes} edges={edges} graphSignature={layout.signature} onOpen={onOpen} onNodeHover={setNodeHover} onEdgeHover={setEdgeHover} onCanvasMouseLeave={clearCanvasHover} /></ReactFlowProvider>
+      <div className="mt-5 h-[clamp(520px,65vh,800px)] min-h-[520px] overflow-hidden rounded-lg border" data-testid="react-flow-graph" data-visible-secondary-count={edges.filter((edge) => !edge.hidden && isSecondaryGraphRelationship(graphIndexes.edgeById.get(edge.id)?.relationshipType)).length}>
+        <ReactFlowProvider><FlowViewport nodes={[...stageNodes, ...nodes]} edges={edges} graphSignature={layout.signature} onOpen={onOpen} onNodeHover={setNodeHover} onEdgeHover={setEdgeHover} onCanvasMouseLeave={clearCanvasHover} /></ReactFlowProvider>
       </div>
       {showGuide && <GraphGuide closeGuide={closeGuide} />}
     </section>
   );
 };
 
-const FlowViewport = ({ nodes, edges, graphSignature, onOpen, onNodeHover, onEdgeHover, onCanvasMouseLeave }: { nodes: Node<FlowGraphNodeData>[]; edges: Edge[]; graphSignature: string; onOpen: (flow: UserFlow) => void; onNodeHover: (id: string) => void; onEdgeHover: (edge: Edge) => void; onCanvasMouseLeave: () => void }) => {
+const FlowViewport = ({ nodes, edges, graphSignature, onOpen, onNodeHover, onEdgeHover, onCanvasMouseLeave }: { nodes: Node[]; edges: Edge[]; graphSignature: string; onOpen: (flow: UserFlow) => void; onNodeHover: (id: string) => void; onEdgeHover: (edge: Edge) => void; onCanvasMouseLeave: () => void }) => {
   const { fitView } = useReactFlow();
   const viewportRef = useRef<HTMLDivElement>(null);
   const refit = useCallback(() => requestAnimationFrame(() => fitView({ padding: 0.2, duration: 0 })), [fitView]);
@@ -1867,7 +2038,7 @@ const FlowViewport = ({ nodes, edges, graphSignature, onOpen, onNodeHover, onEdg
     observer.observe(element);
     return () => observer.disconnect();
   }, [refit]);
-  return <div ref={viewportRef} className="h-full" onMouseOut={handleCanvasMouseOut}><ReactFlow className="dependency-graph-canvas" nodes={nodes} edges={edges} nodeTypes={graphNodeTypes} {...graphViewReadOnlyProps} noPanClassName="dependency-graph-node" fitView fitViewOptions={{ padding: 0.2 }} minZoom={0.2} onNodeMouseEnter={(_, node) => onNodeHover(node.id)} onEdgeMouseEnter={(_, edge) => onEdgeHover(edge)}><Background gap={16} size={1} /><Controls showInteractive={false} /></ReactFlow></div>;
+  return <div ref={viewportRef} className="h-full" onMouseOut={handleCanvasMouseOut}><ReactFlow className="dependency-graph-canvas" nodes={nodes} edges={edges} nodeTypes={{ ...graphStageNodeTypes, ...graphNodeTypes }} edgeTypes={{ bundle: BundledGraphEdge }} {...graphViewReadOnlyProps} noPanClassName="dependency-graph-node" fitView fitViewOptions={{ padding: 0.2 }} minZoom={0.2} onNodeMouseEnter={(_, node) => node.type === 'flow' && onNodeHover(node.id)} onEdgeMouseEnter={(_, edge) => onEdgeHover(edge)}><Background gap={16} size={1} /><Controls showInteractive={false} /></ReactFlow></div>;
 };
 
 const GraphGuide = ({ closeGuide }: { closeGuide: () => void }) =>
