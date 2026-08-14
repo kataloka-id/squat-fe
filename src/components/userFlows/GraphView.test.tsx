@@ -8,7 +8,7 @@ vi.mock('@xyflow/react', async (importOriginal) => {
   return { ...actual, useReactFlow: () => ({ fitView: fitViewSpy }) };
 });
 
-import { calculateGraphLayout, createGraphIndexes, GraphView, graphHoverHighlight, graphViewReadOnlyProps, mapGraphEdges, mapGraphNodes } from './UserFlowsPage.tsx';
+import { calculateGraphLayout, calculateGraphStageGroups, createGraphIndexes, GraphView, graphHoverHighlight, graphViewReadOnlyProps, isGraphEdgeVisible, isSecondaryGraphRelationship, mapGraphEdges, mapGraphNodes, resolveGraphEdgeVisuals } from './UserFlowsPage.tsx';
 
 class ResizeObserverStub {
   static instances: ResizeObserverStub[] = [];
@@ -63,15 +63,15 @@ it('uses React Flow in explicitly read-only mode', () => {
 });
 
 it.each([
-  ['next', '#64748b', undefined, 2],
-  ['requires', '#4f46e5', undefined, 3],
+  ['next', '#64748b', undefined, 4],
+  ['requires', '#4f46e5', '7 3', 3],
   ['optional', '#059669', '5 4', 2],
   ['alternative', '#0284c7', '2 4', 2],
-  ['blocks', '#dc2626', '8 3', 4],
-] as const)('maps %s relationship to its React Flow line style and closed arrow that scales with the line weight', (relationshipType, stroke, dash, width) => {
+  ['blocks', '#dc2626', '8 3', 3],
+] as const)('maps %s relationship to structured routing, visual priority, and a closed arrow that scales with the line weight', (relationshipType, stroke, dash, width) => {
   const next = { ...flow, id: 'f2' };
   const edge = mapGraphEdges({ nodes: [flow, next], edges: [{ sourceFlowId: 'f1', targetFlowId: 'f2', relationshipType }] })[0];
-  expect(edge).toMatchObject({ type: 'bezier', ariaLabel: `${relationshipType[0].toUpperCase()}${relationshipType.slice(1)} relationship` });
+  expect(edge).toMatchObject({ type: 'smoothstep', ariaLabel: `${relationshipType[0].toUpperCase()}${relationshipType.slice(1)} relationship`, pathOptions: { borderRadius: 12, offset: 24 } });
   expect(edge?.style).toMatchObject({ stroke, strokeDasharray: dash, strokeWidth: width });
   expect(edge?.markerEnd).toMatchObject({
     color: stroke,
@@ -80,6 +80,100 @@ it.each([
     markerUnits: 'strokeWidth',
   });
   expect(edge).toMatchObject({ sourceHandle: 'source-0', targetHandle: 'target-0' });
+});
+
+it('keeps the layered layout deterministic and groups functional areas with subtle containers', () => {
+  const navigation = { ...flow, id: 'f2', flowKey: 'UF-2', area: 'Navigation' };
+  const creation = { ...flow, id: 'f3', flowKey: 'UF-3', area: 'Creation' };
+  const graph = { nodes: [{ ...flow, area: 'Authentication' }, navigation, creation], edges: [{ sourceFlowId: 'f1', targetFlowId: 'f2' }, { sourceFlowId: 'f2', targetFlowId: 'f3' }] };
+  const first = calculateGraphLayout(graph.nodes, graph.edges);
+  const reordered = calculateGraphLayout([...graph.nodes].reverse(), graph.edges);
+  expect(first.positions.get('f1')?.y).toBeLessThan(first.positions.get('f2')?.y || 0);
+  expect(first.positions.get('f2')?.y).toBeLessThan(first.positions.get('f3')?.y || 0);
+  expect(reordered.positions.get('f2')).toMatchObject(first.positions.get('f2') || {});
+  expect(calculateGraphStageGroups(graph.nodes, first).map((group) => group.label)).toEqual(['Authentication', 'Creation', 'Navigation']);
+});
+
+it('keeps branch and cycle layouts stable regardless of node or edge input order', () => {
+  const left = { ...flow, id: 'f2', flowKey: 'UF-2' };
+  const right = { ...flow, id: 'f3', flowKey: 'UF-3' };
+  const join = { ...flow, id: 'f4', flowKey: 'UF-4' };
+  const cyclic = { ...flow, id: 'f5', flowKey: 'UF-5' };
+  const nodes = [flow, left, right, join, cyclic];
+  const edges = [{ sourceFlowId: 'f1', targetFlowId: 'f2' }, { sourceFlowId: 'f1', targetFlowId: 'f3' }, { sourceFlowId: 'f2', targetFlowId: 'f4' }, { sourceFlowId: 'f3', targetFlowId: 'f4' }, { sourceFlowId: 'f4', targetFlowId: 'f5' }, { sourceFlowId: 'f5', targetFlowId: 'f4' }];
+  const first = calculateGraphLayout(nodes, edges);
+  const reordered = calculateGraphLayout([...nodes].reverse(), [...edges].reverse());
+  expect([...first.positions.entries()]).toEqual([...reordered.positions.entries()]);
+  expect(first.positions.get('f2')?.y).toBe(first.positions.get('f3')?.y);
+  expect(first.positions.get('f4')?.y).toBeGreaterThan(first.positions.get('f2')?.y || 0);
+});
+
+it('creates collision-safe deterministic stage IDs for visually similar area names', () => {
+  const groups = calculateGraphStageGroups([
+    { ...flow, id: 'f-a', area: 'A&B' },
+    { ...flow, id: 'f-b', area: 'A B' },
+    { ...flow, id: 'f-c', area: 'Auth' },
+    { ...flow, id: 'f-d', area: 'auth' },
+  ], calculateGraphLayout([
+    { ...flow, id: 'f-a', area: 'A&B' }, { ...flow, id: 'f-b', area: 'A B' }, { ...flow, id: 'f-c', area: 'Auth' }, { ...flow, id: 'f-d', area: 'auth' },
+  ], []));
+  expect(new Set(groups.map((group) => group.id)).size).toBe(4);
+  expect(groups.map((group) => group.label)).toEqual(['A B', 'A&B', 'auth', 'Auth']);
+});
+
+it('progressively discloses optional and alternative paths while preserving them in the edge map', () => {
+  const next = { ...flow, id: 'f2', flowKey: 'UF-2' };
+  const optional = { ...flow, id: 'f3', flowKey: 'UF-3' };
+  const graph = { nodes: [flow, next, optional], edges: [{ sourceFlowId: 'f1', targetFlowId: 'f2', relationshipType: 'next' as const }, { sourceFlowId: 'f1', targetFlowId: 'f3', relationshipType: 'optional' as const }] };
+  expect(mapGraphEdges(graph)).toHaveLength(2);
+  expect(isSecondaryGraphRelationship('optional')).toBe(true);
+  expect(isSecondaryGraphRelationship('alternative')).toBe(true);
+  expect(isSecondaryGraphRelationship('requires')).toBe(false);
+  const optionalEdge = mapGraphEdges(graph)[1]!;
+  expect(isGraphEdgeVisible('optional', optionalEdge)).toBe(false);
+  expect(isGraphEdgeVisible('optional', optionalEdge, 'f1')).toBe(true);
+  expect(isGraphEdgeVisible('optional', optionalEdge, undefined, true)).toBe(true);
+});
+
+it('reveals initially hidden secondary relationships when a graph node is selected', () => {
+  const onOpen = vi.fn();
+  const optional = { ...flow, id: 'f2', flowKey: 'UF-2' };
+  const view = render(<GraphView graph={{ nodes: [flow, optional], edges: [{ sourceFlowId: 'f1', targetFlowId: 'f2', relationshipType: 'optional' }] }} loading={false} error={null} onOpen={onOpen} />);
+  const graphRoot = view.getByTestId('react-flow-graph');
+  expect(graphRoot.getAttribute('data-visible-secondary-count')).toBe('0');
+  fireEvent.click(view.container.querySelector('[data-id="f1"] > div')!);
+  expect(onOpen).toHaveBeenCalledWith(flow);
+  expect(graphRoot.getAttribute('data-visible-secondary-count')).toBe('1');
+});
+
+it('bundles shared incoming routes at one native target boundary while retaining each relationship', () => {
+  const left = { ...flow, id: 'f2', flowKey: 'UF-2' };
+  const right = { ...flow, id: 'f3', flowKey: 'UF-3' };
+  const join = { ...flow, id: 'f4', flowKey: 'UF-4' };
+  const graph = { nodes: [flow, left, right, join], edges: [{ sourceFlowId: 'f1', targetFlowId: 'f2' }, { sourceFlowId: 'f1', targetFlowId: 'f3' }, { sourceFlowId: 'f2', targetFlowId: 'f4' }, { sourceFlowId: 'f3', targetFlowId: 'f4' }] };
+  const edges = mapGraphEdges(graph);
+  expect(edges).toHaveLength(4);
+  expect(edges.filter((edge) => edge.target === 'f4').map((edge) => edge.targetHandle)).toEqual(['target-bundle-f4', 'target-bundle-f4']);
+  const incoming = edges.filter((edge) => edge.target === 'f4');
+  expect(incoming).toEqual(expect.arrayContaining([
+    expect.objectContaining({ type: 'bundle', data: { bundled: true, bundleLeader: true }, markerEnd: expect.any(Object) }),
+    expect.objectContaining({ type: 'bundle', data: { bundled: true, bundleLeader: false }, markerEnd: expect.any(Object) }),
+  ]));
+});
+
+it('promotes a visible primary shared-target edge to bundle leader when an earlier optional edge is hidden', () => {
+  const optionalSource = { ...flow, id: 'f2', flowKey: 'UF-2' };
+  const primarySource = { ...flow, id: 'f3', flowKey: 'UF-3' };
+  const join = { ...flow, id: 'f4', flowKey: 'UF-4' };
+  const graph = { nodes: [optionalSource, primarySource, join], edges: [
+    { sourceFlowId: 'f2', targetFlowId: 'f4', relationshipType: 'optional' as const },
+    { sourceFlowId: 'f3', targetFlowId: 'f4', relationshipType: 'next' as const },
+  ] };
+  const visibleEdges = resolveGraphEdgeVisuals(mapGraphEdges(graph), createGraphIndexes(graph), null);
+  const primary = visibleEdges.find((edge) => edge.source === 'f3')!;
+  const optional = visibleEdges.find((edge) => edge.source === 'f2')!;
+  expect(optional.hidden).toBe(true);
+  expect(primary).toMatchObject({ hidden: false, type: 'bundle', data: { bundleLeader: true }, markerEnd: expect.objectContaining({ type: 'arrowclosed' }) });
 });
 
 it('renders the React Flow viewport, controls, and an empty-dependency hint', () => {
@@ -96,7 +190,7 @@ it('uses full-weight relationship styles in the connection legend', () => {
   expect(lines).toHaveLength(5);
   expect(lines[2]?.getAttribute('stroke-dasharray')).toBe('5 4');
   expect(lines[3]?.getAttribute('stroke-dasharray')).toBe('2 4');
-  expect(lines[4]?.getAttribute('stroke-width')).toBe('4');
+  expect(lines[4]?.getAttribute('stroke-width')).toBe('3');
 });
 
 it('keeps a node highlight across internal graph transitions and clears it after leaving the canvas', async () => {
@@ -215,15 +309,12 @@ it('does not expose drag, connect, or reconnect interactions in the rendered gra
   expect(targetHandle.style.pointerEvents).toBe('none');
 });
 
-it('renders a merge with distinct incoming React Flow edges and initializes fit view', () => {
+it('renders a merge with bundled incoming React Flow edges and initializes fit view', () => {
   const left = { ...flow, id: 'f2' }; const right = { ...flow, id: 'f3' }; const join = { ...flow, id: 'f4' };
   const { container } = render(<GraphView graph={{ nodes: [flow, left, right, join], edges: [{ sourceFlowId: 'f1', targetFlowId: 'f2' }, { sourceFlowId: 'f1', targetFlowId: 'f3' }, { sourceFlowId: 'f2', targetFlowId: 'f4' }, { sourceFlowId: 'f3', targetFlowId: 'f4', relationshipType: 'blocks' }] }} loading={false} error={null} onOpen={vi.fn()} />);
   expect(mapGraphEdges({ nodes: [flow, left, right, join], edges: [{ sourceFlowId: 'f1', targetFlowId: 'f2' }, { sourceFlowId: 'f1', targetFlowId: 'f3' }, { sourceFlowId: 'f2', targetFlowId: 'f4' }, { sourceFlowId: 'f3', targetFlowId: 'f4', relationshipType: 'blocks' }] })).toHaveLength(4);
-  const mergeHandles = [...container.querySelectorAll('.react-flow__handle-top')].filter((handle) =>
-    ['target-2', 'target-3'].includes(handle.getAttribute('data-handleid') || ''),
-  );
-  expect(mergeHandles).toHaveLength(2);
-  expect(mergeHandles[0]?.getAttribute('style')).not.toBe(mergeHandles[1]?.getAttribute('style'));
+  const mergeHandles = [...container.querySelectorAll('.react-flow__handle-top')].filter((handle) => handle.getAttribute('data-handleid') === 'target-bundle-f4');
+  expect(mergeHandles).toHaveLength(1);
   expect(container.querySelector('.react-flow__viewport')?.getAttribute('style')).toContain('transform');
 });
 
