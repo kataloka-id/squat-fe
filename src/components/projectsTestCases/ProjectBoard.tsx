@@ -6,6 +6,7 @@ import {
   PieChart,
   Trash2,
   Activity,
+  Route,
   Calendar,
   ExternalLink
 } from 'lucide-react';
@@ -15,6 +16,7 @@ import { Button } from './ui/Button';
 interface ProjectBoardProps {
   projects: Project[];
   onViewTestCases: (projectId: string) => void;
+  onViewUserFlows?: (projectId: string) => void;
   onViewReports: (projectId: string) => void;
   onViewTestRuns: (projectId: string) => void;
   onCreate: () => void;
@@ -25,6 +27,7 @@ interface ProjectBoardProps {
 export const ProjectBoard: React.FC<ProjectBoardProps> = ({
     projects, 
     onViewTestCases, 
+    onViewUserFlows = () => {},
     onViewReports,
     onViewTestRuns, 
     onCreate, 
@@ -131,7 +134,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({
                   {project.description}
                 </p>
 
-                {/* Stats Grid - 2 Columns */}
+                {/* Stats Grid: two columns keep related project metrics aligned. */}
                 <div className="grid grid-cols-2 gap-3 mb-6">
                   {/* Test Cases */}
                   <div 
@@ -158,6 +161,20 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({
                         {project.stats.passRate}%
                     </div>
                   </div>
+
+                  {/* User Flows */}
+                  <button
+                    type="button"
+                    onClick={() => onViewUserFlows(project.id)}
+                    className="bg-slate-50 hover:bg-brand-50 hover:border-brand-200 rounded-lg border border-slate-100 p-3 text-left transition-all group/flows focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2"
+                  >
+                    <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1 group-hover/flows:text-brand-600">
+                      <Route size={12} /> User Flows
+                    </div>
+                    <div className="text-xl font-bold text-slate-900 group-hover/flows:text-brand-700">
+                      {project.stats.userFlowsCount ?? 0}
+                    </div>
+                  </button>
                 </div>
 
                 {/* Footer */}

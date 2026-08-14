@@ -26,6 +26,29 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/*
+ * React Flow gives the pan pane a grab cursor. Dependency Graph nodes are
+ * non-draggable actions, so their wrapper and every visible child must win
+ * the cursor cascade without changing the cursor on the empty canvas.
+ */
+.dependency-graph-canvas .dependency-graph-node,
+.dependency-graph-canvas .dependency-graph-node * {
+  cursor: pointer !important;
+}
+
+/*
+ * The hover ring is painted by React Flow on its outer node wrapper, while the
+ * card is rendered by our custom node component. Keep both layers on the same
+ * radius so the ring follows cards of every measured height.
+ */
+.dependency-graph-canvas {
+  --graph-node-radius: 0.5rem;
+}
+
+.dependency-graph-canvas .react-flow__node.dependency-graph-node {
+  border-radius: var(--graph-node-radius);
+}
+
 /* Global Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

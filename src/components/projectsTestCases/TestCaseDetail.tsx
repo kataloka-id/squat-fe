@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle, Edit3, ExternalLink, X } from 'lucide-react';
 import { normalizeAutomationReadiness, Status, type LinkedPrecondition, type Project, type TestCase } from './types.ts';
 import { formatTestCaseDisplayId } from '@/src/utils/testCaseDisplayId.ts';
@@ -12,7 +14,9 @@ type TestCaseDetailProps = {
   project?: Project;
   onClose: () => void;
   // eslint-disable-next-line no-unused-vars -- TypeScript callback parameter, not a runtime binding.
-  onEdit: (testCase: TestCase) => void;
+  onEdit?: (testCase: TestCase) => void;
+  /** Lets read-only embedded views omit attachment requests and controls. */
+  showAttachments?: boolean;
   // eslint-disable-next-line no-unused-vars -- TypeScript callback parameter, not a runtime binding.
   onNotify?: (message: string, type: 'success' | 'error') => void;
 };
@@ -59,12 +63,20 @@ const LinkedPreconditions = ({ links, projectId }: { links: LinkedPrecondition[]
 );
 
 /** Read-only test case detail that renders stored Markdown as safe React nodes. */
-export const TestCaseDetail = ({ testCase, project, onClose, onEdit, onNotify = () => {} }: TestCaseDetailProps) => {
+export const TestCaseDetail = ({ testCase, project, onClose, onEdit, onNotify = () => {}, showAttachments = true }: TestCaseDetailProps) => {
+  useEffect(() => {
+    if (!testCase) return undefined;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [onClose, testCase]);
   if (!testCase) return null;
   const linkedPreconditions = [...(testCase.linkedPreconditions ?? [])].sort((a, b) => a.sortOrder - b.sortOrder);
   const hasLinkedPreconditions = linkedPreconditions.length > 0;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[60] flex justify-end bg-slate-900/40 backdrop-blur-sm" onClick={onClose} role="presentation">
       <aside aria-labelledby="test-case-detail-title" aria-modal="true" className="flex h-full w-full max-w-2xl flex-col bg-white shadow-2xl" onClick={(event) => event.stopPropagation()} role="dialog">
         <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 sm:px-7 sm:py-5">
@@ -96,11 +108,12 @@ export const TestCaseDetail = ({ testCase, project, onClose, onEdit, onNotify = 
             {testCase.steps.length ? <ol className="mt-3 space-y-4">{testCase.steps.map((step, index) => <li className="rounded-lg border border-slate-200 p-4" key={step.id}><p className="text-xs font-semibold text-slate-500">Step {index + 1}</p><MarkdownContent className="mt-2 text-sm text-slate-700" value={step.action} /><p className="mt-3 text-xs font-semibold text-slate-500">Expected Result</p><MarkdownContent className="mt-2 text-sm text-slate-700" value={step.expectedResult} /></li>)}</ol> : <p className="mt-2 text-sm text-slate-400">No test steps provided.</p>}
           </section>
           <MarkdownSection emptyText="No main expected result provided." title="Main Expected Result" value={testCase.mainExpectedResult} />
-          <Attachments canDelete={false} onNotify={onNotify} projectId={testCase.projectId} testCaseId={testCase.id} />
+          {showAttachments && <Attachments canDelete={false} onNotify={onNotify} projectId={testCase.projectId} testCaseId={testCase.id} />}
         </div>
 
-        <footer className="flex justify-end border-t border-slate-200 px-5 py-4 sm:px-7"><Button icon={<Edit3 size={16} />} onClick={() => onEdit(testCase)} type="button">Edit Test Case</Button></footer>
+        {onEdit && <footer className="flex justify-end border-t border-slate-200 px-5 py-4 sm:px-7"><Button icon={<Edit3 size={16} />} onClick={() => onEdit(testCase)} type="button">Edit Test Case</Button></footer>}
       </aside>
     </div>
+    , document.body
   );
 };
