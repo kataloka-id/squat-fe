@@ -178,8 +178,12 @@ it('promotes a visible primary shared-target edge to bundle leader when an earli
 
 it('renders the React Flow viewport, controls, and an empty-dependency hint', () => {
   render(<GraphView graph={{ nodes: [flow], edges: [] }} loading={false} error={null} onOpen={vi.fn()} />);
-  expect(screen.getByTestId('react-flow-graph').querySelector('.react-flow')).toBeTruthy();
-  expect(screen.getByTestId('react-flow-graph').className).toContain('h-[clamp(520px,65vh,800px)]');
+  const graphRoot = screen.getByTestId('react-flow-graph');
+  expect(graphRoot.querySelector('.react-flow')).toBeTruthy();
+  expect(graphRoot.className).toContain('w-full');
+  expect(graphRoot.className).toContain('aspect-[4/3]');
+  expect(graphRoot.className).toContain('min-h-[520px]');
+  expect(graphRoot.className).toContain('max-h-[900px]');
   expect(screen.getByText(/do not have dependencies yet/i)).toBeTruthy();
   expect(screen.getByRole('application')).toBeTruthy();
 });
