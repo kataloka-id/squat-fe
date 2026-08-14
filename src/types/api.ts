@@ -159,6 +159,8 @@ export interface ProjectAssignmentRecord {
   createdBy?: string;
   updatedAt?: string;
   testCasesCount?: number;
+  /** Additive project-list metric; absent while an older API is deployed. */
+  userFlowsCount?: number;
 }
 
 export interface ProjectMemberRecord {

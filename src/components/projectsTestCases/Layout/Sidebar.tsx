@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   FileText, 
+  Route,
   PlayCircle, 
   BarChart2, 
   Settings, 
@@ -54,6 +55,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, testC
   const menuItems = [
     { id: 'projects', icon: Briefcase, label: 'Projects' },
     { id: 'test-cases', icon: FileText, label: 'Test Cases' },
+    { id: 'user-flows', icon: Route, label: 'User Flows' },
     { id: 'runs', icon: PlayCircle, label: 'Test Runs' },
     { id: 'reports', icon: BarChart2, label: 'Reports' },
     { id: 'team', icon: Users, label: 'Team' },

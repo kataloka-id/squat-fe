@@ -6,19 +6,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './ProjectsTestCasesPage.tsx';
 
 const serviceMocks = vi.hoisted(() => ({
+  listProjects: vi.fn(),
   listTestCasesInFolder: vi.fn((projectId: string) => Promise.resolve({ data: [{ id: `tc-${projectId}`, tcNumber: 1, title: `Case ${projectId}`, projectId, section: 'General', priority: 'Medium', status: 'Draft', automationType: 'Manual', automationReadiness: 'Candidate', steps: [], tags: [] }] })),
+  importTestCases: vi.fn().mockResolvedValue({ data: { importedCount: 0 } }),
 }));
 
 vi.mock('@/src/auth/SessionContext.tsx', () => ({
   useSessionUser: () => ({ username: 'QA User', roleSlug: 'qa', company: { name: 'Kataloka' } }),
 }));
 vi.mock('@/src/components/projectsTestCases/ProjectBoard.tsx', () => ({
-  ProjectBoard: ({ onViewTestCases }: { onViewTestCases: (id: string) => void }) => <><button onClick={() => onViewTestCases('p1')}>Open P1</button><button onClick={() => onViewTestCases('p2')}>Open P2</button></>,
+  ProjectBoard: ({ onViewTestCases, onViewUserFlows }: { onViewTestCases: (id: string) => void; onViewUserFlows: (id: string) => void }) => <><button onClick={() => onViewTestCases('p1')}>Open P1</button><button onClick={() => onViewTestCases('p2')}>Open P2</button><button onClick={() => onViewUserFlows('p1')}>Open User Flows P1</button><button onClick={() => onViewUserFlows('p2')}>Open User Flows P2</button></>,
+}));
+vi.mock('@/src/components/userFlows/UserFlowsPage.tsx', () => ({
+  UserFlowsPage: ({ projectId, onProjectChange }: { projectId: string; onProjectChange: (projectId: string) => void }) => <><p>User Flow project: {projectId || 'none'}</p><button onClick={() => onProjectChange('p1')}>Choose User Flow P1</button><button onClick={() => onProjectChange('missing')}>Choose unavailable User Flow project</button></>,
 }));
 vi.mock('@/src/components/projectsTestCases/TestCaseStats.tsx', () => ({ TestCaseStats: () => null }));
 vi.mock('@/src/components/projectsTestCases/TestCaseForm.tsx', () => ({ TestCaseForm: () => null }));
 vi.mock('@/src/components/projectsTestCases/TestCaseDetail.tsx', () => ({ TestCaseDetail: () => null }));
-vi.mock('@/src/components/projectsTestCases/TestCaseImportDialog.tsx', () => ({ TestCaseImportDialog: () => null }));
+vi.mock('@/src/components/projectsTestCases/TestCaseImportDialog.tsx', () => ({
+  TestCaseImportDialog: ({ isOpen, onImport }: { isOpen: boolean; onImport: (projectId: string, payload: object) => Promise<unknown> }) => isOpen ? <button onClick={() => void onImport('p1', {})}>Run import</button> : null,
+}));
 vi.mock('@/src/components/projectsTestCases/TestCaseFolderTree.tsx', () => ({
   TestCaseFolderTree: ({ active, onSelect }: { active: { folderId?: string }; onSelect: (scope: { folderId?: string; includeSubfolders: boolean }) => void }) => <><p>Folder scope: {active.folderId ?? 'all'}</p><button onClick={() => onSelect({ folderId: 'f1', includeSubfolders: false })}>Choose folder</button></>,
 }));
@@ -39,10 +46,12 @@ vi.mock('@/src/api/projects.service.ts', () => {
   ];
   const testCase = (projectId: string) => ({ id: `tc-${projectId}`, tcNumber: 1, title: `Case ${projectId}`, projectId, section: 'General', priority: 'Medium', status: 'Draft', automationType: 'Manual', automationReadiness: 'Candidate', steps: [], tags: [] });
   return { ProjectsService: {
-    list: vi.fn().mockResolvedValue({ data: projects }),
+    list: serviceMocks.listProjects,
     listSections: vi.fn().mockResolvedValue({ data: [] }),
     listTestCasesInFolder: serviceMocks.listTestCasesInFolder,
     listTestCases: vi.fn((projectId: string) => Promise.resolve({ data: [testCase(projectId)] })),
+    importTestCases: serviceMocks.importTestCases,
+    invalidateList: vi.fn(),
     listTestCaseFolders: vi.fn((projectId: string) => Promise.resolve({ data: { folders: projectId === 'p1' ? [{ id: 'f1', name: 'Folder one', parentId: null }] : [] } })),
   } };
 });
@@ -56,6 +65,10 @@ const LocationProbe = () => {
 describe('Test Cases selection lifetime', () => {
   beforeEach(() => {
     serviceMocks.listTestCasesInFolder.mockClear();
+    serviceMocks.listProjects.mockReset().mockResolvedValue({ data: [
+      { id: 'p1', name: 'Project one', key: 'ONE', status: 'Active' },
+      { id: 'p2', name: 'Project two', key: 'TWO', status: 'Active' },
+    ] });
   });
   afterEach(cleanup);
   it('clears selection explicitly, after navigation, and after active-project changes', async () => {
@@ -106,5 +119,46 @@ describe('Test Cases selection lifetime', () => {
     await screen.findByText('Folder scope: all');
     await waitFor(() => expect(serviceMocks.listTestCasesInFolder).toHaveBeenLastCalledWith('p1', { includeSubfolders: false }));
     await screen.findByText('Location: /workspace?projectId=p1');
+  });
+
+  it('preserves the selected User Flows project across workspace navigation, opens it from a project card, and clears an unavailable project', async () => {
+    render(<MemoryRouter><App /></MemoryRouter>);
+    await screen.findByRole('button', { name: 'Open User Flows P1' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open User Flows P1' }));
+    await screen.findByText('User Flow project: p1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reports' }));
+    await screen.findByText('Other page');
+    fireEvent.click(screen.getByRole('button', { name: 'User Flows' }));
+    await screen.findByText('User Flow project: p1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Projects' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Open User Flows P2' }));
+    await screen.findByText('User Flow project: p2');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Choose unavailable User Flow project' }));
+    await screen.findByText('User Flow project: none');
+  });
+
+  it('does not clear the User Flows project after a later project refresh fails', async () => {
+    serviceMocks.listProjects
+      .mockResolvedValueOnce({ data: [
+        { id: 'p1', name: 'Project one', key: 'ONE', status: 'Active' },
+        { id: 'p2', name: 'Project two', key: 'TWO', status: 'Active' },
+      ] })
+      .mockRejectedValueOnce(new Error('Refresh failed'));
+    render(<MemoryRouter><App /></MemoryRouter>);
+    await screen.findByRole('button', { name: 'Open User Flows P1' });
+    fireEvent.click(screen.getByRole('button', { name: 'Open User Flows P1' }));
+    await screen.findByText('User Flow project: p1');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Test Cases' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Import JSON' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Run import' }));
+    await waitFor(() => expect(serviceMocks.listProjects).toHaveBeenCalledTimes(2));
+
+    fireEvent.click(screen.getByRole('button', { name: 'User Flows' }));
+    await screen.findByText('User Flow project: p1');
   });
 });

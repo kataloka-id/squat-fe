@@ -99,6 +99,7 @@ export interface Project {
   updatedAt: Date;
   stats: {
     testCasesCount: number;
+    userFlowsCount?: number;
     passRate: number;
   };
   members: string[];

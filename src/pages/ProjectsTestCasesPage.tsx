@@ -11,6 +11,7 @@ import { TestCaseFolderTree, type FolderScope } from '@/src/components/projectsT
 import { ProjectBoard } from '@/src/components/projectsTestCases/ProjectBoard.tsx';
 import { ProjectForm } from '@/src/components/projectsTestCases/ProjectForm.tsx';
 import { UnderDevelopment } from '@/src/components/projectsTestCases/UnderDevelopment.tsx';
+import { UserFlowsPage } from '@/src/components/userFlows/UserFlowsPage.tsx';
 import { ConfirmationModal } from '@/src/components/projectsTestCases/ui/ConfirmationModal.tsx';
 import { Button } from '@/src/components/projectsTestCases/ui/Button.tsx';
 import { MultiSelect } from '@/src/components/projectsTestCases/ui/MultiSelect.tsx';
@@ -50,7 +51,7 @@ const toProject = (project: ProjectAssignmentRecord): Project => ({
   dueDate: project.dueDate ? new Date(project.dueDate) : new Date(),
   updatedAt: project.updatedAt ? new Date(project.updatedAt) : new Date(),
   members: [],
-  stats: { testCasesCount: project.testCasesCount ?? 0, passRate: 0 },
+  stats: { testCasesCount: project.testCasesCount ?? 0, userFlowsCount: project.userFlowsCount ?? 0, passRate: 0 },
 });
 
 const toTestCase = (testCase: ProjectTestCaseRecord, projectId: string): TestCase => ({
@@ -79,7 +80,7 @@ export const App: React.FC = () => {
   // --- View State ---
   // Default landing page is now 'projects'
   const [currentView, setCurrentView] = useState<
-    'projects' | 'test-cases' | 'runs' | 'reports' | 'team' | 'settings'
+    'projects' | 'test-cases' | 'user-flows' | 'runs' | 'reports' | 'team' | 'settings'
   >('projects');
 
   // --- Data State ---
@@ -87,7 +88,11 @@ export const App: React.FC = () => {
   // this avoids a transient render of a global/mock collection for non-admins.
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsError, setProjectsError] = useState<string | null>(null);
+  const [authorizedProjectIds, setAuthorizedProjectIds] = useState<string[] | null>(null);
   const projectRequestVersion = useRef(0);
+  // User Flows does not own this selection so navigation between workspace views
+  // preserves it without introducing another global state mechanism.
+  const [selectedUserFlowProjectId, setSelectedUserFlowProjectId] = useState('');
 
   // Displayed Test Cases (Filtered View)
   const [testCases, setTestCases] = useState<TestCase[]>([]);
@@ -123,6 +128,7 @@ export const App: React.FC = () => {
       const response = await ProjectsService.list({ force: true });
       if (!isCurrentProjectRequest(requestVersion, projectRequestVersion.current)) return;
       setProjects(response.data.map(toProject));
+      setAuthorizedProjectIds(response.data.map((project) => project.id));
       setProjectsError(null);
     } catch (error) {
       if (!isCurrentProjectRequest(requestVersion, projectRequestVersion.current)) return;
@@ -242,6 +248,19 @@ export const App: React.FC = () => {
     void refreshProjects();
   }, [refreshProjects]);
 
+  // Only a successful scoped response is authoritative for this fallback. A
+  // later refresh failure clears the visual list but must not discard a valid
+  // selection based on that failure.
+  useEffect(() => {
+    if (
+      authorizedProjectIds &&
+      selectedUserFlowProjectId &&
+      !authorizedProjectIds.includes(selectedUserFlowProjectId)
+    ) {
+      setSelectedUserFlowProjectId('');
+    }
+  }, [authorizedProjectIds, selectedUserFlowProjectId]);
+
   // Linked-precondition source actions open a focused, independent workspace tab.
   // The project remains server-authorized when its test-case list is fetched.
   useEffect(() => {
@@ -284,6 +303,11 @@ export const App: React.FC = () => {
     // Switch to test cases and filter by this project
     changeProjects([projectId]);
     setCurrentView('test-cases');
+  };
+
+  const handleViewUserFlows = (projectId: string) => {
+    setSelectedUserFlowProjectId(projectId);
+    setCurrentView('user-flows');
   };
 
   const handleViewTestRuns = (projectId: string) => {
@@ -655,7 +679,7 @@ export const App: React.FC = () => {
     try {
       const response = editingProject ? await ProjectsService.update(editingProject.id, payload) : await ProjectsService.create(payload);
       const saved = response.data;
-      const project: Project = { id: saved.id, name: saved.name, key: saved.key ?? saved.name.slice(0, 4).toUpperCase(), description: saved.description ?? '', lead: saved.lead ?? 'Unassigned', externalLink: saved.externalLink, createdBy: saved.createdBy ?? currentUserLabel, status: saved.status === 'Completed' ? 'Completed' : 'Active', dueDate: saved.dueDate ? new Date(saved.dueDate) : new Date(), updatedAt: saved.updatedAt ? new Date(saved.updatedAt) : new Date(), members: [], stats: { testCasesCount: 0, passRate: 0 } };
+      const project: Project = { id: saved.id, name: saved.name, key: saved.key ?? saved.name.slice(0, 4).toUpperCase(), description: saved.description ?? '', lead: saved.lead ?? 'Unassigned', externalLink: saved.externalLink, createdBy: saved.createdBy ?? currentUserLabel, status: saved.status === 'Completed' ? 'Completed' : 'Active', dueDate: saved.dueDate ? new Date(saved.dueDate) : new Date(), updatedAt: saved.updatedAt ? new Date(saved.updatedAt) : new Date(), members: [], stats: { testCasesCount: saved.testCasesCount ?? 0, userFlowsCount: saved.userFlowsCount ?? 0, passRate: 0 } };
       setProjects((current) => editingProject ? current.map((item) => item.id === project.id ? project : item) : [project, ...current]);
       showToast(editingProject ? 'Project details updated successfully.' : 'New project created successfully.');
       setIsProjectFormOpen(false); setEditingProject(null);
@@ -728,6 +752,7 @@ export const App: React.FC = () => {
               <ProjectBoard
                 projects={projects}
                 onViewTestCases={handleViewTestCases}
+                onViewUserFlows={handleViewUserFlows}
                 onViewReports={handleViewReports}
                 onViewTestRuns={handleViewTestRuns}
                 onCreate={handleCreateProject}
@@ -1027,6 +1052,8 @@ export const App: React.FC = () => {
               </div>
             </div>
           )}
+
+          {currentView === 'user-flows' && <UserFlowsPage projects={projects} projectId={selectedUserFlowProjectId} onProjectChange={setSelectedUserFlowProjectId} />}
 
           {/* Under Development Views */}
           {['runs', 'reports'].includes(currentView) && <UnderDevelopment />}
