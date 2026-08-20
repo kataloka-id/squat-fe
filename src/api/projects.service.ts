@@ -11,6 +11,8 @@ export const ProjectsService = {
   // The backend scopes this collection to the authenticated caller.  Do not
   // replace it with a client-side filter of a global collection.
   list: (options?: ReadOptions) => getCached('/v1/projects', () => api.get('/v1/projects') as Promise<ApiResponse<ProjectAssignmentRecord[]>>, options),
+  /** Pending projects are server-scoped to eligible project lifecycle admins. */
+  listPendingDeletion: (options?: ReadOptions) => getCached('/v1/projects/pending-deletion', () => api.get('/v1/projects/pending-deletion') as Promise<ApiResponse<ProjectAssignmentRecord[]>>, options),
   invalidateList: () => invalidateReadCache('/v1/projects'),
   listMembers: (projectId: string, options?: ReadOptions) =>
     getCached(`/v1/projects/${projectId}/members`, () => api.get(`/v1/projects/${projectId}/members`) as Promise<ApiResponse<ProjectMemberRecord[]>>, options),
@@ -27,6 +29,18 @@ export const ProjectsService = {
   remove: async (projectId: string) => {
     const response = await api.delete(`/v1/projects/${projectId}`) as ApiResponse<null>;
     invalidateReadCache('/v1/projects');
+    return response;
+  },
+  restore: async (projectId: string) => {
+    const response = await api.post(`/v1/projects/${projectId}/restore`) as ApiResponse<ProjectAssignmentRecord>;
+    invalidateReadCache('/v1/projects');
+    invalidateReadCache('/v1/projects/pending-deletion');
+    return response;
+  },
+  permanentlyRemove: async (projectId: string) => {
+    const response = await api.delete(`/v1/projects/${projectId}/permanent`) as ApiResponse<null>;
+    invalidateReadCache('/v1/projects');
+    invalidateReadCache('/v1/projects/pending-deletion');
     return response;
   },
   listTestCases: (projectId: string, options?: ReadOptions) =>

@@ -9,9 +9,12 @@ import { TestCaseImportDialog } from '@/src/components/projectsTestCases/TestCas
 import { TestCaseStats } from '@/src/components/projectsTestCases/TestCaseStats.tsx';
 import { TestCaseFolderTree, type FolderScope } from '@/src/components/projectsTestCases/TestCaseFolderTree.tsx';
 import { ProjectBoard } from '@/src/components/projectsTestCases/ProjectBoard.tsx';
+import { PendingDeletionProjects } from '@/src/components/projectsTestCases/PendingDeletionProjects.tsx';
 import { ProjectForm } from '@/src/components/projectsTestCases/ProjectForm.tsx';
-import { UnderDevelopment } from '@/src/components/projectsTestCases/UnderDevelopment.tsx';
 import { UserFlowsPage } from '@/src/components/userFlows/UserFlowsPage.tsx';
+import { TestRunsPage } from '@/src/components/testRuns/TestRunsPage.tsx';
+import { ReportsPage } from '@/src/components/reports/ReportsPage.tsx';
+import type { ReportFilters } from '@/src/api/reports.service.ts';
 import { ConfirmationModal } from '@/src/components/projectsTestCases/ui/ConfirmationModal.tsx';
 import { Button } from '@/src/components/projectsTestCases/ui/Button.tsx';
 import { MultiSelect } from '@/src/components/projectsTestCases/ui/MultiSelect.tsx';
@@ -20,6 +23,7 @@ import { Toast,ToastType } from '@/src/components/projectsTestCases/ui/Toast.tsx
 import { SettingsPage } from '@/src/components/settings/SettingsPage.tsx';
 import { TeamPage } from '@/src/components/team/TeamPage.tsx';
 import { ProjectsService } from '@/src/api/projects.service.ts';
+import { onExecutionDataChanged } from '@/src/api/execution-refresh.ts';
 import type { FolderDeleteImpact, ProjectAssignmentRecord, ProjectTestCaseRecord, SectionRecord, TestCaseFolderRecord } from '@/src/types/api.ts';
 import { useSessionUser } from '@/src/auth/SessionContext.tsx';
 import { isCurrentProjectRequest } from '@/src/utils/projectStats.ts';
@@ -51,7 +55,7 @@ const toProject = (project: ProjectAssignmentRecord): Project => ({
   dueDate: project.dueDate ? new Date(project.dueDate) : new Date(),
   updatedAt: project.updatedAt ? new Date(project.updatedAt) : new Date(),
   members: [],
-  stats: { testCasesCount: project.testCasesCount ?? 0, userFlowsCount: project.userFlowsCount ?? 0, passRate: 0 },
+  stats: { testCasesCount: project.testCasesCount ?? 0, userFlowsCount: project.userFlowsCount ?? 0, passRate: project.qualitySnapshot?.passRate ?? project.passRate ?? null },
 });
 
 const toTestCase = (testCase: ProjectTestCaseRecord, projectId: string): TestCase => ({
@@ -81,18 +85,26 @@ export const App: React.FC = () => {
   // Default landing page is now 'projects'
   const [currentView, setCurrentView] = useState<
     'projects' | 'test-cases' | 'user-flows' | 'runs' | 'reports' | 'team' | 'settings'
-  >('projects');
+  >(() => new URLSearchParams(location.search).get('view') === 'runs' ? 'runs' : new URLSearchParams(location.search).get('view') === 'reports' ? 'reports' : 'projects');
 
   // --- Data State ---
   // Projects always begin empty and are populated only from the scoped API;
   // this avoids a transient render of a global/mock collection for non-admins.
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsError, setProjectsError] = useState<string | null>(null);
+  const [pendingDeletionProjects, setPendingDeletionProjects] = useState<ProjectAssignmentRecord[]>([]);
+  const [pendingDeletionLoading, setPendingDeletionLoading] = useState(false);
+  const [pendingDeletionError, setPendingDeletionError] = useState<string | null>(null);
+  const [pendingDeletionAvailable, setPendingDeletionAvailable] = useState(true);
+  const [pendingDeletionBusyProjectId, setPendingDeletionBusyProjectId] = useState<string | null>(null);
+  const [restoreUnavailableProjectIds, setRestoreUnavailableProjectIds] = useState<Set<string>>(new Set());
   const [authorizedProjectIds, setAuthorizedProjectIds] = useState<string[] | null>(null);
   const projectRequestVersion = useRef(0);
   // User Flows does not own this selection so navigation between workspace views
   // preserves it without introducing another global state mechanism.
   const [selectedUserFlowProjectId, setSelectedUserFlowProjectId] = useState('');
+  const [selectedTestRunProjectId, setSelectedTestRunProjectId] = useState('');
+  const [selectedReportProjectId, setSelectedReportProjectId] = useState('');
 
   // Displayed Test Cases (Filtered View)
   const [testCases, setTestCases] = useState<TestCase[]>([]);
@@ -121,6 +133,9 @@ export const App: React.FC = () => {
   const showToast = useCallback((message: string, type: ToastType = 'success') => {
     setToast({ message, type });
   }, []);
+  // The API enforces company/project scope. This only prevents a Kataloka
+  // administrator from being offered lifecycle actions that policy disallows.
+  const canManagePendingDeletion = sessionUser?.roleSlug.toLowerCase() === 'admin';
 
   const refreshProjects = useCallback(async () => {
     const requestVersion = ++projectRequestVersion.current;
@@ -136,6 +151,28 @@ export const App: React.FC = () => {
       setProjectsError(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Project tidak dapat dimuat.');
     }
   }, []);
+
+  const refreshPendingDeletionProjects = useCallback(async () => {
+    if (!canManagePendingDeletion) return;
+    setPendingDeletionLoading(true);
+    try {
+      const response = await ProjectsService.listPendingDeletion({ force: true });
+      setPendingDeletionProjects(response.data);
+      setPendingDeletionError(null);
+      setPendingDeletionAvailable(true);
+    } catch (error) {
+      const status = error && typeof error === 'object' && 'status' in error ? Number(error.status) : undefined;
+      if (status === 403) {
+        setPendingDeletionAvailable(false);
+        setPendingDeletionProjects([]);
+        setPendingDeletionError(null);
+      } else {
+        setPendingDeletionError(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Project menunggu penghapusan tidak dapat dimuat. Coba muat ulang halaman.');
+      }
+    } finally {
+      setPendingDeletionLoading(false);
+    }
+  }, [canManagePendingDeletion]);
 
   // Modals
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -181,6 +218,15 @@ export const App: React.FC = () => {
   const deepLinkedTestCaseId = query.get('testCaseId');
   const deepLinkedProjectId = query.get('projectId');
   const deepLinkedFolderId = query.get('folderId');
+  const queryView = query.get('view');
+  const queryRunId = query.get('runId') || undefined;
+  const queryExecutionId = query.get('executionId') || undefined;
+  const reportFilters = useMemo<ReportFilters>(() => ({ dateFrom: query.get('dateFrom') || undefined, dateTo: query.get('dateTo') || undefined, runId: query.get('runId') || undefined, sectionId: query.get('sectionId') || undefined, folderId: query.get('folderId') || undefined, tag: query.get('tag') || undefined, priority: query.get('priority') || undefined, automationType: query.get('automationType') || undefined, assigneeId: query.get('assigneeId') || undefined, result: query.get('result') || undefined, userFlowId: query.get('userFlowId') || undefined }), [query]);
+  const updateWorkspaceQuery = useCallback((updates: Record<string, string | undefined>, replace = false) => {
+    const next = new URLSearchParams(location.search);
+    Object.entries(updates).forEach(([key, value]) => { if (value) next.set(key, value); else next.delete(key); });
+    navigate({ pathname: location.pathname, search: next.toString() ? `?${next.toString()}` : '' }, { replace });
+  }, [location.pathname, location.search, navigate]);
   const activeProjectId = filters.projectId.length === 1 ? filters.projectId[0] : undefined;
   const activeFolderScope = activeProjectId && folderScopeProjectId === activeProjectId ? folderScope : emptyFolderScope;
   const [sortConfig, setSortConfig] = useState<{ field: SortField; order: SortOrder }>({
@@ -242,11 +288,17 @@ export const App: React.FC = () => {
   const handleNavigate = (view: string) => {
     if (view !== 'test-cases') resetFolderScope(true);
     setCurrentView(view as any);
+    if (view === 'runs') updateWorkspaceQuery({ view, projectId: selectedTestRunProjectId || undefined, runId: undefined, userFlowId: undefined });
+    if (view === 'reports') updateWorkspaceQuery({ view, projectId: selectedReportProjectId || undefined, runId: undefined });
   };
 
   useEffect(() => {
     void refreshProjects();
   }, [refreshProjects]);
+  useEffect(() => {
+    if (currentView === 'projects') void refreshPendingDeletionProjects();
+  }, [currentView, refreshPendingDeletionProjects]);
+  useEffect(() => onExecutionDataChanged(() => { void refreshProjects(); }), [refreshProjects]);
 
   // Only a successful scoped response is authoritative for this fallback. A
   // later refresh failure clears the visual list but must not discard a valid
@@ -261,10 +313,26 @@ export const App: React.FC = () => {
     }
   }, [authorizedProjectIds, selectedUserFlowProjectId]);
 
+  useEffect(() => {
+    if (!authorizedProjectIds) return;
+    if (selectedTestRunProjectId && !authorizedProjectIds.includes(selectedTestRunProjectId)) setSelectedTestRunProjectId('');
+    if (selectedReportProjectId && !authorizedProjectIds.includes(selectedReportProjectId)) setSelectedReportProjectId('');
+  }, [authorizedProjectIds, selectedReportProjectId, selectedTestRunProjectId]);
+
+  useEffect(() => {
+    if (queryView === 'runs' || queryView === 'reports') setCurrentView(queryView);
+  }, [queryView]);
+
+  useEffect(() => {
+    if (!deepLinkedProjectId || !projects.some((project) => project.id === deepLinkedProjectId)) return;
+    if (queryView === 'runs') setSelectedTestRunProjectId(deepLinkedProjectId);
+    if (queryView === 'reports') setSelectedReportProjectId(deepLinkedProjectId);
+  }, [deepLinkedProjectId, projects, queryView]);
+
   // Linked-precondition source actions open a focused, independent workspace tab.
   // The project remains server-authorized when its test-case list is fetched.
   useEffect(() => {
-    if (!deepLinkedProjectId || !projects.some((project) => project.id === deepLinkedProjectId)) return;
+    if (!deepLinkedProjectId || queryView === 'runs' || queryView === 'reports' || !projects.some((project) => project.id === deepLinkedProjectId)) return;
     if (filters.projectId[0] !== deepLinkedProjectId) changeProjects([deepLinkedProjectId], true);
     setCurrentView('test-cases');
   }, [changeProjects, deepLinkedProjectId, filters.projectId, projects]);
@@ -311,14 +379,15 @@ export const App: React.FC = () => {
   };
 
   const handleViewTestRuns = (projectId: string) => {
-    // In a real app we might filter runs by this project ID
-    // setFilters(prev => ({ ...prev, projectId: [projectId] }));
+    setSelectedTestRunProjectId(projectId);
     setCurrentView('runs');
+    updateWorkspaceQuery({ view: 'runs', projectId, runId: undefined, userFlowId: undefined });
   };
 
   const handleViewReports = (projectId: string) => {
-    // Switch to reports view (which is under development, but simulates the flow)
+    setSelectedReportProjectId(projectId);
     setCurrentView('reports');
+    updateWorkspaceQuery({ view: 'reports', projectId, runId: undefined, dateFrom: undefined, dateTo: undefined, sectionId: undefined, folderId: undefined, tag: undefined, priority: undefined, automationType: undefined, assigneeId: undefined, result: undefined });
   };
 
   // Test cases are fetched per selected project. The API authorizes this
@@ -635,11 +704,11 @@ export const App: React.FC = () => {
   const handleDeleteProject = (projectId: string) => {
     setConfirmState({
       isOpen: true,
-      title: 'Delete Project',
+      title: 'Pindahkan project untuk dihapus',
       message:
-        'Are you sure you want to delete this project? This will also remove all associated test cases, test runs, and reports. This action cannot be undone.',
+        'Project akan dipindahkan ke status menunggu penghapusan. Project tidak lagi tersedia di alur kerja biasa, tetapi data dan attachment tetap utuh sampai Anda memulihkan atau menghapusnya secara permanen.',
       variant: 'danger',
-      confirmLabel: 'Delete Project',
+      confirmLabel: 'Pindahkan project',
       onConfirm: () => { void (async () => {
         try {
         await ProjectsService.remove(projectId);
@@ -652,11 +721,64 @@ export const App: React.FC = () => {
             projectId: prev.projectId.filter((id) => id !== projectId),
           }));
         }
-        showToast('Project and associated data deleted successfully.');
+        await refreshPendingDeletionProjects();
+        showToast('Project dipindahkan ke status menunggu penghapusan.');
         } catch (error) { showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Project gagal dihapus.', 'error'); }
         finally { setConfirmState((prev) => ({ ...prev, isOpen: false })); }
       })();
       },
+    });
+  };
+
+  const handleRestorePendingProject = (project: ProjectAssignmentRecord) => {
+    setConfirmState({
+      isOpen: true,
+      title: 'Pulihkan project',
+      message: `Project “${project.name}” akan dikembalikan ke daftar project aktif dan dapat digunakan kembali.`,
+      variant: 'primary',
+      confirmLabel: 'Pulihkan project',
+      onConfirm: () => { void (async () => {
+        setPendingDeletionBusyProjectId(project.id);
+        try {
+          await ProjectsService.restore(project.id);
+          await Promise.all([refreshProjects(), refreshPendingDeletionProjects()]);
+          showToast(`Project “${project.name}” berhasil dipulihkan.`);
+        } catch (error) {
+          showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Project gagal dipulihkan. Coba lagi atau hubungi admin project.', 'error');
+        } finally {
+          setPendingDeletionBusyProjectId(null);
+          setConfirmState((prev) => ({ ...prev, isOpen: false }));
+        }
+      })(); },
+    });
+  };
+
+  const handlePermanentlyRemovePendingProject = (project: ProjectAssignmentRecord) => {
+    setConfirmState({
+      isOpen: true,
+      title: 'Hapus project secara permanen',
+      message: `Tindakan ini tidak dapat dibatalkan. Project “${project.name}”, seluruh data terkait, dan semua attachment akan dihapus secara permanen.`,
+      variant: 'danger',
+      confirmLabel: 'Hapus permanen',
+      onConfirm: () => { void (async () => {
+        setPendingDeletionBusyProjectId(project.id);
+        setPendingDeletionError(null);
+        try {
+          await ProjectsService.permanentlyRemove(project.id);
+          await refreshPendingDeletionProjects();
+          setRestoreUnavailableProjectIds((current) => { const next = new Set(current); next.delete(project.id); return next; });
+          showToast(`Project “${project.name}” dan attachment-nya berhasil dihapus permanen.`);
+        } catch (error) {
+          const reason = error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Pembersihan attachment gagal.';
+          const cleanupWarning = `${reason} Cleanup permanen belum selesai dan project tetap menunggu penghapusan. Sebagian file attachment mungkin sudah terhapus, sehingga project tidak dapat dipulihkan pada sesi ini. Coba hapus permanen kembali. Jika masalah berlanjut, hubungi admin company.`;
+          setPendingDeletionError(cleanupWarning);
+          setRestoreUnavailableProjectIds((current) => new Set(current).add(project.id));
+          showToast(cleanupWarning, 'error');
+        } finally {
+          setPendingDeletionBusyProjectId(null);
+          setConfirmState((prev) => ({ ...prev, isOpen: false }));
+        }
+      })(); },
     });
   };
 
@@ -759,6 +881,19 @@ export const App: React.FC = () => {
                 onEdit={handleEditProject}
                 onDelete={handleDeleteProject}
               />
+              {canManagePendingDeletion && pendingDeletionAvailable && (
+                <div className="mt-8">
+                  <PendingDeletionProjects
+                    busyProjectId={pendingDeletionBusyProjectId}
+                    error={pendingDeletionError}
+                    loading={pendingDeletionLoading}
+                    onPermanentDelete={handlePermanentlyRemovePendingProject}
+                    onRestore={handleRestorePendingProject}
+                    projects={pendingDeletionProjects}
+                    restoreUnavailableProjectIds={restoreUnavailableProjectIds}
+                  />
+                </div>
+              )}
             </>
           )}
 
@@ -1053,10 +1188,10 @@ export const App: React.FC = () => {
             </div>
           )}
 
-          {currentView === 'user-flows' && <UserFlowsPage projects={projects} projectId={selectedUserFlowProjectId} onProjectChange={setSelectedUserFlowProjectId} />}
+          {currentView === 'user-flows' && <UserFlowsPage projects={projects} projectId={selectedUserFlowProjectId} onProjectChange={setSelectedUserFlowProjectId} onOpenTestRun={(projectId, runId) => { setSelectedTestRunProjectId(projectId); setCurrentView('runs'); updateWorkspaceQuery({ view: 'runs', projectId, runId, executionId: undefined, userFlowId: undefined }); }} />}
 
-          {/* Under Development Views */}
-          {['runs', 'reports'].includes(currentView) && <UnderDevelopment />}
+          {currentView === 'runs' && <TestRunsPage projects={projects} projectId={selectedTestRunProjectId} runId={queryView === 'runs' ? queryRunId : undefined} executionId={queryView === 'runs' ? queryExecutionId : undefined} returnToReports={query.get('reportReturn') === '1'} onReturnToReports={() => { setCurrentView('reports'); updateWorkspaceQuery({ view: 'reports', runId: undefined, executionId: undefined, reportReturn: undefined }); }} onProjectChange={(projectId) => { setSelectedTestRunProjectId(projectId); updateWorkspaceQuery({ view: 'runs', projectId, runId: undefined, userFlowId: undefined }); }} onRunChange={(runId) => updateWorkspaceQuery({ view: 'runs', projectId: selectedTestRunProjectId || undefined, runId, executionId: undefined, userFlowId: undefined })} />}
+          {currentView === 'reports' && <ReportsPage projects={projects} projectId={selectedReportProjectId} filters={reportFilters} onProjectChange={(projectId) => { setSelectedReportProjectId(projectId); updateWorkspaceQuery({ view: 'reports', projectId, runId: undefined }); }} onFiltersChange={(nextFilters) => updateWorkspaceQuery({ view: 'reports', projectId: selectedReportProjectId || undefined, runId: nextFilters.runId, dateFrom: nextFilters.dateFrom, dateTo: nextFilters.dateTo, sectionId: nextFilters.sectionId, folderId: nextFilters.folderId, tag: nextFilters.tag, priority: nextFilters.priority, automationType: nextFilters.automationType, assigneeId: nextFilters.assigneeId, result: nextFilters.result, userFlowId: nextFilters.userFlowId })} onOpenTestRun={(runId) => { setSelectedTestRunProjectId(selectedReportProjectId); setCurrentView('runs'); updateWorkspaceQuery({ view: 'runs', projectId: selectedReportProjectId, runId, executionId: undefined, reportReturn: '1' }); }} onOpenExecution={(runId, executionId) => { setSelectedTestRunProjectId(selectedReportProjectId); setCurrentView('runs'); updateWorkspaceQuery({ view: 'runs', projectId: selectedReportProjectId, runId, executionId, reportReturn: '1' }); }} />}
           {currentView === 'team' && <TeamPage onManageAssignments={() => setCurrentView('settings')} />}
           {currentView === 'settings' && <SettingsPage />}
         </main>

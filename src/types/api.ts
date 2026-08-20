@@ -158,9 +158,13 @@ export interface ProjectAssignmentRecord {
   externalLink?: string;
   createdBy?: string;
   updatedAt?: string;
+  /** Set once permanent attachment cleanup has started; restoration is unsafe. */
+  permanentDeletionStartedAt?: string | null;
   testCasesCount?: number;
   /** Additive project-list metric; absent while an older API is deployed. */
   userFlowsCount?: number;
+  qualitySnapshot?: { testRunId?: string | null; passRate?: number | null } | null;
+  passRate?: number | null;
 }
 
 export interface ProjectMemberRecord {
@@ -206,6 +210,151 @@ export interface ProjectTestCaseRecord {
   tags: string[];
   createdBy?: string;
   updatedAt?: string;
+}
+
+export type TestRunStatus = 'Draft' | 'In Progress' | 'Completed' | 'Blocked';
+export type TestRunResult = 'Passed' | 'Failed' | 'Blocked' | 'Skipped' | 'Untested';
+
+export interface TestRunOwnerRecord {
+  id: string;
+  username?: string | null;
+  email?: string | null;
+}
+
+export interface TestRunRecord {
+  id: string;
+  projectId: string;
+  name: string;
+  description?: string | null;
+  status: TestRunStatus;
+  type?: string | null;
+  owner?: TestRunOwnerRecord | null;
+  ownerId?: string | null;
+  progress?: TestRunProgress;
+  createdAt: string;
+  updatedAt: string;
+  userFlows?: TestRunUserFlowRecord[];
+}
+
+/** Immutable User Flow context captured when a Test Run is created. */
+export interface TestRunUserFlowRecord {
+  id: string;
+  sourceUserFlowId?: string | null;
+  snapshot: {
+    flowKey: string;
+    title: string;
+    status?: string | null;
+    steps?: Array<{ id?: string; stepOrder?: number; title: string; action?: string | null; expectedResult?: string | null }>;
+    updatedAt?: string | null;
+  };
+}
+
+export interface TestRunProgress {
+  total: number;
+  executed: number;
+  passed: number;
+  failed: number;
+  blocked: number;
+  skipped: number;
+  untested: number;
+  percentage: number;
+}
+
+export interface TestRunExecutionRecord {
+  id: string;
+  runId: string;
+  sourceTestCaseId: string;
+  result: TestRunResult;
+  assignee?: TestRunOwnerRecord | null;
+  assigneeId?: string | null;
+  durationSeconds?: number | null;
+  notes?: string | null;
+  executedAt?: string | null;
+  updatedAt: string;
+  snapshot: {
+    tcNumber?: number | null;
+    title: string;
+    section?: string | null;
+    folderId?: string | null;
+    folderPath?: Array<{ id: string; name: string }> | null;
+    priority?: string | null;
+    automationType?: string | null;
+    preconditions?: string | null;
+    expectedResult?: string | null;
+    steps?: Array<{ id?: string; action: string; expectedResult: string }>;
+  };
+  /** User Flows that supplied this case to the run; a case may have more than one. */
+  userFlows?: TestRunUserFlowRecord[];
+}
+
+export interface TestRunDetailRecord extends TestRunRecord {
+  project?: { id: string; name: string; key?: string | null };
+  executions: TestRunExecutionRecord[];
+}
+
+export interface TestRunListResponse {
+  items: TestRunRecord[];
+  pagination?: { page: number; limit: number; total: number; totalPages: number };
+}
+
+export interface ProjectReportRecord {
+  hasData: boolean;
+  availability: {
+    hasTestRuns: boolean;
+    hasRunCases: boolean;
+    hasFilteredCases: boolean;
+  };
+  summary: {
+    executed: number | null;
+    passRate: number | null;
+    passed: number | null;
+    failed: number | null;
+    blocked: number | null;
+    skipped: number | null;
+    untested: number | null;
+    progress: number | null;
+  };
+  distribution: Array<{ result: TestRunResult; count: number }>;
+  trend: Array<{
+    date: string;
+    passed: number;
+    failed: number;
+    blocked: number;
+    skipped: number;
+    untested: number;
+  }>;
+  breakdowns: {
+    section?: ProjectReportBreakdown[];
+    folder?: ProjectReportBreakdown[];
+    priority?: ProjectReportBreakdown[];
+    automationType?: ProjectReportBreakdown[];
+    userFlow?: ProjectReportBreakdown[];
+  };
+  userFlowQuality?: ProjectReportBreakdown[];
+  attention: Array<{
+    id: string;
+    runId: string;
+    executionId: string;
+    runName: string;
+    tcNumber?: number | null;
+    title: string;
+    result: 'FAILED' | 'BLOCKED';
+    updatedAt?: string | null;
+  }>;
+}
+
+export interface ProjectReportBreakdown {
+  id?: string;
+  testRunIds?: string[];
+  label: string;
+  executed?: number | null;
+  passed?: number | null;
+  failed?: number | null;
+  blocked?: number | null;
+  skipped?: number | null;
+  untested?: number | null;
+  passRate?: number | null;
+  progress?: number | null;
 }
 
 export interface TestCaseFolderRecord {

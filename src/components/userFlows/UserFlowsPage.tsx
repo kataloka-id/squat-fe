@@ -52,6 +52,7 @@ import {
   type UserFlowDependency,
 } from '@/src/api/user-flows.service.ts';
 import { ProjectsService } from '@/src/api/projects.service.ts';
+import { onExecutionDataChanged } from '@/src/api/execution-refresh.ts';
 import {
   AutomationReadiness,
   AutomationType,
@@ -690,6 +691,7 @@ export const UserFlowDetail = ({
   onRefresh,
   onError,
   onViewFlow,
+  onOpenTestRun,
   backLabel,
   onBack,
 }: {
@@ -702,6 +704,7 @@ export const UserFlowDetail = ({
   onRefresh: () => void;
   onError?: (message: string) => void;
   onViewFlow?: (flowId: string) => void;
+  onOpenTestRun?: (runId: string) => void;
   backLabel?: string;
   onBack?: () => void;
 }) => {
@@ -897,9 +900,6 @@ export const UserFlowDetail = ({
         </div>
         <div className="flex shrink-0 flex-wrap gap-2">
           <Button onClick={onEdit}>Edit Flow</Button>
-          <Button disabled title="Coming soon">
-            Run Tests - Coming soon
-          </Button>
         </div>
       </header>
       <nav aria-label="User flow detail tabs" className="flex overflow-x-auto border-b">
@@ -986,24 +986,42 @@ export const UserFlowDetail = ({
                   <dd>{formatUserFlowDate(flow.updatedAt)}</dd>
                 </div>
               </dl>
+              <div className="mt-4 border-t border-slate-100 pt-4">
+                <h3 className="text-sm font-medium text-slate-500">Latest Test Run</h3>
+                {flow.latestRun ? (
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-sm">
+                      <strong className="block text-slate-800">{flow.latestRun.name}</strong>
+                      <span className="text-slate-500">
+                        {flow.latestRun.status} · {flow.latestRun.progress ? `${flow.latestRun.progress.executed} / ${flow.latestRun.progress.total} executed` : 'Belum ada progress'}
+                      </span>
+                    </div>
+                    <Button size="sm" variant="secondary" onClick={() => onOpenTestRun?.(flow.latestRun!.id)} disabled={!onOpenTestRun}>
+                      Lihat Run
+                    </Button>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm text-slate-500">Belum ada Test Run dari User Flow ini.</p>
+                )}
+              </div>
             </article>
             <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
               <h2 className="font-semibold">Coverage</h2>
               <dl className="mt-4 space-y-4 text-sm">
                 <div>
                   <dt className="text-slate-500">Automation Coverage</dt>
-                  <dd className="mt-1 text-2xl font-bold">{flow.coverage}%</dd>
+                  <dd className="mt-1 text-2xl font-bold">{flow.coverage == null ? '—' : `${Number(flow.coverage.toFixed(2))}%`}</dd>
                   <div
                     className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200"
-                    aria-label={`Automation coverage: ${flow.coverage}%`}
+                    aria-label={`Automation coverage: ${flow.coverage == null ? 'tidak tersedia' : `${flow.coverage}%`}`}
                     role="progressbar"
                     aria-valuemin={0}
                     aria-valuemax={100}
-                    aria-valuenow={flow.coverage}
+                    aria-valuenow={flow.coverage ?? undefined}
                   >
                     <div
                       className="h-full rounded-full bg-brand-600"
-                      style={{ width: `${Math.min(100, Math.max(0, flow.coverage))}%` }}
+                      style={{ width: `${Math.min(100, Math.max(0, flow.coverage ?? 0))}%` }}
                     />
                   </div>
                 </div>
@@ -2224,10 +2242,12 @@ export const UserFlowsPage = ({
   projects,
   projectId,
   onProjectChange,
+  onOpenTestRun,
 }: {
   projects: Project[];
   projectId: string;
   onProjectChange: (projectId: string) => void;
+  onOpenTestRun?: (projectId: string, runId: string) => void;
 }) => {
   const [flows, setFlows] = useState<UserFlow[]>([]);
   const [summary, setSummary] = useState({
@@ -2302,6 +2322,9 @@ export const UserFlowsPage = ({
   useEffect(() => {
     void load();
   }, [load]);
+  useEffect(() => onExecutionDataChanged((changedProjectId) => {
+    if (changedProjectId === projectId) void load();
+  }), [projectId, load]);
   const open = async (flow: UserFlow) => {
     try {
       const [data, cases] = await Promise.all([
@@ -2359,6 +2382,7 @@ export const UserFlowsPage = ({
           onClose={closeDetail}
           onBack={detailHistory.length ? backToPreviousFlow : undefined}
           onViewFlow={openRelatedFlow}
+          onOpenTestRun={(runId) => onOpenTestRun?.(projectId, runId)}
           onEdit={() => setForm(detail)}
           onRefresh={() => {
             void load();

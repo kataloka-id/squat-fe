@@ -100,7 +100,7 @@ export interface Project {
   stats: {
     testCasesCount: number;
     userFlowsCount?: number;
-    passRate: number;
+    passRate: number | null;
   };
   members: string[];
   externalLink?: string;
