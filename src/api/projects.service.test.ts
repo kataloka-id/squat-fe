@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn() }));
+const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() }));
 
 vi.mock('./axios.ts', () => ({ default: api }));
 vi.mock('./read-cache.ts', () => ({
-  getCached: vi.fn(),
+  getCached: vi.fn((_key: string, request: () => Promise<unknown>) => request()),
   invalidateReadCache: vi.fn(),
 }));
 
@@ -18,6 +18,21 @@ describe('ProjectsService cache invalidation', () => {
   it('invalidates the canonical project collection before a mutation refetch', () => {
     ProjectsService.invalidateList();
     expect(invalidateReadCache).toHaveBeenCalledWith('/v1/projects');
+  });
+
+  it('uses the pending-deletion lifecycle endpoints and invalidates both project lists', async () => {
+    api.get.mockResolvedValue({ data: [] });
+    api.post.mockResolvedValue({ data: { id: 'project-1' } });
+    api.delete.mockResolvedValue({ data: null });
+
+    await ProjectsService.listPendingDeletion();
+    await ProjectsService.restore('project-1');
+    await ProjectsService.permanentlyRemove('project-1');
+
+    expect(api.get).toHaveBeenCalledWith('/v1/projects/pending-deletion');
+    expect(api.post).toHaveBeenCalledWith('/v1/projects/project-1/restore');
+    expect(api.delete).toHaveBeenCalledWith('/v1/projects/project-1/permanent');
+    expect(invalidateReadCache).toHaveBeenCalledWith('/v1/projects/pending-deletion');
   });
 
   it('sends every Automation Readiness value without changing Testing Type or Status', async () => {

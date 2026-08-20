@@ -29,7 +29,8 @@ vi.mock('@/src/components/projectsTestCases/TestCaseImportDialog.tsx', () => ({
 vi.mock('@/src/components/projectsTestCases/TestCaseFolderTree.tsx', () => ({
   TestCaseFolderTree: ({ active, onSelect }: { active: { folderId?: string }; onSelect: (scope: { folderId?: string; includeSubfolders: boolean }) => void }) => <><p>Folder scope: {active.folderId ?? 'all'}</p><button onClick={() => onSelect({ folderId: 'f1', includeSubfolders: false })}>Choose folder</button></>,
 }));
-vi.mock('@/src/components/projectsTestCases/UnderDevelopment.tsx', () => ({ UnderDevelopment: () => <p>Other page</p> }));
+vi.mock('@/src/components/testRuns/TestRunsPage.tsx', () => ({ TestRunsPage: () => <p>Other page</p> }));
+vi.mock('@/src/components/reports/ReportsPage.tsx', () => ({ ReportsPage: () => <p>Other page</p> }));
 vi.mock('@/src/components/projectsTestCases/ui/ConfirmationModal.tsx', () => ({ ConfirmationModal: () => null }));
 vi.mock('@/src/components/projectsTestCases/ui/Toast.tsx', () => ({ Toast: () => null }));
 vi.mock('@/src/components/settings/SettingsPage.tsx', () => ({ SettingsPage: () => null }));

@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars -- repository lint misidentifies TypeScript callback props. */
 import React from 'react';
 import { 
   Settings, 
@@ -157,8 +158,8 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({
                     <div className="flex items-center gap-2 text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1 group-hover/pass:text-emerald-600">
                       <Activity size={12} /> Pass Rate
                     </div>
-                    <div className={`text-xl font-bold ${project.stats.passRate >= 90 ? 'text-emerald-600' : project.stats.passRate >= 70 ? 'text-amber-500' : 'text-red-500'} group-hover/pass:text-emerald-700`}>
-                        {project.stats.passRate}%
+                    <div title="Pass rate dari Test Run terakhir yang selesai. Skipped dan Untested tidak dihitung." className={`text-xl font-bold ${project.stats.passRate == null ? 'text-slate-500' : project.stats.passRate >= 90 ? 'text-emerald-600' : project.stats.passRate >= 70 ? 'text-amber-500' : 'text-red-500'} group-hover/pass:text-emerald-700`}>
+                        {project.stats.passRate == null ? '—' : `${Number(project.stats.passRate.toFixed(2))}%`}
                     </div>
                   </div>
 

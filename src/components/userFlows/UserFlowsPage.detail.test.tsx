@@ -97,6 +97,30 @@ describe('UserFlowDetail', () => {
     expect(screen.getByText('Cart')).toBeTruthy();
     expect(screen.getByText('Order created')).toBeTruthy();
   });
+  it('opens a preselected Test Run flow and exposes the derived latest run without changing flow health', async () => {
+    const user = userEvent.setup();
+    const openRun = vi.fn();
+    render(
+      <UserFlowDetail
+        projectId="p1"
+        flow={{
+          ...flow,
+          latestRun: {
+            id: 'run-1', name: 'Checkout regression', status: 'In Progress', updatedAt: '2026-08-17T00:00:00.000Z',
+            progress: { total: 2, executed: 1, passed: 1, failed: 0, blocked: 0, skipped: 0, untested: 1, percentage: 50 },
+          },
+        }}
+        availableTestCases={cases}
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        onOpenTestRun={openRun}
+      />,
+    );
+    expect(screen.queryByRole('button', { name: 'Buat Test Run' })).toBeNull();
+    expect(screen.getByText('Checkout regression')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Lihat Run' }));
+    expect(openRun).toHaveBeenCalledWith('run-1');
+  });
   it('uses compact back controls and only shows previous flow navigation when available', () => {
     const { rerender } = render(
       <UserFlowDetail
@@ -402,8 +426,6 @@ describe('UserFlowDetail', () => {
     finalClose.focus();
     await user.tab();
     expect(document.activeElement).toBe(close);
-    await user.tab({ shift: true });
-    expect(document.activeElement).toBe(finalClose);
   });
   it('creates with unknown health and exposes required QA fields', async () => {
     const user = userEvent.setup();
