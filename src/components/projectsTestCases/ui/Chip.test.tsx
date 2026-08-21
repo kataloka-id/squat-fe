@@ -12,10 +12,13 @@ describe('Chip', () => {
     ['health', 'unknown', 'bg-slate-100'],
     ['automation', 'UI', 'bg-violet-50'],
     ['automationReadiness', 'Automated', 'bg-emerald-50'],
+    ['testRunType', 'Mixed', 'bg-violet-50'],
+    ['assignee', 'qa_dayadi', 'bg-slate-50'],
     ['section', 'Checkout / Authentication', 'bg-slate-50'],
   ] as const)('maps %s/%s to the shared visual tone', (type, value, tone) => {
     render(<Chip type={type} value={value} />);
-    expect(screen.getByText(type === 'health' ? 'Unknown' : value).parentElement?.className).toContain(tone);
+    const displayValue = type === 'health' || type === 'assignee' ? value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) : value;
+    expect(screen.getByText(type === 'health' ? 'Unknown' : displayValue).parentElement?.className).toContain(tone);
   });
 
   it('keeps the full long value available through the tooltip while allowing truncation', () => {

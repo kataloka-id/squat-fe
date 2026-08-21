@@ -1,5 +1,6 @@
+/* eslint-disable no-unused-vars -- option callback types are consumed by TypeScript. */
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { ChevronDown, Check, X, Search } from 'lucide-react';
+import { AlertCircle, ChevronDown, Check, X, Search, LoaderCircle, RefreshCw } from 'lucide-react';
 
 interface Option {
   label: string;
@@ -13,6 +14,10 @@ interface MultiSelectProps {
   onChange: (values: string[]) => void;
   icon?: React.ReactNode;
   disabled?: boolean;
+  loading?: boolean;
+  error?: string | null;
+  emptyMessage?: string;
+  onRetry?: () => void | Promise<void>;
 }
 
 export const MultiSelect: React.FC<MultiSelectProps> = ({
@@ -21,7 +26,11 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
   selectedValues,
   onChange,
   icon,
-  disabled = false
+  disabled = false,
+  loading = false,
+  error = null,
+  emptyMessage = `${label} options are not available`,
+  onRetry,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -88,6 +97,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
 
   // Show search bar if we have enough options to warrant it
   const showSearch = options.length > 5;
+  const menuMessage = error || (options.length === 0 ? emptyMessage : 'No results found');
 
   const renderOption = (option: Option) => {
     const isSelected = selectedValues.includes(option.value);
@@ -166,7 +176,11 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
             )}
             
             <div className="max-h-64 overflow-y-auto p-1 custom-scrollbar">
-                {filteredOptions.length > 0 ? (
+                {loading ? (
+                    <div role="status" className="flex items-center justify-center gap-2 px-3 py-4 text-sm text-slate-500"><LoaderCircle className="h-4 w-4 animate-spin" />Loading...</div>
+                ) : error ? (
+                    <div role="alert" className="flex items-center gap-2 px-3 py-4 text-sm text-red-700"><AlertCircle className="h-4 w-4 shrink-0" /><span className="flex-1">{error}</span>{onRetry && <button type="button" aria-label="Retry loading options" onClick={() => void onRetry()} className="rounded p-1 hover:bg-red-100"><RefreshCw className="h-4 w-4" /></button>}</div>
+                ) : filteredOptions.length > 0 ? (
                     <>
                         {selectedItems.map(renderOption)}
                         
@@ -177,9 +191,9 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
                         {unselectedItems.map(renderOption)}
                     </>
                 ) : (
-                    <div className="px-3 py-4 text-sm text-slate-400 text-center flex flex-col items-center gap-2">
+                    <div role="status" aria-disabled="true" className="px-3 py-4 text-sm text-slate-400 text-center flex flex-col items-center gap-2">
                         <Search className="w-6 h-6 text-slate-200" />
-                        <span>No results found</span>
+                        <span>{menuMessage}</span>
                     </div>
                 )}
             </div>

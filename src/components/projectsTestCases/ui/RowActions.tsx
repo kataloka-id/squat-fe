@@ -29,6 +29,7 @@ export const RowActions = ({ actions, 'aria-label': ariaLabel = 'Row actions', o
         <span className="group/action relative inline-flex opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus:opacity-100 group-focus-within:opacity-100" key={label} tabIndex={tooltip !== label ? 0 : undefined}>
           <button
             aria-label={label}
+            title={tooltip}
             className={`grid h-9 w-9 place-items-center rounded-md border border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50 ${tone === 'danger' ? 'text-slate-400 hover:border-red-100 hover:bg-red-50 hover:text-red-600' : 'text-slate-400 hover:border-slate-200 hover:bg-white hover:text-brand-600'}`}
             disabled={disabled}
             onClick={onClick}

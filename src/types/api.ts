@@ -214,6 +214,16 @@ export interface ProjectTestCaseRecord {
 
 export type TestRunStatus = 'Draft' | 'In Progress' | 'Completed' | 'Blocked';
 export type TestRunResult = 'Passed' | 'Failed' | 'Blocked' | 'Skipped' | 'Untested';
+export interface TestRunExecutionStepRecord {
+  id: string;
+  sourceStepId?: string | null;
+  position: number;
+  action: string;
+  expectedResult: string;
+  result: TestRunResult;
+  notes?: string | null;
+  updatedAt?: string;
+}
 
 export interface TestRunOwnerRecord {
   id: string;
@@ -224,10 +234,12 @@ export interface TestRunOwnerRecord {
 export interface TestRunRecord {
   id: string;
   projectId: string;
+  runNumber?: number;
+  displayId?: string;
   name: string;
   description?: string | null;
   status: TestRunStatus;
-  type?: string | null;
+  type?: 'Manual' | 'Automated' | 'Mixed' | string | null;
   owner?: TestRunOwnerRecord | null;
   ownerId?: string | null;
   progress?: TestRunProgress;
@@ -244,7 +256,13 @@ export interface TestRunUserFlowRecord {
     flowKey: string;
     title: string;
     status?: string | null;
-    steps?: Array<{ id?: string; stepOrder?: number; title: string; action?: string | null; expectedResult?: string | null }>;
+    steps?: Array<{
+      id?: string;
+      stepOrder?: number;
+      title: string;
+      action?: string | null;
+      expectedResult?: string | null;
+    }>;
     updatedAt?: string | null;
   };
 }
@@ -269,6 +287,7 @@ export interface TestRunExecutionRecord {
   assigneeId?: string | null;
   durationSeconds?: number | null;
   notes?: string | null;
+  steps?: TestRunExecutionStepRecord[];
   executedAt?: string | null;
   updatedAt: string;
   snapshot: {

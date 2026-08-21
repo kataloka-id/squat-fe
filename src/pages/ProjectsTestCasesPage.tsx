@@ -124,7 +124,10 @@ export const App: React.FC = () => {
   // A scope is owned by the project from which it was selected.  Keeping that
   // ownership separate makes a project switch safe even while React batches state updates.
   const [folderScopeProjectId, setFolderScopeProjectId] = useState<string>();
-  const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(new Set());
+  // Expansion is UI state, not folder selection state. Keep it per project so
+  // leaving Test Cases does not collapse the tree, while project changes never
+  // accidentally reuse an ID from another project's catalog.
+  const [expandedFolderIdsByProject, setExpandedFolderIdsByProject] = useState<Record<string, Set<string>>>({});
   const [foldersLoading, setFoldersLoading] = useState(false);
   const [foldersError, setFoldersError] = useState<string | null>(null);
 
@@ -317,7 +320,6 @@ export const App: React.FC = () => {
     // issue a request using a folder selected in the previous project.
     setFolderScopeProjectId(undefined);
     setFolderScope(emptyFolderScope);
-    setExpandedFolderIds(new Set());
     if (clearQuery) clearFolderQuery();
   }, [clearFolderQuery]);
 
@@ -388,7 +390,10 @@ export const App: React.FC = () => {
   // Linked-precondition source actions open a focused, independent workspace tab.
   // The project remains server-authorized when its test-case list is fetched.
   useEffect(() => {
-    if (!deepLinkedProjectId || queryView === 'runs' || queryView === 'reports' || !projects.some((project) => project.id === deepLinkedProjectId)) return;
+    // A projectId is also used by other workspace views. Only a URL without a
+    // view (legacy test-case deep links) or an explicit test-cases view should
+    // activate this focused test-case navigation.
+    if (!deepLinkedProjectId || (queryView && queryView !== 'test-cases') || !projects.some((project) => project.id === deepLinkedProjectId)) return;
     // A project filter change updates the URL in the same event. During the
     // render before that URL update is visible, do not let the previous deep
     // link effect restore the old project selection.
@@ -410,6 +415,7 @@ export const App: React.FC = () => {
   const handleViewUserFlows = (projectId: string) => {
     setSelectedUserFlowProjectId(projectId);
     setCurrentView('user-flows');
+    updateWorkspaceQuery({ view: 'user-flows', projectId, folderId: undefined, unfiled: undefined, includeSubfolders: undefined, testCaseId: undefined });
   };
 
   const handleViewTestRuns = (projectId: string) => {
@@ -520,6 +526,13 @@ export const App: React.FC = () => {
     const flatten = (nodes: TestCaseFolderRecord[]): TestCaseFolderRecord[] => nodes.flatMap(({ children, ...folder }) => [folder, ...flatten(children ?? [])]);
     const folders = flatten(response.data.folders);
     setFoldersByProject((current) => ({ ...current, [projectId]: folders }));
+    setExpandedFolderIdsByProject((current) => {
+      const validIds = new Set(folders.map((folder) => folder.id));
+      const previous = current[projectId] ?? new Set<string>();
+      const next = new Set([...previous].filter((folderId) => validIds.has(folderId)));
+      if (next.size === previous.size) return current;
+      return { ...current, [projectId]: next };
+    });
     return folders;
   }, []);
   useEffect(() => {
@@ -1053,8 +1066,11 @@ export const App: React.FC = () => {
       folders={activeProjectId ? foldersByProject[activeProjectId] ?? [] : []}
       active={activeFolderScope}
       disabled={!activeProjectId || foldersLoading || Boolean(foldersError)}
-      expandedFolderIds={expandedFolderIds}
-      onExpandedFolderIdsChange={setExpandedFolderIds}
+      expandedFolderIds={activeProjectId ? expandedFolderIdsByProject[activeProjectId] ?? new Set<string>() : new Set<string>()}
+      onExpandedFolderIdsChange={(next) => {
+        if (!activeProjectId) return;
+        setExpandedFolderIdsByProject((current) => ({ ...current, [activeProjectId]: next }));
+      }}
       loading={foldersLoading}
       error={foldersError}
       onSelect={(scope) => {
@@ -1445,7 +1461,7 @@ export const App: React.FC = () => {
 
           {currentView === 'user-flows' && <UserFlowsPage canManage={sessionUser?.roleSlug.toLowerCase() !== 'viewer'} projects={projects} projectId={selectedUserFlowProjectId} onProjectChange={setSelectedUserFlowProjectId} onOpenTestRun={(projectId, runId) => { setSelectedTestRunProjectId(projectId); setCurrentView('runs'); updateWorkspaceQuery({ view: 'runs', projectId, runId, executionId: undefined, userFlowId: undefined }); }} />}
 
-          {currentView === 'runs' && <TestRunsPage projects={projects} projectId={selectedTestRunProjectId} runId={queryView === 'runs' ? queryRunId : undefined} executionId={queryView === 'runs' ? queryExecutionId : undefined} returnToReports={query.get('reportReturn') === '1'} onReturnToReports={() => { setCurrentView('reports'); updateWorkspaceQuery({ view: 'reports', runId: undefined, executionId: undefined, reportReturn: undefined }); }} onProjectChange={(projectId) => { setSelectedTestRunProjectId(projectId); updateWorkspaceQuery({ view: 'runs', projectId, runId: undefined, userFlowId: undefined }); }} onRunChange={(runId) => updateWorkspaceQuery({ view: 'runs', projectId: selectedTestRunProjectId || undefined, runId, executionId: undefined, userFlowId: undefined })} />}
+          {currentView === 'runs' && <TestRunsPage projects={projects} projectId={selectedTestRunProjectId} runId={queryView === 'runs' ? queryRunId : undefined} executionId={queryView === 'runs' ? queryExecutionId : undefined} returnToReports={query.get('reportReturn') === '1'} onReturnToReports={() => { setCurrentView('reports'); updateWorkspaceQuery({ view: 'reports', runId: undefined, executionId: undefined, reportReturn: undefined }); }} onProjectChange={(projectId) => { setSelectedTestRunProjectId(projectId); updateWorkspaceQuery({ view: 'runs', projectId, runId: undefined, userFlowId: undefined }); }} onRunChange={(runId) => updateWorkspaceQuery({ view: 'runs', projectId: selectedTestRunProjectId || undefined, runId, executionId: undefined, userFlowId: undefined })} onOpenUserFlow={(projectId, userFlowId) => { setSelectedUserFlowProjectId(projectId); setCurrentView('user-flows'); updateWorkspaceQuery({ view: 'user-flows', projectId, userFlowId, runId: undefined, executionId: undefined }); }} />}
           {currentView === 'reports' && <ReportsPage projects={projects} projectId={selectedReportProjectId} filters={reportFilters} onProjectChange={(projectId) => { setSelectedReportProjectId(projectId); updateWorkspaceQuery({ view: 'reports', projectId, runId: undefined }); }} onFiltersChange={(nextFilters) => updateWorkspaceQuery({ view: 'reports', projectId: selectedReportProjectId || undefined, runId: nextFilters.runId, dateFrom: nextFilters.dateFrom, dateTo: nextFilters.dateTo, sectionId: nextFilters.sectionId, folderId: nextFilters.folderId, tag: nextFilters.tag, priority: nextFilters.priority, automationType: nextFilters.automationType, assigneeId: nextFilters.assigneeId, result: nextFilters.result, userFlowId: nextFilters.userFlowId })} onOpenTestRun={(runId) => { setSelectedTestRunProjectId(selectedReportProjectId); setCurrentView('runs'); updateWorkspaceQuery({ view: 'runs', projectId: selectedReportProjectId, runId, executionId: undefined, reportReturn: '1' }); }} onOpenExecution={(runId, executionId) => { setSelectedTestRunProjectId(selectedReportProjectId); setCurrentView('runs'); updateWorkspaceQuery({ view: 'runs', projectId: selectedReportProjectId, runId, executionId, reportReturn: '1' }); }} />}
           {currentView === 'team' && <TeamPage onManageAssignments={() => setCurrentView('settings')} />}
           {currentView === 'settings' && <SettingsPage />}

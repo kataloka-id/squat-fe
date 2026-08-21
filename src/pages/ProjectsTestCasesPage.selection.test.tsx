@@ -307,6 +307,19 @@ describe('Test Cases selection lifetime', () => {
     await screen.findByText('Folder scope: all');
   });
 
+  it('keeps User Flows active when a selected project remains in the workspace URL', async () => {
+    render(<MemoryRouter><App /><LocationProbe /></MemoryRouter>);
+    await screen.findByRole('button', { name: 'Open P1' });
+    fireEvent.click(screen.getByRole('button', { name: 'Open P1' }));
+    await screen.findByText('Folder scope: all');
+
+    fireEvent.click(screen.getByRole('button', { name: 'User Flows' }));
+
+    await screen.findByText('User Flow project: none');
+    expect(screen.queryByRole('heading', { name: 'Test Cases' })).toBeNull();
+    await waitFor(() => expect(screen.getByText('Location: /?projectId=p1&view=user-flows')).toBeTruthy());
+  });
+
   it('drops an invalid deep-linked folder and fetches All test cases', async () => {
     render(<MemoryRouter initialEntries={['/workspace?projectId=p1&folderId=missing']}><App /><LocationProbe /></MemoryRouter>);
     await screen.findByText('Folder scope: all');

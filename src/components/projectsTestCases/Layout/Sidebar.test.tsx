@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 import { Sidebar } from './Sidebar.tsx';
@@ -42,5 +42,27 @@ describe('Sidebar test case navigation', () => {
     fireEvent.click(container.querySelector('[aria-label="Collapse sidebar"]')!);
     fireEvent.click(container.querySelector('[aria-label="Expand sidebar"]')!);
     expect(container.textContent).toContain('MFA');
+  });
+
+  it('navigates every primary menu with one click and keeps the folder tree mounted', () => {
+    const onNavigate = vi.fn();
+    const { container, rerender } = render(
+      <MemoryRouter>
+        <Sidebar currentView="test-cases" onNavigate={onNavigate} testCaseNavigation={<div>Expanded folder tree</div>} />
+      </MemoryRouter>,
+    );
+
+    const primaryMenus = ['Projects', 'Test Cases', 'User Flows', 'Test Runs', 'Reports', 'Team', 'Settings'];
+    for (const label of primaryMenus) {
+      fireEvent.click(within(container).getByRole('button', { name: label }));
+      expect(onNavigate).toHaveBeenLastCalledWith(label === 'Test Runs' ? 'runs' : label.toLowerCase().replace(' ', '-'));
+    }
+
+    rerender(
+      <MemoryRouter>
+        <Sidebar currentView="user-flows" onNavigate={onNavigate} testCaseNavigation={<div>Expanded folder tree</div>} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByText('Expanded folder tree')).not.toBeNull();
   });
 });

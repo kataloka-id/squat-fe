@@ -500,14 +500,14 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
                         <label className={fieldLabelClassName} htmlFor="test-case-section">
                           Section
                         </label>
-                        <Select aria-label="Section" className="mt-1" disabled={isLoadingSections || availableSections.length === 0} value={formData.sectionId ?? ''} onChange={(value) => {
+                        <Select aria-label="Section" className="mt-1" disabled={isLoadingSections || (availableSections.length === 0 && !sectionsError)} loading={isLoadingSections} error={sectionsError} onRetry={() => loadSectionsForProject(formData.projectId ?? '')} value={formData.sectionId ?? ''} onChange={(value) => {
                             const selected = availableSections.find((section) => section.id === String(value));
                             setFormData((previous) => ({
                               ...previous,
                               sectionId: selected?.id ?? '',
                               section: selected?.name ?? '',
                             }));
-                          }} options={availableSections.map((section) => ({ value: section.id, label: section.name }))} placeholder={isLoadingSections ? 'Loading sections…' : 'No sections available'} size="md" />
+                          }} options={availableSections.map((section) => ({ value: section.id, label: section.name }))} emptyMessage="No sections available" placeholder={isLoadingSections ? 'Loading sections…' : 'No sections available'} size="md" />
                         {sectionsError ? (
                           <p className="mt-1.5 text-xs text-red-600" role="alert">
                             {sectionsError}{' '}
