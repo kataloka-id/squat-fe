@@ -73,6 +73,7 @@ import { formatPercentage, percentageNumber } from '@/src/utils/percentage.ts';
 import { ROW_ACTIONS_CELL_CLASS } from '@/src/components/projectsTestCases/ui/RowActions.tsx';
 import { FlowActions } from './FlowActions.tsx';
 import { formatUserFlowDate } from './utils.ts';
+import { TablePagination } from '@/src/components/table/TablePagination.tsx';
 
 const title = (value: unknown) =>
   (typeof value === 'string' ? value : 'Not defined').replace('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -2438,8 +2439,6 @@ export const UserFlowsPage = ({
   const totalPages = Math.max(1, perPage === -1 ? 1 : Math.ceil(filtered.length / perPage));
   useEffect(() => setPage((currentPage) => Math.min(currentPage, totalPages)), [totalPages]);
   const shown = perPage === -1 ? filtered : filtered.slice((page - 1) * perPage, page * perPage);
-  const firstShown = filtered.length ? (perPage === -1 ? 1 : (page - 1) * perPage + 1) : 0;
-  const lastShown = perPage === -1 ? filtered.length : Math.min(page * perPage, filtered.length);
   if (detailLoading)
     return (
       <div className="flex min-h-64 items-center justify-center rounded-xl border border-slate-200 bg-white p-8 text-sm text-slate-500">
@@ -2729,55 +2728,18 @@ export const UserFlowsPage = ({
                     </tbody>
                   </table>
                 </div>
-                <nav
+                <TablePagination
                   aria-label="User flow pagination"
-                  className="sticky bottom-0 z-20 flex flex-col items-center justify-between gap-4 border-t border-slate-200 bg-white px-6 py-4 text-sm shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] sm:flex-row"
-                >
-                  <div className="flex flex-wrap items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-slate-500">Rows:</span>
-                      <Select
-                        aria-label="Rows per page"
-                        value={perPage}
-                        onChange={(value) => {
-                          setPerPage(Number(value));
-                          setPage(1);
-                        }}
-                        options={[
-                          { label: '20', value: 20 },
-                          { label: 'All', value: -1 },
-                        ]}
-                        className="w-24 shrink-0"
-                      />
-                    </div>
-                    <p className="text-sm text-slate-500">
-                      Showing <span className="font-medium text-slate-900">{firstShown}</span> to{' '}
-                      <span className="font-medium text-slate-900">{lastShown}</span> of{' '}
-                      <span className="font-medium text-slate-900">{filtered.length}</span> results
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={page === 1}
-                      onClick={() => setPage(page - 1)}
-                    >
-                      Previous
-                    </Button>
-                    <span>
-                      {page} / {totalPages}
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      disabled={page === totalPages}
-                      onClick={() => setPage(page + 1)}
-                    >
-                      Next
-                    </Button>
-                  </div>
-                </nav>
+                  currentPage={page}
+                  itemsPerPage={perPage}
+                  totalItems={filtered.length}
+                  totalPages={totalPages}
+                  onPageChange={setPage}
+                  onItemsPerPageChange={(value) => {
+                    setPerPage(value);
+                    setPage(1);
+                  }}
+                />
               </div>
             ) : (
               <GraphView

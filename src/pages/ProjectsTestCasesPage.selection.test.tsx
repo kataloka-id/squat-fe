@@ -9,8 +9,10 @@ import { App } from './ProjectsTestCasesPage.tsx';
 const serviceMocks = vi.hoisted(() => ({
   listProjects: vi.fn(),
   movedTestCase: false,
-  listTestCasesInFolder: vi.fn((projectId: string, scope: { folderId?: string } = {}) => Promise.resolve({ data: scope.folderId === 'f1' && serviceMocks.movedTestCase ? [] : [{ id: `tc-${projectId}`, tcNumber: 1, title: `Case ${projectId}`, projectId, section: 'General', priority: 'Medium', status: 'Draft', automationType: 'Manual', automationReadiness: 'Candidate', steps: [], tags: [] }] })),
+  multiTestCases: false,
+  listTestCasesInFolder: vi.fn((projectId: string, scope: { folderId?: string } = {}) => Promise.resolve({ data: scope.folderId === 'f1' && serviceMocks.movedTestCase ? [] : Array.from({ length: serviceMocks.multiTestCases ? 2 : 1 }, (_, index) => ({ id: `tc-${projectId}-${index + 1}`, tcNumber: index + 1, title: `Case ${projectId}-${index + 1}`, projectId, section: 'General', priority: 'Medium', status: 'Draft', automationType: 'Manual', automationReadiness: 'Candidate', steps: [], tags: [] })) })),
   bulkMoveTestCases: vi.fn().mockImplementation(async () => { serviceMocks.movedTestCase = true; return { data: [] }; }),
+  bulkUpdateTestCases: vi.fn().mockResolvedValue({ data: { updatedCount: 2, failedCount: 0, skippedCount: 0 } }),
   updateTestCase: vi.fn().mockImplementation(async (projectId: string, id: string, payload: object) => ({ data: { id, projectId, tcNumber: 1, title: `Case ${projectId}`, section: 'Release', sectionId: 's2', ...payload } })),
   failUpdate: false,
   importTestCases: vi.fn().mockResolvedValue({ data: { importedCount: 0 } }),
@@ -37,7 +39,7 @@ vi.mock('@/src/components/projectsTestCases/TestCaseFolderTree.tsx', () => ({
 }));
 vi.mock('@/src/components/testRuns/TestRunsPage.tsx', () => ({ TestRunsPage: () => <p>Other page</p> }));
 vi.mock('@/src/components/reports/ReportsPage.tsx', () => ({ ReportsPage: () => <p>Other page</p> }));
-vi.mock('@/src/components/projectsTestCases/ui/ConfirmationModal.tsx', () => ({ ConfirmationModal: ({ isOpen, onConfirm }: { isOpen: boolean; onConfirm: () => void }) => isOpen ? <button onClick={onConfirm}>Confirm update</button> : null }));
+vi.mock('@/src/components/projectsTestCases/ui/ConfirmationModal.tsx', () => ({ ConfirmationModal: ({ isOpen, message, onConfirm }: { isOpen: boolean; message: string; onConfirm: () => void }) => isOpen ? <><p role="dialog">{message}</p><button onClick={onConfirm}>Confirm update</button></> : null }));
 vi.mock('@/src/components/projectsTestCases/ui/Toast.tsx', () => ({ Toast: ({ message }: { message: string }) => <div role="alert">{message}</div> }));
 vi.mock('@/src/components/settings/SettingsPage.tsx', () => ({ SettingsPage: () => null }));
 vi.mock('@/src/components/team/TeamPage.tsx', () => ({ TeamPage: () => null }));
@@ -57,6 +59,7 @@ vi.mock('@/src/api/projects.service.ts', () => {
     listSections: vi.fn().mockResolvedValue({ data: [{ id: 's1', projectId: 'p1', name: 'General' }, { id: 's2', projectId: 'p1', name: 'Release' }] }),
     listTestCasesInFolder: serviceMocks.listTestCasesInFolder,
     bulkMoveTestCases: serviceMocks.bulkMoveTestCases,
+    bulkUpdateTestCases: serviceMocks.bulkUpdateTestCases,
     updateTestCase: serviceMocks.updateTestCase,
     listTestCases: vi.fn((projectId: string) => Promise.resolve({ data: [testCase(projectId)] })),
     importTestCases: serviceMocks.importTestCases,
@@ -79,6 +82,8 @@ describe('Test Cases selection lifetime', () => {
     serviceMocks.updateTestCase.mockClear();
     serviceMocks.failUpdate = false;
     serviceMocks.movedTestCase = false;
+    serviceMocks.multiTestCases = false;
+    serviceMocks.bulkUpdateTestCases.mockClear();
     serviceMocks.listProjects.mockReset().mockResolvedValue({ data: [
       { id: 'p1', name: 'Project one', key: 'ONE', status: 'Active' },
       { id: 'p2', name: 'Project two', key: 'TWO', status: 'Active' },
@@ -109,6 +114,59 @@ describe('Test Cases selection lifetime', () => {
     await waitFor(() => expect(rowCheckbox(container).checked).toBe(false));
   });
 
+  it('resets every bulk field and closes pending confirmation without changing table filters', async () => {
+    const { container } = render(<MemoryRouter><App /></MemoryRouter>);
+    await screen.findByRole('button', { name: 'Open P1' });
+    fireEvent.click(screen.getByRole('button', { name: 'Open P1' }));
+    await waitFor(() => expect(rowCheckbox(container)).toBeDefined());
+    fireEvent.change(screen.getByPlaceholderText('Search cases...'), { target: { value: 'Case' } });
+    fireEvent.click(rowCheckbox(container));
+    await screen.findByRole('button', { name: 'Unselect All' });
+
+    fireEvent.change(screen.getByLabelText('Set Status'), { target: { value: 'Review' } });
+    fireEvent.change(screen.getByLabelText('Set Priority'), { target: { value: 'High' } });
+    fireEvent.change(screen.getByLabelText('Set Section'), { target: { value: 's2' } });
+    fireEvent.change(screen.getByLabelText('Set Testing Type'), { target: { value: 'API' } });
+    fireEvent.change(screen.getByLabelText('Set Automation Readiness'), { target: { value: 'Ready' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+    await screen.findByRole('dialog');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Unselect All' }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Unselect All' })).toBeNull();
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect((screen.getByPlaceholderText('Search cases...') as HTMLInputElement).value).toBe('Case');
+    });
+
+    fireEvent.click(rowCheckbox(container));
+    await screen.findByRole('button', { name: 'Unselect All' });
+    expect((screen.getByLabelText('Set Status') as HTMLSelectElement).value).toBe('');
+    expect((screen.getByLabelText('Set Priority') as HTMLSelectElement).value).toBe('');
+    expect((screen.getByLabelText('Set Section') as HTMLSelectElement).value).toBe('');
+    expect((screen.getByLabelText('Set Testing Type') as HTMLSelectElement).value).toBe('');
+    expect((screen.getByLabelText('Set Automation Readiness') as HTMLSelectElement).value).toBe('');
+  });
+
+  it('resets bulk values when individual unselection reaches zero and keeps new selection clean', async () => {
+    serviceMocks.multiTestCases = true;
+    const { container } = render(<MemoryRouter><App /></MemoryRouter>);
+    await screen.findByRole('button', { name: 'Open P1' });
+    fireEvent.click(screen.getByRole('button', { name: 'Open P1' }));
+    await waitFor(() => expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(3));
+    const checkboxes = container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
+    fireEvent.click(checkboxes[1]);
+    fireEvent.click(checkboxes[2]);
+    fireEvent.change(screen.getByLabelText('Set Priority'), { target: { value: 'High' } });
+    fireEvent.click(checkboxes[2]);
+    fireEvent.click(checkboxes[1]);
+
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Unselect All' })).toBeNull());
+    fireEvent.click(container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')[1]);
+    await screen.findByRole('button', { name: 'Unselect All' });
+    expect((screen.getByLabelText('Set Priority') as HTMLSelectElement).value).toBe('');
+  });
+
   it('creates a folder through the app modal and refreshes the folder catalog', async () => {
     const user = userEvent.setup();
     render(<MemoryRouter><App /></MemoryRouter>);
@@ -135,9 +193,10 @@ describe('Test Cases selection lifetime', () => {
     fireEvent.click(rowCheckbox(container));
     await screen.findByRole('button', { name: 'Unselect All' });
     fireEvent.change(screen.getByLabelText('Move to…'), { target: { value: '__unfiled__' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirm update' }));
 
     await waitFor(() => expect(serviceMocks.bulkMoveTestCases).toHaveBeenCalledWith('p1', {
-      testCaseIds: ['tc-p1'],
+      testCaseIds: ['tc-p1-1'],
       destinationFolderId: null,
     }));
     await waitFor(() => expect(serviceMocks.listTestCasesInFolder).toHaveBeenLastCalledWith('p1', { folderId: 'f1', includeSubfolders: false }));
@@ -145,7 +204,7 @@ describe('Test Cases selection lifetime', () => {
     expect(screen.queryByText('Case p1')).toBeNull();
   });
 
-  it('updates all extended bulk fields through the existing test-case endpoint', async () => {
+  it('updates all extended fields through the single-test-case endpoint', async () => {
     const { container } = render(<MemoryRouter><App /></MemoryRouter>);
     await screen.findByRole('button', { name: 'Open P1' });
     fireEvent.click(screen.getByRole('button', { name: 'Open P1' }));
@@ -159,12 +218,54 @@ describe('Test Cases selection lifetime', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Update' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Confirm update' }));
 
-    await waitFor(() => expect(serviceMocks.updateTestCase).toHaveBeenCalledWith('p1', 'tc-p1', expect.objectContaining({
+    await waitFor(() => expect(serviceMocks.updateTestCase).toHaveBeenCalledWith('p1', 'tc-p1-1', expect.objectContaining({
       sectionId: 's2',
       automationType: 'API',
       automationReadiness: 'Ready',
     })));
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Unselect All' })).toBeNull());
+  });
+
+  it('uses one dedicated API mutation for multiple selected test cases', async () => {
+    serviceMocks.multiTestCases = true;
+    const { container } = render(<MemoryRouter><App /></MemoryRouter>);
+    await screen.findByRole('button', { name: 'Open P1' });
+    fireEvent.click(screen.getByRole('button', { name: 'Open P1' }));
+    await waitFor(() => expect(container.querySelectorAll('input[type="checkbox"]')).toHaveLength(3));
+    fireEvent.click(container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')[1]);
+    fireEvent.click(container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')[2]);
+    await screen.findByRole('button', { name: 'Unselect All' });
+    fireEvent.change(screen.getByLabelText('Set Priority'), { target: { value: 'High' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Confirm update' }));
+
+    await waitFor(() => expect(serviceMocks.bulkUpdateTestCases).toHaveBeenCalledTimes(1));
+    expect(serviceMocks.bulkUpdateTestCases).toHaveBeenCalledWith('p1', {
+      testCaseIds: ['tc-p1-1', 'tc-p1-2'], updates: { priority: 'High' },
+    });
+    expect(serviceMocks.updateTestCase).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Unselect All' })).toBeNull());
+    fireEvent.click(container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')[1]);
+    await screen.findByRole('button', { name: 'Unselect All' });
+    expect((screen.getByLabelText('Set Priority') as HTMLSelectElement).value).toBe('');
+  });
+
+  it('shows display labels in bulk update confirmation and never renders the section ID', async () => {
+    serviceMocks.multiTestCases = true;
+    render(<MemoryRouter><App /></MemoryRouter>);
+    await screen.findByRole('button', { name: 'Open P1' });
+    fireEvent.click(screen.getByRole('button', { name: 'Open P1' }));
+    await waitFor(() => expect(document.querySelectorAll('input[type="checkbox"]')).toHaveLength(3));
+    const checkboxes = document.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
+    fireEvent.click(checkboxes[1]);
+    fireEvent.click(checkboxes[2]);
+    fireEvent.change(screen.getByLabelText('Set Section'), { target: { value: 's2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Update' }));
+
+    const confirmation = await screen.findByRole('dialog');
+    expect(confirmation.textContent).toContain('Update 2 selected test cases?');
+    expect(confirmation.textContent).toContain('Section will be changed to "Release".');
+    expect(confirmation.textContent).not.toContain('s2');
   });
 
   it('keeps failed selections and refreshes authoritative data after a bulk update failure', async () => {

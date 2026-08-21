@@ -131,6 +131,8 @@ describe('UserFlowsPage pagination and compact columns', () => {
     expect(card?.className).not.toContain('overflow-hidden');
     expect(card?.contains(pagination)).toBe(true);
     expect(pagination.className).toContain('border-t');
+    expect(pagination.className).toContain('shrink-0');
+    expect(pagination.className).not.toContain('sticky');
     expect(pagination.className).not.toContain('border-x');
     expect(pagination.className).not.toContain('border-b');
   });

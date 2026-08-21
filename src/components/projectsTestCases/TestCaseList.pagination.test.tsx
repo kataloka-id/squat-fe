@@ -1,8 +1,8 @@
 /** @vitest-environment jsdom */
 import { useState } from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { TestCaseList } from './TestCaseList.tsx';
 import { selectCustomOption } from '@/src/test/selectTestUtils';
 
@@ -13,6 +13,21 @@ const PaginationHarness = () => {
 };
 
 describe('TestCaseList rows-per-page selector', () => {
+  afterEach(cleanup);
+
+  it('keeps the pagination footer in normal flow after the scrollable table body', () => {
+    const { container } = render(<PaginationHarness />);
+    const table = container.querySelector('table') as HTMLTableElement;
+    const body = table.parentElement as HTMLElement;
+    const footer = screen.getByRole('navigation', { name: 'Test case pagination' });
+
+    expect(body.className).toContain('overflow-x-auto');
+    expect(body.className).toContain('overflow-y-auto');
+    expect(footer.className).toContain('shrink-0');
+    expect(footer.className).not.toContain('sticky');
+    expect(table.parentElement?.parentElement?.contains(footer)).toBe(true);
+  });
+
   it('opens the portal menu and resets the current page when selection changes', async () => {
     const user = userEvent.setup();
     render(<PaginationHarness />);

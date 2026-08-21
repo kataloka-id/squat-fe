@@ -6,6 +6,7 @@ export type TestCasePayload = Pick<ProjectTestCaseRecord, 'title' | 'sectionId' 
   folderId?: string | null;
   linkedPreconditions?: Array<{ testCaseId: string; sortOrder: number }>;
 };
+export type BulkTestCaseUpdates = Partial<Pick<ProjectTestCaseRecord, 'sectionId' | 'priority' | 'status' | 'automationType' | 'automationReadiness'>> & { folderId?: string | null };
 
 export const ProjectsService = {
   // The backend scopes this collection to the authenticated caller.  Do not
@@ -66,6 +67,13 @@ export const ProjectsService = {
     const response = await api.post(`/v1/projects/${projectId}/test-cases/bulk-move`, payload) as ApiResponse<ProjectTestCaseRecord[]>;
     invalidateReadCache(`/v1/projects/${projectId}/test-cases`);
     invalidateReadCache(`/v1/projects/${projectId}/test-case-folders`);
+    return response;
+  },
+  bulkUpdateTestCases: async (projectId: string, payload: { testCaseIds: string[]; updates: BulkTestCaseUpdates }) => {
+    const response = await api.patch(`/v1/projects/${projectId}/test-cases/bulk`, payload) as ApiResponse<{ updatedCount: number; failedCount: number; skippedCount: number }>;
+    invalidateReadCache(`/v1/projects/${projectId}/test-cases`);
+    invalidateReadCache(`/v1/projects/${projectId}/test-case-folders`);
+    invalidateReadCache('/v1/projects');
     return response;
   },
   listReusableTestCases: (projectId: string, query: { search?: string; sectionId?: string; status?: string; excludeTestCaseId?: string } = {}) =>
