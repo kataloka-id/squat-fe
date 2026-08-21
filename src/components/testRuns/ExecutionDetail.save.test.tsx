@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TestRunExecutionRecord } from '@/src/types/api.ts';
 import { ExecutionDetail } from './TestRunsPage.tsx';
+import { selectCustomOption } from '@/src/test/selectTestUtils.ts';
 
 const execution = (result: TestRunExecutionRecord['result'] = 'Untested'): TestRunExecutionRecord => ({
   id: 'execution-1', runId: 'run-1', sourceTestCaseId: 'case-1', result,
@@ -21,7 +22,7 @@ describe('Test Run execution Save & Next', () => {
       const onNext = vi.fn();
       render(<ExecutionDetail execution={execution()} onSave={onSave} onPrevious={vi.fn()} onNext={onNext} />);
 
-      await user.selectOptions(screen.getByLabelText('Result'), result);
+      await selectCustomOption(user, 'Result', result);
       await user.click(screen.getByRole('button', { name: 'Save & Next' }));
 
       await waitFor(() => expect(onSave).toHaveBeenCalledWith('execution-1', { result, notes: '' }));
@@ -35,7 +36,7 @@ describe('Test Run execution Save & Next', () => {
     const onNext = vi.fn();
     render(<ExecutionDetail execution={execution()} onSave={onSave} onPrevious={vi.fn()} onNext={onNext} />);
 
-    await user.selectOptions(screen.getByLabelText('Result'), 'Passed');
+    await selectCustomOption(user, 'Result', 'Passed');
     await user.type(screen.getByLabelText('Notes'), 'Verified in staging');
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
@@ -48,8 +49,7 @@ describe('Test Run execution Save & Next', () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(<ExecutionDetail execution={execution()} onSave={onSave} onPrevious={vi.fn()} onNext={vi.fn()} />);
 
-    expect((screen.getByLabelText('Result') as HTMLSelectElement).value).toBe('Untested');
-    expect(screen.getByRole('option', { name: 'Belum diuji' }).getAttribute('value')).toBe('Untested');
+    expect(screen.getByLabelText('Result').getAttribute('value')).toBe('Untested');
     await user.type(screen.getByLabelText('Notes'), 'Need access to test environment');
     await user.click(screen.getByRole('button', { name: 'Save' }));
 

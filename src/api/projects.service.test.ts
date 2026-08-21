@@ -20,6 +20,15 @@ describe('ProjectsService cache invalidation', () => {
     expect(invalidateReadCache).toHaveBeenCalledWith('/v1/projects');
   });
 
+  it('invalidates both test-case and folder catalogs after a bulk move', async () => {
+    api.post.mockResolvedValue({ data: [] });
+
+    await ProjectsService.bulkMoveTestCases('project-1', { testCaseIds: ['case-1'], destinationFolderId: 'folder-2' });
+
+    expect(invalidateReadCache).toHaveBeenCalledWith('/v1/projects/project-1/test-cases');
+    expect(invalidateReadCache).toHaveBeenCalledWith('/v1/projects/project-1/test-case-folders');
+  });
+
   it('uses the pending-deletion lifecycle endpoints and invalidates both project lists', async () => {
     api.get.mockResolvedValue({ data: [] });
     api.post.mockResolvedValue({ data: { id: 'project-1' } });

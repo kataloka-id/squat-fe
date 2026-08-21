@@ -37,21 +37,26 @@ import {
   Search,
   X,
 } from 'lucide-react';
+import { Chip } from '@/src/components/projectsTestCases/ui/Chip.tsx';
 import { Badge as TestCaseBadge } from '@/src/components/projectsTestCases/ui/Badge.tsx';
 import { Button } from '@/src/components/projectsTestCases/ui/Button.tsx';
 import { ConfirmationModal } from '@/src/components/projectsTestCases/ui/ConfirmationModal.tsx';
 import { TestCaseDetail } from '@/src/components/projectsTestCases/TestCaseDetail.tsx';
 import { Select } from '@/src/components/projectsTestCases/ui/Select.tsx';
 import { MultiSelect } from '@/src/components/projectsTestCases/ui/MultiSelect.tsx';
-import type { ToastType } from '@/src/components/projectsTestCases/ui/Toast.tsx';
+import { InlineBadgeSelect } from '@/src/components/projectsTestCases/ui/InlineBadgeSelect.tsx';
+import { Toast, type ToastType } from '@/src/components/projectsTestCases/ui/Toast.tsx';
 import {
   UserFlowsService,
+  FLOW_PRIORITIES,
+  FLOW_STATUSES,
   type DependencyRelationshipType,
   type FlowHealth,
   type UserFlow,
   type UserFlowDependency,
 } from '@/src/api/user-flows.service.ts';
 import { ProjectsService } from '@/src/api/projects.service.ts';
+import { useSectionCatalog } from '@/src/state/section-catalog.ts';
 import { onExecutionDataChanged } from '@/src/api/execution-refresh.ts';
 import {
   AutomationReadiness,
@@ -59,34 +64,23 @@ import {
   Priority,
   Status,
   normalizeAutomationReadiness,
+  normalizePriority,
   type Project,
   type TestCase,
 } from '@/src/components/projectsTestCases/types.ts';
 import type { ProjectTestCaseRecord } from '@/src/types/api.ts';
+import { formatPercentage, percentageNumber } from '@/src/utils/percentage.ts';
+import { ROW_ACTIONS_CELL_CLASS } from '@/src/components/projectsTestCases/ui/RowActions.tsx';
 import { FlowActions } from './FlowActions.tsx';
 import { formatUserFlowDate } from './utils.ts';
 
-const title = (value: string) =>
-  value.replace('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
-const tone = (value: string) =>
-  (
-    ({
-      healthy: 'bg-emerald-50 text-emerald-700',
-      at_risk: 'bg-amber-50 text-amber-700',
-      broken: 'bg-red-50 text-red-700',
-      unknown: 'bg-slate-100 text-slate-600',
-      critical: 'bg-red-50 text-red-700',
-      high: 'bg-amber-50 text-amber-700',
-      medium: 'bg-violet-50 text-violet-700',
-      low: 'bg-slate-100 text-slate-600',
-      active: 'bg-emerald-50 text-emerald-700',
-      draft: 'bg-slate-100 text-slate-600',
-      deprecated: 'bg-slate-100 text-slate-600',
-    }) as Record<string, string>
-  )[value] || 'bg-slate-100 text-slate-600';
-const Badge = ({ value }: { value: string }) => (
-  <span className={`rounded px-2 py-0.5 text-xs font-medium ${tone(value)}`}>{title(value)}</span>
-);
+const title = (value: unknown) =>
+  (typeof value === 'string' ? value : 'Not defined').replace('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+const flowChipType = (value: unknown) => value === 'healthy' || value === 'at_risk' || value === 'broken' || value === 'unknown' ? 'health' as const : value === 'critical' || value === 'high' || value === 'medium' || value === 'low' || value === 'not_defined' ? 'priority' as const : 'status' as const;
+const Badge = ({ value }: { value: unknown }) => {
+  const normalized = typeof value === 'string' && value ? value : 'unknown';
+  return <Chip type={flowChipType(normalized)} value={normalized} displayValue={title(normalized)} />;
+};
 const isDependency = (value: unknown): value is UserFlowDependency =>
   Boolean(value) && typeof value === 'object';
 const dependenciesOf = (value: unknown): UserFlowDependency[] =>
@@ -254,7 +248,6 @@ export const FlowDependencyManager = ({
   const [removingId, setRemovingId] = useState<string | null>(null);
   const [guideTrigger, setGuideTrigger] = useState<HTMLElement | null>(null);
   const [addTrigger, setAddTrigger] = useState<HTMLElement | null>(null);
-  const targetSelectRef = useRef<HTMLSelectElement>(null);
   const dependencies = dependenciesOf(flow.dependencies);
   const incoming = dependenciesOf(flow.incomingDependencies);
   const dependencyIds = new Set(
@@ -297,7 +290,6 @@ export const FlowDependencyManager = ({
       if (event.key === 'Escape') closeAdd();
     };
     window.addEventListener('keydown', closeOnEscape);
-    requestAnimationFrame(() => targetSelectRef.current?.focus());
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [adding, addTrigger]);
   const add = async () => {
@@ -618,40 +610,14 @@ export const FlowDependencyManager = ({
               </div>
               <label className="mt-4 block text-sm font-medium">
                 Relationship
-                <select
-                  aria-label="Relationship"
-                  className="mt-1 w-full rounded border border-slate-300 p-2"
-                  value={relationship}
-                  onChange={(event) =>
-                    setRelationship(event.target.value as DependencyRelationshipType)
-                  }
-                >
-                  {RELATIONSHIP_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                <Select aria-label="Relationship" className="mt-1" value={relationship} onChange={(value) => setRelationship(String(value) as DependencyRelationshipType)} options={RELATIONSHIP_OPTIONS.map((option) => ({ value: option.value, label: option.label }))} size="md" />
                 <span className="mt-1 block text-xs font-normal text-slate-500">
                   {RELATIONSHIP_GUIDANCE[relationship].description}
                 </span>
               </label>
               <label className="mt-4 block text-sm font-medium">
                 Target flow
-                <select
-                  ref={targetSelectRef}
-                  aria-label="Target flow"
-                  className="mt-1 w-full rounded border border-slate-300 p-2"
-                  value={targetId}
-                  onChange={(event) => setTargetId(event.target.value)}
-                >
-                  <option value="">Select user flow…</option>
-                  {targets.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {flowLabel(item)}
-                    </option>
-                  ))}
-                </select>
+                <Select aria-label="Target flow" className="mt-1" value={targetId} onChange={(value) => setTargetId(String(value))} options={targets.map((item) => ({ value: item.id, label: flowLabel(item) }))} placeholder="Select user flow…" size="md" />
               </label>
               <p className="mt-2 text-xs text-slate-500">
                 Existing dependencies are unavailable. Only flows in this project can be selected.
@@ -694,6 +660,7 @@ export const UserFlowDetail = ({
   onOpenTestRun,
   backLabel,
   onBack,
+  canManage = true,
 }: {
   projectId: string;
   flow: UserFlow;
@@ -707,7 +674,9 @@ export const UserFlowDetail = ({
   onOpenTestRun?: (runId: string) => void;
   backLabel?: string;
   onBack?: () => void;
+  canManage?: boolean;
 }) => {
+  const sectionCatalog = useSectionCatalog(projectId);
   const [tab, setTab] = useState<'overview' | 'cases' | 'dependencies'>('overview');
   const [selected, setSelected] = useState<string[]>([]);
   const [linkCasesTrigger, setLinkCasesTrigger] = useState<HTMLButtonElement | null>(null);
@@ -721,7 +690,7 @@ export const UserFlowDetail = ({
     automationReadiness: [] as string[],
   });
   const [linkedSort, setLinkedSort] = useState<{
-    field: 'tcNumber' | 'title' | 'priority' | 'automationReadiness';
+    field: 'tcNumber' | 'title' | 'section' | 'priority' | 'automationReadiness';
     order: 'asc' | 'desc';
   } | null>(null);
   const [viewingTestCaseId, setViewingTestCaseId] = useState<string | null>(null);
@@ -729,6 +698,15 @@ export const UserFlowDetail = ({
     null,
   );
   const linked = useMemo(() => flow.linkedTestCases || [], [flow.linkedTestCases]);
+  const sectionNames = useMemo(
+    () => new Map(sectionCatalog.sections.map((section) => [section.id, section.name])),
+    [sectionCatalog.sections],
+  );
+  const getSectionName = useCallback(
+    (testCase: ProjectTestCaseRecord) =>
+      (testCase.sectionId && sectionNames.get(testCase.sectionId)) || testCase.section || 'Uncategorized',
+    [sectionNames],
+  );
   const viewingTestCase = useMemo<TestCase | null>(() => {
     const linkedTestCase = linked.find((item) => item.id === viewingTestCaseId);
     if (!linkedTestCase) return null;
@@ -738,9 +716,7 @@ export const UserFlowDetail = ({
       ...testCase,
       projectId: testCase.projectId ?? projectId,
       section: testCase.section ?? 'Uncategorized',
-      priority: Object.values(Priority).includes(testCase.priority as Priority)
-        ? (testCase.priority as Priority)
-        : Priority.Medium,
+      priority: normalizePriority(testCase.priority),
       status: Object.values(Status).includes(testCase.status as Status)
         ? (testCase.status as Status)
         : Status.Draft,
@@ -783,25 +759,33 @@ export const UserFlowDetail = ({
       const leftValue =
         linkedSort.field === 'automationReadiness'
           ? normalizeAutomationReadiness(left.automationReadiness)
-          : left[linkedSort.field];
+          : linkedSort.field === 'section'
+            ? getSectionName(left)
+            : left[linkedSort.field];
       const rightValue =
         linkedSort.field === 'automationReadiness'
           ? normalizeAutomationReadiness(right.automationReadiness)
-          : right[linkedSort.field];
+          : linkedSort.field === 'section'
+            ? getSectionName(right)
+            : right[linkedSort.field];
       return leftValue.localeCompare(rightValue) * direction;
     });
-  }, [linked, linkedSort]);
-  const sortLinked = (field: 'tcNumber' | 'title' | 'priority' | 'automationReadiness') => {
+  }, [getSectionName, linked, linkedSort]);
+  const sortLinked = (field: 'tcNumber' | 'title' | 'section' | 'priority' | 'automationReadiness') => {
     setLinkedSort((current) =>
       current?.field === field
         ? { field, order: current.order === 'asc' ? 'desc' : 'asc' }
         : { field, order: 'asc' },
     );
   };
-  const candidates = availableTestCases.filter(
-    (testCase) =>
-      (!testCase.projectId || testCase.projectId === projectId) &&
-      !linked.some((linkedCase) => linkedCase.id === testCase.id),
+  const candidates = useMemo(
+    () =>
+      availableTestCases.filter(
+        (testCase) =>
+          (!testCase.projectId || testCase.projectId === projectId) &&
+          !linked.some((linkedCase) => linkedCase.id === testCase.id),
+      ),
+    [availableTestCases, linked, projectId],
   );
   const sectionOptions = useMemo(
     () =>
@@ -826,6 +810,16 @@ export const UserFlowDetail = ({
         ))
     );
   });
+  const validSelected = useMemo(() => {
+    const candidateIds = new Set(candidates.map((testCase) => testCase.id));
+    return selected.filter((id) => candidateIds.has(id));
+  }, [candidates, selected]);
+  const selectedVisibleCount = filteredCandidates.filter((testCase) =>
+    validSelected.includes(testCase.id),
+  ).length;
+  const allVisibleSelected =
+    filteredCandidates.length > 0 && selectedVisibleCount === filteredCandidates.length;
+  const someVisibleSelected = selectedVisibleCount > 0 && !allVisibleSelected;
   const refresh = () => onRefresh();
   const closeLinkModal = () => {
     setIsLinkModalOpen(false);
@@ -861,9 +855,9 @@ export const UserFlowDetail = ({
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [isLinkModalOpen, linkCasesTrigger]);
   const linkSelectedCases = async () => {
-    if (!selected.length) return;
+    if (!validSelected.length) return;
     try {
-      await UserFlowsService.linkTestCases(projectId, flow.id, selected);
+      await UserFlowsService.linkTestCases(projectId, flow.id, validSelected);
       closeLinkModal();
       refresh();
     } catch (error) {
@@ -871,9 +865,24 @@ export const UserFlowDetail = ({
     }
   };
   const toggleTestCase = (id: string) =>
-    setSelected((current) =>
-      current.includes(id) ? current.filter((selectedId) => selectedId !== id) : [...current, id],
-    );
+    setSelected((current) => {
+      const candidateIds = new Set(candidates.map((testCase) => testCase.id));
+      const currentValid = Array.from(new Set(current.filter((selectedId) => candidateIds.has(selectedId))));
+      return currentValid.includes(id)
+        ? currentValid.filter((selectedId) => selectedId !== id)
+        : [...currentValid, id];
+    });
+  const toggleVisibleTestCases = () => {
+    setSelected((current) => {
+      const candidateIds = new Set(candidates.map((testCase) => testCase.id));
+      const currentValid = current.filter((id) => candidateIds.has(id));
+      if (allVisibleSelected) {
+        const visibleIds = new Set(filteredCandidates.map((testCase) => testCase.id));
+        return currentValid.filter((id) => !visibleIds.has(id));
+      }
+      return Array.from(new Set([...currentValid, ...filteredCandidates.map((testCase) => testCase.id)]));
+    });
+  };
   return (
     <div className="w-full space-y-5">
       <div className="flex flex-wrap items-center gap-3">
@@ -1010,18 +1019,20 @@ export const UserFlowDetail = ({
               <dl className="mt-4 space-y-4 text-sm">
                 <div>
                   <dt className="text-slate-500">Automation Coverage</dt>
-                  <dd className="mt-1 text-2xl font-bold">{flow.coverage == null ? '—' : `${Number(flow.coverage.toFixed(2))}%`}</dd>
+                  <dd className="mt-1 text-2xl font-bold">
+                    {formatPercentage(flow.coverage, { hasDenominator: flow.linkedTestCaseCount > 0 })}
+                  </dd>
                   <div
                     className="mt-3 h-2 overflow-hidden rounded-full bg-slate-200"
-                    aria-label={`Automation coverage: ${flow.coverage == null ? 'tidak tersedia' : `${flow.coverage}%`}`}
+                    aria-label={`Automation coverage: ${formatPercentage(flow.coverage, { hasDenominator: flow.linkedTestCaseCount > 0 })}`}
                     role="progressbar"
                     aria-valuemin={0}
                     aria-valuemax={100}
-                    aria-valuenow={flow.coverage ?? undefined}
+                    aria-valuenow={percentageNumber(flow.coverage, { hasDenominator: flow.linkedTestCaseCount > 0 }) ?? undefined}
                   >
                     <div
                       className="h-full rounded-full bg-brand-600"
-                      style={{ width: `${Math.min(100, Math.max(0, flow.coverage ?? 0))}%` }}
+                      style={{ width: `${percentageNumber(flow.coverage, { hasDenominator: flow.linkedTestCaseCount > 0 }) ?? 0}%` }}
                     />
                   </div>
                 </div>
@@ -1045,16 +1056,18 @@ export const UserFlowDetail = ({
           <div>
             <div className="mb-4 flex items-center justify-between gap-3">
               <h2 className="font-semibold">Test Cases</h2>
-              <Button
-                size="sm"
-                icon={<Plus size={16} />}
-                onClick={(event) => {
-                  setLinkCasesTrigger(event.currentTarget);
-                  setIsLinkModalOpen(true);
-                }}
-              >
-                Link Test Cases
-              </Button>
+              {canManage && (
+                <Button
+                  size="sm"
+                  icon={<Plus size={16} />}
+                  onClick={(event) => {
+                    setLinkCasesTrigger(event.currentTarget);
+                    setIsLinkModalOpen(true);
+                  }}
+                >
+                  Link Test Cases
+                </Button>
+              )}
             </div>
             {linked.length === 0 ? (
               <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
@@ -1065,11 +1078,12 @@ export const UserFlowDetail = ({
               </div>
             ) : (
               <div className="overflow-x-auto rounded-lg border border-slate-200">
-                <table className="w-full min-w-[880px] table-fixed text-left text-sm">
+                <table className="w-full min-w-[960px] table-fixed text-left text-sm">
                   <colgroup>
-                    <col className="w-28" />
+                    <col className="w-[6.5rem]" />
                     <col />
-                    <col className="w-24" />
+                    <col className="w-40" />
+                    <col className="w-32" />
                     <col className="w-48" />
                     <col className="w-[6.5rem]" />
                   </colgroup>
@@ -1079,6 +1093,7 @@ export const UserFlowDetail = ({
                         [
                           ['tcNumber', 'TC Number'],
                           ['title', 'Title'],
+                          ['section', 'Section'],
                           ['priority', 'Priority'],
                           ['automationReadiness', 'Automation Readiness'],
                         ] as const
@@ -1151,6 +1166,9 @@ export const UserFlowDetail = ({
                           >
                             {testCase.title}
                           </button>
+                        </td>
+                        <td className="min-w-0 px-4 py-3">
+                          <Chip type="section" value={getSectionName(testCase)} />
                         </td>
                         <td className="whitespace-nowrap px-4 py-3">
                           <TestCaseBadge type="priority" value={testCase.priority} />
@@ -1287,60 +1305,77 @@ export const UserFlowDetail = ({
                   />
                 </div>
                 <div className="mt-4 min-h-0 flex-1 overflow-y-auto rounded-lg border border-slate-200">
-                  {filteredCandidates.length ? (
-                    filteredCandidates.map((testCase) => (
-                      <label
-                        key={testCase.id}
-                        className="flex cursor-pointer items-start gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0 hover:bg-slate-50"
-                      >
+                  <>
+                    <label className="sticky top-0 z-10 flex cursor-pointer items-center gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
                         <input
-                          className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                          aria-label="Select all visible test cases"
+                          className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                           type="checkbox"
-                          checked={selected.includes(testCase.id)}
-                          onChange={() => toggleTestCase(testCase.id)}
+                          checked={allVisibleSelected}
+                          ref={(input) => {
+                            if (input) input.indeterminate = someVisibleSelected;
+                          }}
+                          onChange={toggleVisibleTestCases}
+                          disabled={!filteredCandidates.length}
                         />
-                        <span className="min-w-0 flex-1">
-                          <span className="font-medium text-slate-700">
-                            {testCase.projectKey ? `${testCase.projectKey}-` : ''}
-                            {testCase.tcNumber ?? '—'}
+                        Select All
+                    </label>
+                    {filteredCandidates.length ? (
+                      filteredCandidates.map((testCase) => (
+                        <label
+                          key={testCase.id}
+                          className="flex cursor-pointer items-start gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0 hover:bg-slate-50"
+                        >
+                          <input
+                            aria-label={`${testCase.projectKey ? `${testCase.projectKey}-` : ''}${testCase.tcNumber ?? '—'}`}
+                            className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                            type="checkbox"
+                            checked={validSelected.includes(testCase.id)}
+                            onChange={() => toggleTestCase(testCase.id)}
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="font-medium text-slate-700">
+                              {testCase.projectKey ? `${testCase.projectKey}-` : ''}
+                              {testCase.tcNumber ?? '—'}
+                            </span>
+                            <span
+                              className="mt-0.5 block text-sm text-slate-900 [-webkit-box-orient:vertical] [-webkit-line-clamp:2] [display:-webkit-box]"
+                              title={testCase.title}
+                            >
+                              {testCase.title}
+                            </span>
+                            <span className="mt-1 block truncate text-xs text-slate-500">
+                              {testCase.section || 'Uncategorized'}
+                            </span>
+                            <span className="mt-2 flex flex-wrap gap-1.5">
+                              <Badge value={testCase.priority} />
+                              <Badge value={testCase.status} />
+                              <Badge value={testCase.automationType} />
+                              <Badge
+                                value={normalizeAutomationReadiness(testCase.automationReadiness)}
+                              />
+                            </span>
                           </span>
-                          <span
-                            className="mt-0.5 block text-sm text-slate-900 [-webkit-box-orient:vertical] [-webkit-line-clamp:2] [display:-webkit-box]"
-                            title={testCase.title}
-                          >
-                            {testCase.title}
-                          </span>
-                          <span className="mt-1 block truncate text-xs text-slate-500">
-                            {testCase.section || 'Uncategorized'}
-                          </span>
-                          <span className="mt-2 flex flex-wrap gap-1.5">
-                            <Badge value={testCase.priority} />
-                            <Badge value={testCase.status} />
-                            <Badge value={testCase.automationType} />
-                            <Badge
-                              value={normalizeAutomationReadiness(testCase.automationReadiness)}
-                            />
-                          </span>
-                        </span>
-                      </label>
-                    ))
-                  ) : (
-                    <p className="p-6 text-center text-sm text-slate-500">
+                        </label>
+                      ))
+                    ) : (
+                      <p className="p-6 text-center text-sm text-slate-500">
                       {candidates.length
                         ? 'No test cases match your search or filters.'
                         : 'All available test cases are already linked.'}
-                    </p>
-                  )}
+                      </p>
+                    )}
+                  </>
                 </div>
               </div>
               <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/50 px-4 py-4 sm:px-6">
-                <p className="text-sm font-medium text-slate-600">Selected: {selected.length}</p>
+                <p className="text-sm font-medium text-slate-600">Selected: {validSelected.length}</p>
                 <div className="flex gap-3">
                   <Button variant="secondary" onClick={closeLinkModal}>
                     Cancel
                   </Button>
-                  <Button disabled={!selected.length} onClick={() => void linkSelectedCases()}>
-                    Link Selected ({selected.length})
+                  <Button disabled={!validSelected.length} onClick={() => void linkSelectedCases()}>
+                    Link Selected ({validSelected.length})
                   </Button>
                 </div>
               </div>
@@ -2099,7 +2134,7 @@ export const FlowForm = ({
     entryPoint: editing ? initial.entryPoint || '' : '',
     successCriteria: editing ? initial.successCriteria || '' : '',
     area: editing ? initial.area || '' : '',
-    priority: editing ? initial.priority : 'medium',
+    priority: editing ? initial.priority : 'not_defined',
     status: editing ? initial.status : 'draft',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -2194,35 +2229,11 @@ export const FlowForm = ({
           <div className="grid grid-cols-2 gap-3">
             <label className="text-sm">
               Priority <span className="text-red-600">*</span>
-              <select
-                className="mt-1 w-full rounded border p-2"
-                value={data.priority}
-                onChange={(event) =>
-                  setData({ ...data, priority: event.target.value as UserFlow['priority'] })
-                }
-              >
-                {['critical', 'high', 'medium', 'low'].map((value) => (
-                  <option key={value} value={value}>
-                    {title(value)}
-                  </option>
-                ))}
-              </select>
+              <Select aria-label="Priority" className="mt-1" value={data.priority} onChange={(value) => setData({ ...data, priority: String(value) as UserFlow['priority'] })} options={['not_defined', 'critical', 'high', 'medium', 'low'].map((value) => ({ value, label: title(value) }))} size="md" />
             </label>
             <label className="text-sm">
               Status <span className="text-red-600">*</span>
-              <select
-                className="mt-1 w-full rounded border p-2"
-                value={data.status}
-                onChange={(event) =>
-                  setData({ ...data, status: event.target.value as UserFlow['status'] })
-                }
-              >
-                {['draft', 'active', 'deprecated'].map((value) => (
-                  <option key={value} value={value}>
-                    {title(value)}
-                  </option>
-                ))}
-              </select>
+              <Select aria-label="Status" className="mt-1" value={data.status} onChange={(value) => setData({ ...data, status: String(value) as UserFlow['status'] })} options={['draft', 'active', 'deprecated'].map((value) => ({ value, label: title(value) }))} size="md" />
             </label>
           </div>
           <p className="text-xs text-slate-500">New flows start with Unknown health.</p>
@@ -2243,11 +2254,14 @@ export const UserFlowsPage = ({
   projectId,
   onProjectChange,
   onOpenTestRun,
+  canManage = true,
 }: {
   projects: Project[];
   projectId: string;
   onProjectChange: (projectId: string) => void;
   onOpenTestRun?: (projectId: string, runId: string) => void;
+  /** Matches the existing User Flow edit permission surface; the API remains authoritative. */
+  canManage?: boolean;
 }) => {
   const [flows, setFlows] = useState<UserFlow[]>([]);
   const [summary, setSummary] = useState({
@@ -2266,6 +2280,9 @@ export const UserFlowsPage = ({
   const [view, setView] = useState<'list' | 'graph'>('list');
   const [detail, setDetail] = useState<UserFlow | null>(null);
   const [detailHistory, setDetailHistory] = useState<UserFlow[]>([]);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<{ message: string; notFound: boolean } | null>(null);
+  const [detailRequest, setDetailRequest] = useState<UserFlow | null>(null);
   const [testCases, setTestCases] = useState<ProjectTestCaseRecord[]>([]);
   const [query, setQuery] = useState('');
   const [areaFilter, setAreaFilter] = useState('');
@@ -2277,6 +2294,7 @@ export const UserFlowsPage = ({
   const [form, setForm] = useState<UserFlow | null | 'new'>(null);
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
   const [deleting, setDeleting] = useState<UserFlow | null>(null);
+  const [inlineUpdating, setInlineUpdating] = useState<string | null>(null);
   const loadRequestVersion = useRef(0);
   const load = useCallback(async () => {
     const requestVersion = ++loadRequestVersion.current;
@@ -2319,13 +2337,38 @@ export const UserFlowsPage = ({
       });
     }
   };
+  const updateInlineField = async (flow: UserFlow, field: 'priority' | 'status', value: string) => {
+    if (flow[field] === value || inlineUpdating) return;
+    const previous = flow[field];
+    let persisted = false;
+    setInlineUpdating(`${flow.id}:${field}`);
+    setFlows((current) => current.map((item) => item.id === flow.id ? { ...item, [field]: value } : item));
+    try {
+      await UserFlowsService.update(projectId, flow.id, { [field]: value });
+      persisted = true;
+      await load();
+    } catch (cause) {
+      if (!persisted) setFlows((current) => current.map((item) => item.id === flow.id ? { ...item, [field]: previous } : item));
+      setToast({ message: (cause as { message?: string }).message || 'Unable to update user flow.', type: 'error' });
+    } finally {
+      setInlineUpdating(null);
+    }
+  };
   useEffect(() => {
     void load();
   }, [load]);
   useEffect(() => onExecutionDataChanged((changedProjectId) => {
     if (changedProjectId === projectId) void load();
   }), [projectId, load]);
-  const open = async (flow: UserFlow) => {
+  const open = useCallback(async (flow: UserFlow) => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('userFlowId') !== flow.id) {
+      url.searchParams.set('userFlowId', flow.id);
+      window.history.pushState({ ...window.history.state, userFlowId: flow.id }, '', url);
+    }
+    setDetailRequest(flow);
+    setDetailLoading(true);
+    setDetailError(null);
     try {
       const [data, cases] = await Promise.all([
         UserFlowsService.get(projectId, flow.id),
@@ -2334,9 +2377,16 @@ export const UserFlowsPage = ({
       setDetail(data.data);
       setTestCases(cases.data);
     } catch (cause) {
-      setError((cause as { message?: string }).message || 'Unable to open flow.');
+      const status = typeof cause === 'object' && cause && 'status' in cause ? Number(cause.status) : undefined;
+      setDetail(null);
+      setDetailError({
+        message: status === 404 ? 'User Flow tidak ditemukan.' : (cause as { message?: string }).message || 'User Flow tidak dapat dibuka.',
+        notFound: status === 404,
+      });
+    } finally {
+      setDetailLoading(false);
     }
-  };
+  }, [projectId]);
   const openRelatedFlow = (flowId: string) => {
     if (detail) setDetailHistory((history) => [...history, detail]);
     void open({ id: flowId } as UserFlow);
@@ -2350,10 +2400,29 @@ export const UserFlowsPage = ({
     setDetailHistory((history) => history.slice(0, -1));
     void open(previous);
   };
-  const closeDetail = () => {
+  const clearDetailState = useCallback(() => {
     setDetailHistory([]);
     setDetail(null);
+    setDetailRequest(null);
+    setDetailError(null);
+  }, []);
+  const closeDetail = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('userFlowId');
+    window.history.pushState({ ...window.history.state, userFlowId: undefined }, '', url);
+    clearDetailState();
   };
+  useEffect(() => {
+    const openFromUrl = () => {
+      const flowId = new URL(window.location.href).searchParams.get('userFlowId');
+      if (flowId) void open({ id: flowId } as UserFlow);
+      else clearDetailState();
+    };
+    window.addEventListener('popstate', openFromUrl);
+    const initialFlowId = new URL(window.location.href).searchParams.get('userFlowId');
+    if (initialFlowId && !detail && !detailLoading) void open({ id: initialFlowId } as UserFlow);
+    return () => window.removeEventListener('popstate', openFromUrl);
+  }, [clearDetailState, detail, detailLoading, open]);
   const filtered = useMemo(
     () =>
       filterUserFlows(flows, {
@@ -2371,6 +2440,23 @@ export const UserFlowsPage = ({
   const shown = perPage === -1 ? filtered : filtered.slice((page - 1) * perPage, page * perPage);
   const firstShown = filtered.length ? (perPage === -1 ? 1 : (page - 1) * perPage + 1) : 0;
   const lastShown = perPage === -1 ? filtered.length : Math.min(page * perPage, filtered.length);
+  if (detailLoading)
+    return (
+      <div className="flex min-h-64 items-center justify-center rounded-xl border border-slate-200 bg-white p-8 text-sm text-slate-500">
+        Loading User Flow detail…
+      </div>
+    );
+  if (detailError)
+    return (
+      <div className="rounded-xl border border-red-200 bg-red-50 p-8 text-center">
+        <h1 className="text-lg font-semibold text-red-900">{detailError.notFound ? 'User Flow tidak ditemukan' : 'User Flow gagal dimuat'}</h1>
+        <p className="mt-2 text-sm text-red-700">{detailError.message}</p>
+        <div className="mt-5 flex justify-center gap-2">
+          <Button variant="secondary" onClick={closeDetail}>User Flows</Button>
+          {detailRequest && <Button onClick={() => void open(detailRequest)}>Coba lagi</Button>}
+        </div>
+      </div>
+    );
   if (detail)
     return (
       <>
@@ -2383,6 +2469,7 @@ export const UserFlowsPage = ({
           onBack={detailHistory.length ? backToPreviousFlow : undefined}
           onViewFlow={openRelatedFlow}
           onOpenTestRun={(runId) => onOpenTestRun?.(projectId, runId)}
+          canManage={canManage}
           onEdit={() => setForm(detail)}
           onRefresh={() => {
             void load();
@@ -2433,19 +2520,7 @@ export const UserFlowsPage = ({
             <label className="relative shrink-0">
               <span className="sr-only">Project</span>
               <Briefcase className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-              <select
-                aria-label="Project"
-                className="h-9 min-w-44 rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-8 text-sm font-medium text-slate-700 transition-all hover:bg-slate-50 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20"
-                value={projectId}
-                onChange={(event) => onProjectChange(event.target.value)}
-              >
-                <option value="">Project</option>
-                {projects.map((project) => (
-                  <option key={project.id} value={project.id}>
-                    {project.name}
-                  </option>
-                ))}
-              </select>
+              <Select aria-label="Project" className="min-w-44 pl-8" value={projectId} onChange={(value) => onProjectChange(String(value))} options={projects.map((project) => ({ value: project.id, label: project.name }))} placeholder="Project" />
             </label>
             <label className="group relative min-w-[12rem] flex-1">
               <Search
@@ -2471,7 +2546,7 @@ export const UserFlowsPage = ({
                 'Priority',
                 priorityFilter,
                 setPriorityFilter,
-                ['critical', 'high', 'medium', 'low'],
+                ['not_defined', 'critical', 'high', 'medium', 'low'],
               ],
               [
                 'Health',
@@ -2487,20 +2562,7 @@ export const UserFlowsPage = ({
               >
                 <span className="sr-only">{String(label)}</span>
                 <Filter className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                <select
-                  aria-label={String(label)}
-                  className="h-9 rounded-lg border border-slate-200 bg-white py-1.5 pl-8 pr-7 text-sm font-medium text-slate-700 transition-all hover:bg-slate-50 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:cursor-not-allowed disabled:bg-slate-50"
-                  disabled={!projectId}
-                  value={String(value)}
-                  onChange={(event) => (setValue as (next: string) => void)(event.target.value)}
-                >
-                  <option value="">{String(label)}</option>
-                  {(options as string[]).map((option) => (
-                    <option key={option} value={option}>
-                      {title(option)}
-                    </option>
-                  ))}
-                </select>
+                <Select aria-label={String(label)} className="min-w-28 pl-8" disabled={!projectId} value={String(value)} onChange={(next) => (setValue as (value: string) => void)(String(next))} options={(options as string[]).map((option) => ({ value: option, label: title(option) }))} placeholder={String(label)} />
               </label>
             ))}
           </div>
@@ -2517,7 +2579,7 @@ export const UserFlowsPage = ({
                   'Unknown',
                   Math.max(0, summary.total - summary.healthy - summary.atRisk - summary.broken),
                 ],
-                ['Coverage', `${summary.coverage}%`],
+                ['Coverage', formatPercentage(summary.coverage, { hasDenominator: summary.total > 0 })],
               ].map(([name, value]) => (
                 <div key={String(name)} className="rounded-xl border bg-white p-4">
                   <p className="text-xs uppercase text-slate-500">{name}</p>
@@ -2542,19 +2604,19 @@ export const UserFlowsPage = ({
             {view === 'list' ? (
               <div className="rounded-xl border border-slate-200 bg-white">
                 <div className="overflow-x-auto rounded-t-xl">
-                  <table className="w-full min-w-[78rem] table-fixed text-sm">
+                  <table className="w-full min-w-[94rem] table-fixed text-sm">
                     <colgroup>
-                      <col className="w-[22rem]" />
+                      <col className="w-[20rem]" />
                       <col className="w-36" />
-                      <col className="w-24" />
-                      <col className="w-24" />
-                      <col className="w-24" />
+                      <col className="w-[6.5rem]" />
+                      <col className="w-[6.5rem]" />
+                      <col className="w-[6.5rem]" />
                       <col className="w-28" />
+                      <col className="w-28" />
+                      <col className="w-[8.5rem]" />
+                      <col className="w-[8.5rem]" />
                       <col className="w-28" />
                       <col className="w-32" />
-                      <col className="w-32" />
-                      <col className="w-28" />
-                      <col className="w-14" />
                     </colgroup>
                     <thead className="bg-slate-50">
                       <tr className="text-left text-xs text-slate-500">
@@ -2584,8 +2646,8 @@ export const UserFlowsPage = ({
                         <th className="px-4 py-4 text-center font-semibold uppercase tracking-wider">
                           Status
                         </th>
-                        <th className="px-2 py-4 text-center font-semibold uppercase tracking-wider">
-                          Actions
+                        <th className={`px-4 py-4 ${ROW_ACTIONS_CELL_CLASS} text-right font-semibold uppercase tracking-wider`}>
+                          <span className="sr-only">Actions</span>
                         </th>
                       </tr>
                     </thead>
@@ -2598,8 +2660,8 @@ export const UserFlowsPage = ({
                         </tr>
                       ) : shown.length ? (
                         shown.map((flow) => (
-                          <tr key={flow.id} className="border-t">
-                            <td className="px-4 py-3">
+                          <tr key={flow.id} className="group border-t">
+                            <td className="align-middle px-4 py-4">
                               <button
                                 className="block w-full min-w-0 text-left text-brand-700"
                                 onClick={() => void open(flow)}
@@ -2616,41 +2678,42 @@ export const UserFlowsPage = ({
                                 )}
                               </button>
                             </td>
-                            <td className="truncate px-4 py-3" title={flow.area || undefined}>
+                            <td className="truncate px-4 py-4 align-middle" title={flow.area || undefined}>
                               {flow.area || '—'}
                             </td>
-                            <td className="px-4 py-3 text-center">
-                              <Badge value={flow.priority} />
+                            <td className="px-4 py-4 text-center align-middle">
+                              {canManage ? <InlineBadgeSelect type="priority" label="Priority" value={flow.priority} options={FLOW_PRIORITIES} optionLabel={title} disabled={inlineUpdating !== null} onChange={(value) => updateInlineField(flow, 'priority', value)} /> : <Badge value={flow.priority} />}
                             </td>
-                            <td className="px-4 py-3 text-center">
+                            <td className="px-4 py-4 text-center align-middle">
                               <Badge value={flow.health} />
                             </td>
-                            <td className="whitespace-nowrap px-4 py-3 text-center">
-                              {flow.coverage}%
+                            <td className="whitespace-nowrap px-4 py-4 text-center align-middle">
+                              {formatPercentage(flow.coverage, { hasDenominator: flow.linkedTestCaseCount > 0 })}
                             </td>
-                            <td className="whitespace-nowrap px-4 py-3 text-center">
+                            <td className="whitespace-nowrap px-4 py-4 text-center align-middle">
                               {flow.linkedTestCaseCount}
                             </td>
-                            <td className="whitespace-nowrap px-4 py-3 text-center">
+                            <td className="whitespace-nowrap px-4 py-4 text-center align-middle">
                               {flow.automatedTestCaseCount}
                             </td>
-                            <td className="whitespace-nowrap px-4 py-3">
+                            <td className="whitespace-nowrap px-4 py-4 align-middle">
                               {flow.lastTestedAt
                                 ? formatUserFlowDate(flow.lastTestedAt)
                                 : 'Never tested'}
                             </td>
-                            <td className="whitespace-nowrap px-4 py-3">
+                            <td className="whitespace-nowrap px-4 py-4 align-middle">
                               {formatUserFlowDate(flow.updatedAt)}
                             </td>
-                            <td className="px-4 py-3 text-center">
-                              <Badge value={flow.status} />
+                            <td className="px-4 py-4 text-center align-middle">
+                              {canManage ? <InlineBadgeSelect type="status" label="Status" value={flow.status} options={FLOW_STATUSES} optionLabel={title} disabled={inlineUpdating !== null} onChange={(value) => updateInlineField(flow, 'status', value)} /> : <Badge value={flow.status} />}
                             </td>
-                            <td className="px-2 py-3 text-center">
-                              <div className="inline-flex">
+                            <td className={`px-4 py-4 ${ROW_ACTIONS_CELL_CLASS} text-right align-middle`}>
+                              <div className="flex justify-end">
                                 <FlowActions
                                   onView={() => void open(flow)}
                                   onEdit={() => setForm(flow)}
                                   onDelete={() => setDeleting(flow)}
+                                  canManage={canManage}
                                 />
                               </div>
                             </td>
@@ -2674,6 +2737,7 @@ export const UserFlowsPage = ({
                     <div className="flex items-center gap-2">
                       <span className="text-sm text-slate-500">Rows:</span>
                       <Select
+                        aria-label="Rows per page"
                         value={perPage}
                         onChange={(value) => {
                           setPerPage(Number(value));
@@ -2749,6 +2813,7 @@ export const UserFlowsPage = ({
           onError={(message) => setToast({ message, type: 'error' })}
         />
       )}
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </>
   );
 };

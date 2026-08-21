@@ -1,21 +1,22 @@
-import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
-import { createPortal } from 'react-dom';
+import React from 'react';
 import { 
   ChevronDown, 
   ChevronUp, 
-  Edit3, 
-  Trash2, 
+  Edit3,
+  Trash2,
   Briefcase,
   Search,
   LayoutList,
-  LoaderCircle,
 } from 'lucide-react';
 import { normalizeAutomationReadiness, TestCase, SortField, SortOrder, Project, Priority, Status, AutomationType, AutomationReadiness } from '../projectsTestCases/types.ts';
+import type { SectionRecord } from '@/src/types/api.ts';
 import { Badge } from './ui/Badge';
 import { formatTestCaseDisplayId } from '@/src/utils/testCaseDisplayId.ts';
 import { markdownToPlainText } from '@/src/utils/markdown.ts';
 import { Button } from './ui/Button';
 import { Select } from './ui/Select';
+import { InlineBadgeSelect } from './ui/InlineBadgeSelect.tsx';
+import { ROW_ACTIONS_CELL_CLASS, RowActions } from './ui/RowActions.tsx';
 
 interface PaginationProps {
   currentPage: number;
@@ -44,118 +45,8 @@ interface TestCaseListProps {
   loading?: boolean;
   hasProjectSelected?: boolean;
   canManage?: boolean;
+  sectionsByProject?: Record<string, SectionRecord[]>;
 }
-
-// Inline dropdown for editing badge-backed enum values.
-const InlineBadgeSelect = ({ 
-  type, 
-  value, 
-  options, 
-  onChange,
-  label,
-}: { 
-  type: 'priority' | 'status' | 'automation' | 'automationReadiness', 
-  value: string, 
-  options: string[], 
-  onChange: (val: string) => void | Promise<void>,
-  label: string,
-}) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Node;
-      if (!containerRef.current?.contains(target) && !menuRef.current?.contains(target)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  useLayoutEffect(() => {
-    if (!isOpen || !menuRef.current || !triggerRef.current) return;
-
-    const updatePosition = () => {
-      const triggerRect = triggerRef.current?.getBoundingClientRect();
-      const menu = menuRef.current;
-      if (!triggerRect || !menu) return;
-
-      const viewportPadding = 8;
-      const menuWidth = menu.offsetWidth;
-      const menuHeight = menu.offsetHeight;
-      const left = Math.max(viewportPadding, Math.min(triggerRect.left, window.innerWidth - menuWidth - viewportPadding));
-      const below = triggerRect.bottom + 4;
-      const above = triggerRect.top - menuHeight - 4;
-      const maximumTop = Math.max(viewportPadding, window.innerHeight - menuHeight - viewportPadding);
-      const top = below + menuHeight <= window.innerHeight - viewportPadding
-        ? below
-        : above >= viewportPadding
-          ? above
-          : Math.min(Math.max(viewportPadding, below), maximumTop);
-
-      setMenuPosition({ top, left });
-    };
-
-    updatePosition();
-    window.addEventListener('resize', updatePosition);
-    window.addEventListener('scroll', updatePosition, true);
-    return () => {
-      window.removeEventListener('resize', updatePosition);
-      window.removeEventListener('scroll', updatePosition, true);
-    };
-  }, [isOpen]);
-
-  return (
-    <div className="relative inline-block" ref={containerRef}>
-      <button
-        ref={triggerRef}
-        type="button"
-        aria-label={`Change ${label}`}
-        aria-expanded={isOpen}
-        disabled={isSaving}
-        onClick={() => setIsOpen(!isOpen)}
-        className="rounded-md ring-offset-1 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:cursor-wait"
-      >
-        {isSaving ? <LoaderCircle aria-label={`Saving ${label}`} className="h-4 w-4 animate-spin text-slate-500" /> : <Badge type={type} value={value} className="cursor-pointer" />}
-      </button>
-      {isOpen && createPortal(
-        <div ref={menuRef} role="listbox" aria-label={`${label} options`} style={{ top: menuPosition?.top ?? 0, left: menuPosition?.left ?? 0, minWidth: triggerRef.current?.getBoundingClientRect().width, visibility: menuPosition ? 'visible' : 'hidden' }} className="fixed z-50 max-h-[calc(100vh-1rem)] w-max max-w-[calc(100vw-2rem)] overflow-x-hidden overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl animate-in fade-in zoom-in-95 duration-150">
-          <div className="py-1">
-            {options.map((opt) => (
-              <button
-                type="button"
-                role="option"
-                aria-selected={value === opt}
-                key={opt}
-                disabled={isSaving}
-                onClick={async () => {
-                  setIsSaving(true);
-                  setIsOpen(false);
-                  try {
-                    await onChange(opt);
-                  } catch {
-                    // The update owner reports the error and leaves the previous table value intact.
-                  } finally {
-                    setIsSaving(false);
-                  }
-                }}
-                className="flex w-full shrink-0 cursor-pointer items-center px-3 py-1.5 text-left whitespace-nowrap hover:bg-slate-50 disabled:cursor-wait"
-              >
-                <Badge type={type} value={opt} className="pointer-events-none" />
-              </button>
-            ))}
-          </div>
-        </div>
-      , document.body)}
-    </div>
-  );
-};
 
 const SkeletonRow = () => (
   <tr className="animate-pulse">
@@ -193,6 +84,7 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
   loading = false,
   hasProjectSelected = false,
   canManage = true,
+  sectionsByProject = {},
 }) => {
   // Check if all items on the current page are selected
   const allSelected = testCases.length > 0 && testCases.every(tc => selectedIds.includes(tc.id));
@@ -251,19 +143,19 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-soft flex flex-col h-full min-h-[500px] relative overflow-visible">
       <div className="overflow-x-auto overflow-y-visible flex-1">
-        <table className="min-w-[86rem] w-full table-fixed divide-y divide-slate-100">
+        <table className="min-w-[94rem] w-full table-fixed divide-y divide-slate-100">
           <colgroup>
             {canManage && <col className="w-14" />}
             <col className="w-32" />
             <col className="hidden w-[5.5rem] sm:table-column" />
             <col />
-            <col className="hidden w-40 md:table-column" />
+            <col className="hidden w-40 md:w-56 md:table-column" />
             <col className="w-28" />
             <col className="w-[6.5rem]" />
             <col className="w-36" />
             <col className="w-52" />
             <col className="hidden w-[6.75rem] lg:table-column" />
-            {canManage && <col className="w-[5.5rem]" />}
+            {canManage && <col className="w-32" />}
           </colgroup>
           <thead className="bg-slate-50 sticky top-0 z-20 shadow-sm">
             <tr>
@@ -286,7 +178,7 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
               <TableHead field="automationType" label="Testing Type" />
               <TableHead field="automationReadiness" label="Automation Readiness" />
               <TableHead field="updatedAt" label="Updated" className="hidden lg:table-cell" />
-              {canManage && <th className="px-4 py-4 text-right text-xs font-semibold text-slate-500 uppercase tracking-wider align-top bg-slate-50"></th>}
+              {canManage && <th className={`px-4 py-4 ${ROW_ACTIONS_CELL_CLASS} text-right text-xs font-semibold text-slate-500 uppercase tracking-wider align-top bg-slate-50`}></th>}
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-slate-50">
@@ -348,8 +240,19 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
                       {tc.folderPath?.length ? <p className="mt-0.5 truncate text-xs text-slate-400">{tc.folderPath.map((folder) => folder.name).join(' / ')}</p> : <p className="mt-0.5 text-xs text-slate-400">Unfiled</p>}
                       <div className="mt-1 line-clamp-1 text-xs text-slate-500 md:hidden" title={tc.section}>{tc.section}</div>
                     </td>
-                    <td className="hidden min-w-0 px-4 py-4 text-sm text-slate-500 md:table-cell align-middle">
-                      <span className="block truncate" title={tc.section}>{tc.section}</span>
+                    <td className="hidden min-w-0 max-w-56 px-4 py-4 text-sm text-slate-500 md:table-cell align-middle">
+                      <span className={`block min-w-0 max-w-full ${canManage ? '' : 'truncate'}`} title={tc.section}>
+                        {canManage ? <InlineBadgeSelect
+                          type="section"
+                          label="Section"
+                          value={tc.section}
+                          options={(sectionsByProject[tc.projectId] ?? []).map((section) => section.name)}
+                          onChange={(sectionName) => {
+                            const section = (sectionsByProject[tc.projectId] ?? []).find((item) => item.name === sectionName);
+                            if (section) return onUpdate(tc.id, { sectionId: section.id, section: section.name });
+                          }}
+                        /> : tc.section}
+                      </span>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap align-middle">
                       {canManage ? <InlineBadgeSelect type="priority" label="Priority" value={tc.priority} options={Object.values(Priority)} onChange={(val) => onUpdate(tc.id, { priority: val as Priority })} /> : <Badge type="priority" value={tc.priority} />}
@@ -366,23 +269,11 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500 font-mono hidden lg:table-cell align-middle">
                       {new Date(tc.updatedAt).toLocaleDateString()}
                     </td>
-                    {canManage && <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium align-middle">
-                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button 
-                          onClick={() => onEdit(tc)}
-                          className="text-slate-400 hover:text-brand-600 p-1.5 rounded-md hover:bg-white border border-transparent hover:border-slate-200 hover:shadow-sm transition-all"
-                          title="Edit"
-                        >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
-                        <button 
-                          onClick={() => onDelete(tc.id)}
-                          className="text-slate-400 hover:text-red-600 p-1.5 rounded-md hover:bg-white border border-transparent hover:border-slate-200 hover:shadow-sm transition-all"
-                          title="Delete"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+                    {canManage && <td className={`px-4 py-4 ${ROW_ACTIONS_CELL_CLASS} whitespace-nowrap text-right text-sm font-medium align-middle`}>
+                      <RowActions aria-label={`Actions for ${markdownToPlainText(tc.title)}`} actions={[
+                        { label: 'Edit', icon: <Edit3 className="h-4 w-4" />, onClick: () => onEdit(tc) },
+                        { label: 'Delete', icon: <Trash2 className="h-4 w-4" />, onClick: () => onDelete(tc.id), tone: 'danger' },
+                      ]} />
                     </td>}
                   </tr>
                 );
@@ -400,6 +291,7 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
             <div className="flex items-center gap-2">
               <span className="text-sm text-slate-500">Rows:</span>
               <Select
+                aria-label="Rows per page"
                 value={pagination.itemsPerPage}
                 onChange={(val) => pagination.onItemsPerPageChange(Number(val))}
                 options={[

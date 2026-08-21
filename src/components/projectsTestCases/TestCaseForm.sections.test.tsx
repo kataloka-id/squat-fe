@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TestCaseForm } from './TestCaseForm.tsx';
 import { AutomationReadiness, AutomationType, Priority, Status, type Project, type TestCase } from './types.ts';
 import { ProjectsService } from '@/src/api/projects.service.ts';
+import { selectCustomOptionSync } from '@/src/test/selectTestUtils.ts';
 
 const projects: Project[] = [
   { id: 'p1', name: 'One', key: 'ONE', description: '', lead: '', status: 'Active', dueDate: new Date(), updatedAt: new Date(), stats: { testCasesCount: 0, passRate: 0 }, members: [] },
@@ -69,12 +70,12 @@ describe('TestCaseForm section catalog', () => {
     render(<TestCaseForm isOpen onClose={vi.fn()} onSave={onSave} projects={projects} onProjectChange={onProjectChange} sectionsByProject={initialSections} />);
 
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Project scoped case' } });
-    fireEvent.change(screen.getByLabelText('Project'), { target: { value: 'p2' } });
-    expect((screen.getByLabelText('Project') as HTMLSelectElement).value).toBe('p2');
-    expect((screen.getByLabelText('Section') as HTMLSelectElement).value).toBe('');
-    expect(screen.getByText('Loading sections…')).toBeTruthy();
+    selectCustomOptionSync('Project', 'p2');
+    expect(screen.getByLabelText('Project').getAttribute('value')).toBe('p2');
+    expect(screen.getByLabelText('Section').getAttribute('value')).toBe('');
+    expect((screen.getByLabelText('Section') as HTMLButtonElement).disabled).toBe(true);
 
-    await waitFor(() => expect((screen.getByLabelText('Section') as HTMLSelectElement).value).toBe('s2'));
+    await waitFor(() => expect(screen.getByLabelText('Section').getAttribute('value')).toBe('s2'));
     expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe('Project scoped case');
     fireEvent.submit(document.getElementById('testCaseForm')!);
     expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ projectId: 'p2', sectionId: 's2', section: 'Regression' }), 'close');
@@ -90,12 +91,12 @@ describe('TestCaseForm section catalog', () => {
       : Promise.resolve(initialSections.p1));
     render(<TestCaseForm isOpen onClose={vi.fn()} onSave={vi.fn()} projects={projects} onProjectChange={onProjectChange} sectionsByProject={initialSections} />);
 
-    fireEvent.change(screen.getByLabelText('Project'), { target: { value: 'p2' } });
-    fireEvent.change(screen.getByLabelText('Project'), { target: { value: 'p1' } });
-    await waitFor(() => expect((screen.getByLabelText('Section') as HTMLSelectElement).value).toBe('s1'));
+    selectCustomOptionSync('Project', 'p2');
+    selectCustomOptionSync('Project', 'p1');
+    await waitFor(() => expect(screen.getByLabelText('Section').getAttribute('value')).toBe('s1'));
     resolveP2();
-    await waitFor(() => expect((screen.getByLabelText('Project') as HTMLSelectElement).value).toBe('p1'));
-    expect((screen.getByLabelText('Section') as HTMLSelectElement).value).toBe('s1');
+    await waitFor(() => expect(screen.getByLabelText('Project').getAttribute('value')).toBe('p1'));
+    expect(screen.getByLabelText('Section').getAttribute('value')).toBe('s1');
     expect(screen.queryByText('Regression')).toBeNull();
   });
 
@@ -105,10 +106,10 @@ describe('TestCaseForm section catalog', () => {
       .mockResolvedValueOnce([{ id: 's2', name: 'Regression', projectId: 'p2' }]);
     render(<TestCaseForm isOpen onClose={vi.fn()} onSave={vi.fn()} projects={projects} onProjectChange={onProjectChange} sectionsByProject={initialSections} />);
 
-    fireEvent.change(screen.getByLabelText('Project'), { target: { value: 'p2' } });
+    selectCustomOptionSync('Project', 'p2');
     await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Could not load sections'));
     fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
-    await waitFor(() => expect((screen.getByLabelText('Section') as HTMLSelectElement).value).toBe('s2'));
+    await waitFor(() => expect(screen.getByLabelText('Section').getAttribute('value')).toBe('s2'));
     expect(onProjectChange).toHaveBeenCalledTimes(2);
   });
 });

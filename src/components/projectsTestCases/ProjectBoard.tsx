@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars -- repository lint misidentifies TypeScript callback props. */
 import React from 'react';
 import { 
-  Settings, 
+  Settings,
   Plus, 
   FolderOpen,
   PieChart,
@@ -13,6 +13,9 @@ import {
 } from 'lucide-react';
 import { Project } from '../projectsTestCases/types.ts';
 import { Button } from './ui/Button';
+import { Chip } from './ui/Chip.tsx';
+import { formatPercentage } from '@/src/utils/percentage.ts';
+import { RowActions } from './ui/RowActions.tsx';
 
 interface ProjectBoardProps {
   projects: Project[];
@@ -23,6 +26,7 @@ interface ProjectBoardProps {
   onCreate: () => void;
   onEdit: (project: Project) => void;
   onDelete: (projectId: string) => void;
+  canManage?: boolean;
 }
 
 export const ProjectBoard: React.FC<ProjectBoardProps> = ({
@@ -34,16 +38,9 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({
     onCreate, 
     onEdit, 
     onDelete,
+    canManage = true,
 }) => {
   
-  const getStatusColor = (status: Project['status']) => {
-    switch (status) {
-      case 'Active': return 'text-emerald-600';
-      case 'Completed': return 'text-blue-600';
-      default: return 'text-slate-500';
-    }
-  };
-
   const handleTitleClick = (project: Project) => {
     if (project.externalLink) {
       window.open(project.externalLink, '_blank', 'noopener,noreferrer');
@@ -98,35 +95,16 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({
                       </div>
                       
                       {/* Subtle Status */}
-                      <div className={`flex items-center gap-1.5 mt-1.5 text-[10px] font-bold uppercase tracking-wider ${getStatusColor(project.status)}`}>
-                        <span className="w-1.5 h-1.5 rounded-full bg-current" />
-                        {project.status}
-                      </div>
+                      <Chip type="status" value={project.status} displayValue={project.status} className="mt-1.5" />
                     </div>
                   </div>
                   
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onEdit(project);
-                        }}
-                        className="text-slate-400 hover:text-slate-600 p-2 hover:bg-slate-100 rounded-lg transition-colors"
-                        title="Edit Project"
-                      >
-                        <Settings size={18} />
-                      </button>
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDelete(project.id);
-                        }}
-                        className="text-slate-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg transition-colors"
-                        title="Delete Project"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                  </div>
+                  {canManage && <div onClick={(event) => event.stopPropagation()}>
+                    <RowActions aria-label={`Actions for ${project.name}`} actions={[
+                      { label: 'Edit', icon: <Settings className="h-4 w-4" />, onClick: () => onEdit(project) },
+                      { label: 'Delete', icon: <Trash2 className="h-4 w-4" />, onClick: () => onDelete(project.id), tone: 'danger' },
+                    ]} />
+                  </div>}
                 </div>
 
                 <p 
@@ -159,7 +137,7 @@ export const ProjectBoard: React.FC<ProjectBoardProps> = ({
                       <Activity size={12} /> Pass Rate
                     </div>
                     <div title="Pass rate dari Test Run terakhir yang selesai. Skipped dan Untested tidak dihitung." className={`text-xl font-bold ${project.stats.passRate == null ? 'text-slate-500' : project.stats.passRate >= 90 ? 'text-emerald-600' : project.stats.passRate >= 70 ? 'text-amber-500' : 'text-red-500'} group-hover/pass:text-emerald-700`}>
-                        {project.stats.passRate == null ? '—' : `${Number(project.stats.passRate.toFixed(2))}%`}
+                        {formatPercentage(project.stats.passRate)}
                     </div>
                   </div>
 

@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TestCaseForm } from './TestCaseForm.tsx';
 import { type Project } from './types.ts';
+import { selectCustomOptionSync } from '@/src/test/selectTestUtils.ts';
 
 const projects: Project[] = [{
   id: 'p1', name: 'One', key: 'ONE', description: '', lead: '', status: 'Active',
@@ -49,15 +50,15 @@ describe('TestCaseForm create another', () => {
     const onProjectChange = vi.fn().mockResolvedValue([{ id: 'p2-fresh-section', name: 'Fresh Two section', projectId: 'p2' }]);
     renderForm(onSave, onProjectChange);
 
-    fireEvent.change(screen.getByLabelText('Project'), { target: { value: 'p2' } });
-    await waitFor(() => expect((screen.getByLabelText('Section') as HTMLSelectElement).value).toBe('p2-fresh-section'));
+    selectCustomOptionSync('Project', 'p2');
+    await waitFor(() => expect(screen.getByLabelText('Section').getAttribute('value')).toBe('p2-fresh-section'));
     enterTitle('First test case');
     fireEvent.click(screen.getByRole('button', { name: 'Create & Add Another' }));
 
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ title: 'First test case', projectId: 'p2' }), 'create-another'));
     await waitFor(() => expect((screen.getByLabelText('Title') as HTMLInputElement).value).toBe(''));
-    expect((screen.getByLabelText('Project') as HTMLSelectElement).value).toBe('p2');
-    await waitFor(() => expect((screen.getByLabelText('Section') as HTMLSelectElement).value).toBe('p2-fresh-section'));
+    expect(screen.getByLabelText('Project').getAttribute('value')).toBe('p2');
+    await waitFor(() => expect(screen.getByLabelText('Section').getAttribute('value')).toBe('p2-fresh-section'));
     expect(onProjectChange).toHaveBeenLastCalledWith('p2');
     expect(screen.getAllByText('Step 1')).toHaveLength(1);
     expect(document.activeElement).toBe(screen.getByLabelText('Title'));

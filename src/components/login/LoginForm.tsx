@@ -61,19 +61,6 @@ export const LoginForm: React.FC = () => {
     }
   };
 
-    /*
-
-setIsLoading(true);
-
-    // Simulate network request
-    setTimeout(() => {
-      setIsLoading(false);
-      alert('Login attempt captured. (Frontend Demo Only)');
-    }, 1500);
-  };
-
-     */
-
   const isFormValid = email.trim() !== '' && password.trim() !== '';
 
   return (

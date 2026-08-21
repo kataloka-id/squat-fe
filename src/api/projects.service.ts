@@ -64,7 +64,9 @@ export const ProjectsService = {
   },
   bulkMoveTestCases: async (projectId: string, payload: { testCaseIds: string[]; destinationFolderId: string | null }) => {
     const response = await api.post(`/v1/projects/${projectId}/test-cases/bulk-move`, payload) as ApiResponse<ProjectTestCaseRecord[]>;
-    invalidateReadCache(`/v1/projects/${projectId}/test-cases`); return response;
+    invalidateReadCache(`/v1/projects/${projectId}/test-cases`);
+    invalidateReadCache(`/v1/projects/${projectId}/test-case-folders`);
+    return response;
   },
   listReusableTestCases: (projectId: string, query: { search?: string; sectionId?: string; status?: string; excludeTestCaseId?: string } = {}) =>
     api.get(`/v1/projects/${projectId}/test-cases/reusable`, { params: query }) as Promise<ApiResponse<ReusableTestCaseRecord[]>>,
@@ -73,22 +75,26 @@ export const ProjectsService = {
   createTestCase: async (projectId: string, payload: TestCasePayload) => {
     const response = await api.post(`/v1/projects/${projectId}/test-cases`, payload) as ApiResponse<ProjectTestCaseRecord>;
     invalidateReadCache(`/v1/projects/${projectId}/test-cases`);
+    invalidateReadCache(`/v1/projects/${projectId}/test-case-folders`);
     return response;
   },
   importTestCases: async (projectId: string, payload: TestCaseImportPayload) => {
     const response = await api.post(`/v1/projects/${projectId}/test-cases/import`, payload) as ApiResponse<TestCaseImportResult>;
     invalidateReadCache(`/v1/projects/${projectId}/test-cases`);
+    invalidateReadCache(`/v1/projects/${projectId}/test-case-folders`);
     invalidateReadCache('/v1/projects');
     return response;
   },
   updateTestCase: async (projectId: string, id: string, payload: TestCasePayload) => {
     const response = await api.patch(`/v1/projects/${projectId}/test-cases/${id}`, payload) as ApiResponse<ProjectTestCaseRecord>;
     invalidateReadCache(`/v1/projects/${projectId}/test-cases`);
+    invalidateReadCache(`/v1/projects/${projectId}/test-case-folders`);
     return response;
   },
   removeTestCase: async (projectId: string, id: string) => {
     const response = await api.delete(`/v1/projects/${projectId}/test-cases/${id}`) as ApiResponse<null>;
     invalidateReadCache(`/v1/projects/${projectId}/test-cases`);
+    invalidateReadCache(`/v1/projects/${projectId}/test-case-folders`);
     return response;
   },
 };

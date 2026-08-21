@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TestCaseList } from './TestCaseList.tsx';
@@ -41,7 +41,7 @@ describe('TestCaseList column layout', () => {
 
     const table = container.querySelector('table');
     expect(table?.className).toContain('table-fixed');
-    expect(table?.className).toContain('min-w-[86rem]');
+    expect(table?.className).toContain('min-w-[94rem]');
 
     const columns = Array.from(container.querySelectorAll('col'));
     expect(columns).toHaveLength(11);
@@ -52,6 +52,7 @@ describe('TestCaseList column layout', () => {
     expect(columns[7].className).toContain('w-36'); // Testing Type includes its sort indicator.
     expect(columns[8].className).toContain('w-52'); // Automation Readiness can show its badge, menu trigger, and sort indicator.
     expect(columns[9].className).toContain('w-[6.75rem]'); // Dates remain untruncated.
+    expect(columns[10].className).toContain('w-32'); // Actions fit both icons and shared end padding.
     expect(columns[2].className).toContain('hidden');
     expect(columns[2].className).toContain('sm:table-column');
     expect(columns[4].className).toContain('hidden');
@@ -63,10 +64,10 @@ describe('TestCaseList column layout', () => {
     expect(screen.getByText(shortTitleTestCase.title)).not.toBeNull();
     expect(screen.getAllByRole('button', { name: 'Change Automation Readiness' })).toHaveLength(2);
 
-    // At the 86rem table minimum, fixed columns consume 74.75rem, leaving
-    // 11.25rem for Title—more than Section's 10rem allocation.
-    const tableMinimumRem = 86;
-    const fixedColumnsRem = 74.75;
+    // At the 94rem table minimum, fixed columns consume 77.25rem, leaving
+    // 16.75rem for Title—enough room for readable test case names.
+    const tableMinimumRem = 94;
+    const fixedColumnsRem = 77.25;
     const sectionColumnRem = 10;
     expect(tableMinimumRem - fixedColumnsRem).toBeGreaterThan(sectionColumnRem);
   });
@@ -87,6 +88,7 @@ describe('TestCaseList column layout', () => {
         onDelete={() => {}}
         onUpdate={() => {}}
         hasProjectSelected
+        canManage={false}
       />,
     );
 
@@ -95,6 +97,27 @@ describe('TestCaseList column layout', () => {
     expect(section?.className).toContain('truncate');
     expect(section?.parentElement?.className).toContain('min-w-0');
     expect(section?.parentElement?.className).toContain('md:table-cell');
+  });
+
+  it('keeps the editable Section chip inside the table cell instead of clipping its trigger', () => {
+    render(
+      <TestCaseList
+        testCases={[{ ...testCase, section: 'A long section name that should remain inside the cell' }]}
+        projects={[]}
+        selectedIds={[]}
+        sortField="id"
+        sortOrder="asc"
+        onSort={() => {}}
+        onToggleSelect={() => {}}
+        onToggleSelectAll={() => {}}
+        onEdit={() => {}}
+        onDelete={() => {}}
+        onUpdate={() => {}}
+        hasProjectSelected
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'Change Section' }).className).toContain('w-full');
   });
 
   it.each([
@@ -214,5 +237,46 @@ describe('TestCaseList column layout', () => {
     expect(menu.style.top).toBe('8px');
     expect(menu.className).toContain('max-h-[calc(100vh-1rem)]');
     expect(menu.className).toContain('overflow-y-auto');
+  });
+
+  it('keeps the portal anchored to the active trigger while the table scrolls', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1000 });
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 700 });
+    let triggerLeft = 180;
+    let triggerTop = 240;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function getRect() {
+      if (this.getAttribute('role') === 'listbox') {
+        return { bottom: 0, height: 120, left: 0, right: 240, top: 0, width: 240, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+      }
+      return {
+        bottom: triggerTop + 30, height: 30, left: triggerLeft, right: triggerLeft + 80,
+        top: triggerTop, width: 80, x: triggerLeft, y: triggerTop, toJSON: () => ({}),
+      } as DOMRect;
+    });
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockImplementation(function getOffsetWidth() {
+      return this.getAttribute('role') === 'listbox' ? 240 : 0;
+    });
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function getOffsetHeight() {
+      return this.getAttribute('role') === 'listbox' ? 120 : 0;
+    });
+
+    render(
+      <TestCaseList testCases={[testCase]} projects={[]} selectedIds={[]} sortField="id" sortOrder="asc" onSort={() => {}} onToggleSelect={() => {}} onToggleSelectAll={() => {}} onEdit={() => {}} onDelete={() => {}} onUpdate={() => {}} hasProjectSelected />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Change Priority' }));
+    const menu = screen.getByRole('listbox', { name: 'Priority options' });
+    expect(menu.style.left).toBe('180px');
+    expect(menu.style.top).toBe('274px');
+    expect(menu.style.left).not.toBe('0px');
+    expect(menu.style.top).not.toBe('0px');
+
+    triggerLeft = 96;
+    triggerTop = 520;
+    window.dispatchEvent(new Event('scroll'));
+    await waitFor(() => {
+      expect(menu.style.left).toBe('96px');
+      expect(menu.style.top).toBe('554px');
+    });
   });
 });

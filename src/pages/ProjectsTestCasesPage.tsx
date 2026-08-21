@@ -16,18 +16,20 @@ import { TestRunsPage } from '@/src/components/testRuns/TestRunsPage.tsx';
 import { ReportsPage } from '@/src/components/reports/ReportsPage.tsx';
 import type { ReportFilters } from '@/src/api/reports.service.ts';
 import { ConfirmationModal } from '@/src/components/projectsTestCases/ui/ConfirmationModal.tsx';
+import { PromptModal } from '@/src/components/projectsTestCases/ui/PromptModal.tsx';
 import { Button } from '@/src/components/projectsTestCases/ui/Button.tsx';
 import { MultiSelect } from '@/src/components/projectsTestCases/ui/MultiSelect.tsx';
 import { Select } from '@/src/components/projectsTestCases/ui/Select.tsx';
 import { Toast,ToastType } from '@/src/components/projectsTestCases/ui/Toast.tsx';
 import { SettingsPage } from '@/src/components/settings/SettingsPage.tsx';
 import { TeamPage } from '@/src/components/team/TeamPage.tsx';
-import { ProjectsService } from '@/src/api/projects.service.ts';
+import { ProjectsService, type TestCasePayload } from '@/src/api/projects.service.ts';
 import { onExecutionDataChanged } from '@/src/api/execution-refresh.ts';
-import type { FolderDeleteImpact, ProjectAssignmentRecord, ProjectTestCaseRecord, SectionRecord, TestCaseFolderRecord } from '@/src/types/api.ts';
+import type { FolderDeleteImpact, ProjectAssignmentRecord, ProjectTestCaseRecord, TestCaseFolderRecord } from '@/src/types/api.ts';
 import { useSessionUser } from '@/src/auth/SessionContext.tsx';
 import { isCurrentProjectRequest } from '@/src/utils/projectStats.ts';
 import { getVisibleTestCases } from '@/src/utils/testCaseSorting.ts';
+import { sectionCatalogStore, useSectionCatalogs } from '@/src/state/section-catalog.ts';
 import { Plus, Filter, Trash2, Search, Briefcase, Zap, Check, X, Upload } from 'lucide-react';
 import type { TestCaseImportPayload } from '@/src/types/api.ts';
 import {
@@ -40,6 +42,7 @@ import {
   AutomationType,
   AutomationReadiness,
   normalizeAutomationReadiness,
+  normalizePriority,
   Project,
 } from '../components/projectsTestCases/types.ts';
 
@@ -61,7 +64,7 @@ const toProject = (project: ProjectAssignmentRecord): Project => ({
 const toTestCase = (testCase: ProjectTestCaseRecord, projectId: string): TestCase => ({
   id: testCase.id, tcNumber: testCase.tcNumber, projectKey: testCase.projectKey, title: testCase.title,
   projectId: testCase.projectId ?? projectId, sectionId: testCase.sectionId, section: testCase.section ?? 'Uncategorized', folderId: testCase.folderId, folderPath: testCase.folderPath,
-  priority: Object.values(Priority).includes(testCase.priority as Priority) ? testCase.priority as Priority : Priority.Medium,
+  priority: normalizePriority(testCase.priority),
   status: Object.values(Status).includes(testCase.status as Status) ? testCase.status as Status : Status.Draft,
   automationType: Object.values(AutomationType).includes(testCase.automationType as AutomationType) ? testCase.automationType as AutomationType : AutomationType.Manual,
   automationReadiness: normalizeAutomationReadiness(testCase.automationReadiness), isReusable: testCase.isReusable ?? false,
@@ -85,7 +88,12 @@ export const App: React.FC = () => {
   // Default landing page is now 'projects'
   const [currentView, setCurrentView] = useState<
     'projects' | 'test-cases' | 'user-flows' | 'runs' | 'reports' | 'team' | 'settings'
-  >(() => new URLSearchParams(location.search).get('view') === 'runs' ? 'runs' : new URLSearchParams(location.search).get('view') === 'reports' ? 'reports' : 'projects');
+  >(() => {
+    const view = new URLSearchParams(location.search).get('view');
+    return view === 'test-cases' || view === 'user-flows' || view === 'runs' || view === 'reports' || view === 'team' || view === 'settings'
+      ? view
+      : 'projects';
+  });
 
   // --- Data State ---
   // Projects always begin empty and are populated only from the scoped API;
@@ -100,6 +108,7 @@ export const App: React.FC = () => {
   const [restoreUnavailableProjectIds, setRestoreUnavailableProjectIds] = useState<Set<string>>(new Set());
   const [authorizedProjectIds, setAuthorizedProjectIds] = useState<string[] | null>(null);
   const projectRequestVersion = useRef(0);
+  const testCaseRequestVersion = useRef(0);
   // User Flows does not own this selection so navigation between workspace views
   // preserves it without introducing another global state mechanism.
   const [selectedUserFlowProjectId, setSelectedUserFlowProjectId] = useState('');
@@ -108,7 +117,7 @@ export const App: React.FC = () => {
 
   // Displayed Test Cases (Filtered View)
   const [testCases, setTestCases] = useState<TestCase[]>([]);
-  const [sectionsByProject, setSectionsByProject] = useState<Record<string, SectionRecord[]>>({});
+  const sectionsByProject = useSectionCatalogs(projects.map((project) => project.id));
   const [foldersByProject, setFoldersByProject] = useState<Record<string, TestCaseFolderRecord[]>>({});
   const [folderScope, setFolderScope] = useState<FolderScope>(emptyFolderScope);
   // A scope is owned by the project from which it was selected.  Keeping that
@@ -124,8 +133,12 @@ export const App: React.FC = () => {
   // --- Bulk Action State ---
   const [bulkStatus, setBulkStatus] = useState<Status | ''>('');
   const [bulkPriority, setBulkPriority] = useState<Priority | ''>('');
+  const [bulkSectionId, setBulkSectionId] = useState('');
+  const [bulkTestingType, setBulkTestingType] = useState<AutomationType | ''>('');
+  const [bulkAutomationReadiness, setBulkAutomationReadiness] = useState<AutomationReadiness | ''>('');
   const [bulkMoveDestination, setBulkMoveDestination] = useState('');
   const [isBulkMoving, setIsBulkMoving] = useState(false);
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
 
   // --- Toast State ---
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
@@ -136,6 +149,7 @@ export const App: React.FC = () => {
   // The API enforces company/project scope. This only prevents a Kataloka
   // administrator from being offered lifecycle actions that policy disallows.
   const canManagePendingDeletion = sessionUser?.roleSlug.toLowerCase() === 'admin';
+  const canManageTestCases = sessionUser?.roleSlug.toLowerCase() !== 'viewer';
 
   const refreshProjects = useCallback(async () => {
     const requestVersion = ++projectRequestVersion.current;
@@ -186,6 +200,9 @@ export const App: React.FC = () => {
   const [folderDeleteStrategy, setFolderDeleteStrategy] = useState<'MOVE_TO_PARENT' | 'MOVE_TEST_CASES_TO_UNFILED' | 'DELETE_ALL'>('MOVE_TO_PARENT');
   const [folderDeleteConfirmation, setFolderDeleteConfirmation] = useState('');
   const [folderDeleteBusy, setFolderDeleteBusy] = useState(false);
+  const [folderPrompt, setFolderPrompt] = useState<{ mode: 'create' | 'rename'; folder?: TestCaseFolderRecord; parentId?: string | null } | null>(null);
+  const [folderPromptBusy, setFolderPromptBusy] = useState(false);
+  const [folderPromptError, setFolderPromptError] = useState<string | null>(null);
 
   // Confirmation State
   const [confirmState, setConfirmState] = useState<{
@@ -218,6 +235,8 @@ export const App: React.FC = () => {
   const deepLinkedTestCaseId = query.get('testCaseId');
   const deepLinkedProjectId = query.get('projectId');
   const deepLinkedFolderId = query.get('folderId');
+  const deepLinkedUnfiled = query.get('unfiled') === '1';
+  const deepLinkedIncludeSubfolders = query.get('includeSubfolders') === '1';
   const queryView = query.get('view');
   const queryRunId = query.get('runId') || undefined;
   const queryExecutionId = query.get('executionId') || undefined;
@@ -245,6 +264,10 @@ export const App: React.FC = () => {
   );
   const sections = useMemo(() => Array.from(new Set(Object.values(sectionsByProject).flat().map((section) => section.name))).sort(), [sectionsByProject]);
   const sectionOptions = useMemo(() => sections.map((s) => ({ label: s, value: s })), [sections]);
+  const bulkSectionOptions = useMemo(
+    () => (activeProjectId ? sectionsByProject[activeProjectId] ?? [] : []).map((section) => ({ label: section.name, value: section.id })),
+    [activeProjectId, sectionsByProject],
+  );
   const priorityOptions = useMemo(
     () => Object.values(Priority).map((p) => ({ label: p, value: p })),
     [],
@@ -263,11 +286,13 @@ export const App: React.FC = () => {
   );
 
   const clearFolderQuery = useCallback(() => {
-    if (!deepLinkedFolderId) return;
+    if (!deepLinkedFolderId && !deepLinkedUnfiled && !query.has('includeSubfolders')) return;
     const next = new URLSearchParams(location.search);
     next.delete('folderId');
+    next.delete('unfiled');
+    next.delete('includeSubfolders');
     navigate({ pathname: location.pathname, search: next.toString() ? `?${next.toString()}` : '' }, { replace: true });
-  }, [deepLinkedFolderId, location.pathname, location.search, navigate]);
+  }, [deepLinkedFolderId, deepLinkedUnfiled, location.pathname, location.search, navigate, query]);
 
   const resetFolderScope = useCallback((clearQuery = false) => {
     // Clear ownership synchronously with the scope so a new project can never
@@ -279,17 +304,26 @@ export const App: React.FC = () => {
   }, [clearFolderQuery]);
 
   const changeProjects = useCallback((projectIds: string[], preserveFolderQuery = false) => {
-    resetFolderScope(!preserveFolderQuery);
+    resetFolderScope(false);
     setFilters((current) => ({ ...current, projectId: projectIds }));
-  }, [resetFolderScope]);
+    updateWorkspaceQuery({
+      projectId: projectIds.length === 1 ? projectIds[0] : undefined,
+      ...(preserveFolderQuery ? {} : { folderId: undefined, unfiled: undefined, includeSubfolders: undefined }),
+    }, !preserveFolderQuery);
+  }, [resetFolderScope, updateWorkspaceQuery]);
 
   // --- Handlers ---
 
   const handleNavigate = (view: string) => {
-    if (view !== 'test-cases') resetFolderScope(true);
+    if (view !== 'test-cases') resetFolderScope(false);
     setCurrentView(view as any);
-    if (view === 'runs') updateWorkspaceQuery({ view, projectId: selectedTestRunProjectId || undefined, runId: undefined, userFlowId: undefined });
-    if (view === 'reports') updateWorkspaceQuery({ view, projectId: selectedReportProjectId || undefined, runId: undefined });
+    updateWorkspaceQuery({
+      view,
+      unfiled: undefined,
+      includeSubfolders: undefined,
+      ...(view === 'runs' ? { projectId: selectedTestRunProjectId || undefined, runId: undefined, userFlowId: undefined } : {}),
+      ...(view === 'reports' ? { projectId: selectedReportProjectId || undefined, runId: undefined } : {}),
+    });
   };
 
   useEffect(() => {
@@ -320,7 +354,11 @@ export const App: React.FC = () => {
   }, [authorizedProjectIds, selectedReportProjectId, selectedTestRunProjectId]);
 
   useEffect(() => {
-    if (queryView === 'runs' || queryView === 'reports') setCurrentView(queryView);
+    if (queryView === 'test-cases' || queryView === 'user-flows' || queryView === 'runs' || queryView === 'reports' || queryView === 'team' || queryView === 'settings') {
+      setCurrentView(queryView);
+    } else if (!queryView) {
+      setCurrentView('projects');
+    }
   }, [queryView]);
 
   useEffect(() => {
@@ -333,39 +371,17 @@ export const App: React.FC = () => {
   // The project remains server-authorized when its test-case list is fetched.
   useEffect(() => {
     if (!deepLinkedProjectId || queryView === 'runs' || queryView === 'reports' || !projects.some((project) => project.id === deepLinkedProjectId)) return;
+    // A project filter change updates the URL in the same event. During the
+    // render before that URL update is visible, do not let the previous deep
+    // link effect restore the old project selection.
+    if (filters.projectId.length > 0 && filters.projectId[0] !== deepLinkedProjectId) return;
     if (filters.projectId[0] !== deepLinkedProjectId) changeProjects([deepLinkedProjectId], true);
     setCurrentView('test-cases');
-  }, [changeProjects, deepLinkedProjectId, filters.projectId, projects]);
-
-  // The API scopes each project's catalog to the signed-in user's assignment.
-  useEffect(() => {
-    let active = true;
-    if (projects.length === 0) {
-      setSectionsByProject({});
-      return () => { active = false; };
-    }
-    void Promise.all(projects.map(async (project) => [project.id, (await ProjectsService.listSections(project.id)).data] as const))
-      .then((entries) => { if (active) setSectionsByProject(Object.fromEntries(entries)); })
-      .catch((error) => { if (active) showToast(error?.message ?? 'Katalog Section tidak dapat dimuat.', 'error'); });
-    return () => { active = false; };
-  }, [projects]);
+  }, [changeProjects, deepLinkedProjectId, filters.projectId, projects, queryView]);
 
   const refreshSectionsForProject = useCallback(async (projectId: string) => {
-    const response = await ProjectsService.listSections(projectId, { force: true });
-    setSectionsByProject((current) => ({ ...current, [projectId]: response.data }));
-    return response.data;
+    return sectionCatalogStore.refresh(projectId);
   }, []);
-
-  useEffect(() => {
-    const refreshCatalog = () => {
-      if (!projects.length) return;
-      void Promise.all(projects.map(async (project) => [project.id, (await ProjectsService.listSections(project.id, { force: true })).data] as const))
-        .then((entries) => setSectionsByProject(Object.fromEntries(entries)))
-        .catch((error) => showToast(error?.message ?? 'Katalog Section tidak dapat dimuat.', 'error'));
-    };
-    window.addEventListener('sections-catalog-updated', refreshCatalog);
-    return () => window.removeEventListener('sections-catalog-updated', refreshCatalog);
-  }, [projects]);
 
   const handleViewTestCases = (projectId: string) => {
     // Switch to test cases and filter by this project
@@ -392,32 +408,40 @@ export const App: React.FC = () => {
 
   // Test cases are fetched per selected project. The API authorizes this
   // server-side, so a client cannot obtain other projects by changing a filter.
-  useEffect(() => {
-    let active = true;
-    const loadData = async () => {
-      // If no project selected, clear table
-      if (filters.projectId.length === 0) {
-        if (active) setTestCases([]);
-        return;
+  // A request version prevents a slower response from an earlier scope/mutation
+  // refresh from restoring stale rows after the latest response has arrived.
+  const refreshTestCases = useCallback(async () => {
+    const requestVersion = ++testCaseRequestVersion.current;
+    const projectIds = filters.projectId;
+    if (projectIds.length === 0) {
+      setTestCases([]);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const responses = await Promise.all(projectIds.map((projectId) => projectIds.length === 1
+        ? ProjectsService.listTestCasesInFolder(projectId, activeFolderScope)
+        : ProjectsService.listTestCases(projectId, { force: true })));
+      const projectData = responses.flatMap((response, index) => response.data.map((testCase: ProjectTestCaseRecord) => toTestCase(testCase, projectIds[index])));
+      if (requestVersion !== testCaseRequestVersion.current) return;
+      setTestCases(projectData);
+      const deepLinkedCase = deepLinkedTestCaseId ? projectData.find((testCase) => testCase.id === deepLinkedTestCaseId) : undefined;
+      if (deepLinkedCase) setViewingCase(deepLinkedCase);
+    } catch (error) {
+      if (requestVersion === testCaseRequestVersion.current) {
+        setTestCases([]);
+        showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Test cases tidak dapat dimuat.', 'error');
       }
+    } finally {
+      if (requestVersion === testCaseRequestVersion.current) setIsLoading(false);
+    }
+  }, [activeFolderScope, deepLinkedTestCaseId, filters.projectId, showToast]);
 
-      setIsLoading(true);
-      try {
-        const responses = await Promise.all(filters.projectId.map((projectId) => filters.projectId.length === 1 ? ProjectsService.listTestCasesInFolder(projectId, activeFolderScope) : ProjectsService.listTestCases(projectId)));
-        const projectData = responses.flatMap((response, index) => response.data.map((testCase: ProjectTestCaseRecord) => toTestCase(testCase, filters.projectId[index])));
-        if (active) {
-          setTestCases(projectData);
-          const deepLinkedCase = deepLinkedTestCaseId ? projectData.find((testCase) => testCase.id === deepLinkedTestCaseId) : undefined;
-          if (deepLinkedCase) setViewingCase(deepLinkedCase);
-        }
-      } catch (error) {
-        if (active) { setTestCases([]); showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Test cases tidak dapat dimuat.', 'error'); }
-      } finally { if (active) setIsLoading(false); }
-    };
-
-    void loadData();
-    return () => { active = false; };
-  }, [activeFolderScope, filters.projectId]);
+  useEffect(() => {
+    void refreshTestCases();
+  }, [refreshTestCases]);
 
   const handleSort = (field: SortField) => {
     setSortConfig((prev) => ({
@@ -431,6 +455,7 @@ export const App: React.FC = () => {
   };
 
   const handleToggleSelect = (id: string) => {
+    if (!canManageTestCases) return;
     // A checkbox can only select an item rendered for the active project/folder scope.
     if (filters.projectId.length !== 1 || !testCases.some((testCase) => testCase.id === id)) return;
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -442,6 +467,9 @@ export const App: React.FC = () => {
     setSelectedIds([]);
     setBulkStatus('');
     setBulkPriority('');
+    setBulkSectionId('');
+    setBulkTestingType('');
+    setBulkAutomationReadiness('');
     setBulkMoveDestination('');
   }, [activeFolderScope.folderId, activeFolderScope.includeSubfolders, activeFolderScope.unfiled, currentView, filters.projectId]);
 
@@ -500,20 +528,46 @@ export const App: React.FC = () => {
     if (!activeProjectId || !deepLinkedFolderId || !Object.hasOwn(foldersByProject, activeProjectId)) return;
     if ((foldersByProject[activeProjectId] ?? []).some((folder) => folder.id === deepLinkedFolderId)) {
       setFolderScopeProjectId(activeProjectId);
-      setFolderScope({ folderId: deepLinkedFolderId, includeSubfolders: false });
+      setFolderScope({ folderId: deepLinkedFolderId, includeSubfolders: deepLinkedIncludeSubfolders });
       return;
     }
     resetFolderScope(true);
-  }, [activeProjectId, deepLinkedFolderId, foldersByProject, resetFolderScope]);
-  const createFolder = async (parentId?: string | null) => {
-    if (!activeProjectId) return; const name = window.prompt('Folder name'); if (!name?.trim()) return;
-    try { await ProjectsService.createTestCaseFolder(activeProjectId, { name: name.trim(), parentId }); await refreshFolders(activeProjectId); showToast('Folder created.'); }
-    catch (error) { showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Folder gagal dibuat.', 'error'); }
+  }, [activeProjectId, deepLinkedFolderId, deepLinkedIncludeSubfolders, foldersByProject, resetFolderScope]);
+  useEffect(() => {
+    if (!activeProjectId || deepLinkedFolderId || !Object.hasOwn(foldersByProject, activeProjectId)) return;
+    setFolderScopeProjectId(activeProjectId);
+    setFolderScope(deepLinkedUnfiled ? { unfiled: true, includeSubfolders: false } : emptyFolderScope);
+  }, [activeProjectId, deepLinkedFolderId, deepLinkedUnfiled, foldersByProject]);
+  const createFolder = (parentId?: string | null) => {
+    if (!activeProjectId) return;
+    setFolderPromptError(null);
+    setFolderPrompt({ mode: 'create', parentId });
   };
-  const renameFolder = async (folder: TestCaseFolderRecord) => {
-    if (!activeProjectId) return; const name = window.prompt('Rename folder', folder.name); if (!name?.trim() || name.trim() === folder.name) return;
-    try { await ProjectsService.updateTestCaseFolder(activeProjectId, folder.id, { name: name.trim() }); await refreshFolders(activeProjectId); showToast('Folder renamed.'); }
-    catch (error) { showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Folder gagal diubah.', 'error'); }
+  const renameFolder = (folder: TestCaseFolderRecord) => {
+    if (!activeProjectId) return;
+    setFolderPromptError(null);
+    setFolderPrompt({ mode: 'rename', folder });
+  };
+  const submitFolderPrompt = async (name: string) => {
+    if (!activeProjectId || !folderPrompt) return;
+    setFolderPromptBusy(true);
+    setFolderPromptError(null);
+    try {
+      if (folderPrompt.mode === 'create') {
+        await ProjectsService.createTestCaseFolder(activeProjectId, { name, parentId: folderPrompt.parentId });
+        await refreshFolders(activeProjectId);
+        showToast('Folder created.');
+      } else if (folderPrompt.folder && name !== folderPrompt.folder.name) {
+        await ProjectsService.updateTestCaseFolder(activeProjectId, folderPrompt.folder.id, { name });
+        await refreshFolders(activeProjectId);
+        showToast('Folder renamed.');
+      }
+      setFolderPrompt(null);
+    } catch (error) {
+      setFolderPromptError(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Folder gagal disimpan.');
+    } finally {
+      setFolderPromptBusy(false);
+    }
   };
   const deleteFolder = (folder: TestCaseFolderRecord) => {
     if (!activeProjectId) return;
@@ -525,7 +579,11 @@ export const App: React.FC = () => {
     try {
       await ProjectsService.removeTestCaseFolder(activeProjectId, folder.id, { strategy: folderDeleteStrategy, confirmation: folderDeleteConfirmation });
       const remainingFolders = await refreshFolders(activeProjectId);
-      if (activeFolderScope.folderId && !remainingFolders.some((item) => item.id === activeFolderScope.folderId)) resetFolderScope(true);
+      if (activeFolderScope.folderId && !remainingFolders.some((item) => item.id === activeFolderScope.folderId)) {
+        resetFolderScope(true);
+      } else {
+        await refreshTestCases();
+      }
       setFolderDeleteDialog(null);
       showToast('Folder deleted.');
     }
@@ -533,12 +591,28 @@ export const App: React.FC = () => {
     finally { setFolderDeleteBusy(false); }
   };
   const moveSelected = async (folderId: string | null) => {
+    if (!canManageTestCases) return;
     const scopedIds = scopedSelectedIds.filter((id) => testCases.some((testCase) => testCase.id === id && testCase.projectId === activeProjectId));
     if (isBulkMoving || !activeProjectId || !scopedIds.length) return;
     setIsBulkMoving(true);
-    try { await ProjectsService.bulkMoveTestCases(activeProjectId, { testCaseIds: scopedIds, destinationFolderId: folderId }); setSelectedIds([]); setFolderScope((value) => ({ ...value })); await refreshFolders(activeProjectId); showToast('Test cases moved.'); }
-    catch (error) { showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Bulk move gagal; tidak ada test case yang dipindahkan.', 'error'); }
-    finally { setIsBulkMoving(false); }
+    try {
+      try {
+        await ProjectsService.bulkMoveTestCases(activeProjectId, { testCaseIds: scopedIds, destinationFolderId: folderId });
+      } catch (error) {
+        showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Bulk move gagal; tidak ada test case yang dipindahkan.', 'error');
+        return;
+      }
+
+      setSelectedIds([]);
+      setBulkStatus('');
+      setBulkPriority('');
+      await Promise.all([refreshTestCases(), refreshFolders(activeProjectId)]).catch((error) => {
+        showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Data test case/folder belum dapat disegarkan.', 'error');
+      });
+      showToast('Test cases moved.');
+    } finally {
+      setIsBulkMoving(false);
+    }
   };
 
   const handleImport = async (projectId: string, payload: TestCaseImportPayload) => {
@@ -562,20 +636,64 @@ export const App: React.FC = () => {
 
   // Executes the actual update state change (called after confirmation)
   const performUpdate = async (ids: string[], updates: Partial<TestCase>): Promise<boolean> => {
+    if (!canManageTestCases) return false;
+    if (isBulkUpdating) return false;
+    const targets = ids.map((id) => ({ id, current: testCases.find((testCase) => testCase.id === id) })).filter((target): target is { id: string; current: TestCase } => Boolean(target.current));
+    if (!targets.length) return false;
+    setIsBulkUpdating(true);
     try {
-      await Promise.all(ids.map(async (id) => {
-        const current = testCases.find((testCase) => testCase.id === id);
-        if (!current) return;
-        const response = await ProjectsService.updateTestCase(current.projectId, id, { ...current, ...updates, description: updates.description ?? current.description ?? null, preconditions: updates.preconditions ?? current.preconditions ?? null, mainExpectedResult: updates.mainExpectedResult ?? current.mainExpectedResult ?? null });
-        const saved = response.data;
-        setTestCases((items) => items.map((item) => item.id === id ? { ...item, ...toTestCase(saved, current.projectId) } : item));
+      const results = await Promise.allSettled(targets.map(async ({ id, current }) => {
+        const payload: TestCasePayload = {
+          title: current.title,
+          sectionId: updates.sectionId ?? current.sectionId ?? '',
+          priority: updates.priority ?? current.priority,
+          status: updates.status ?? current.status,
+          automationType: updates.automationType ?? current.automationType,
+          automationReadiness: updates.automationReadiness ?? current.automationReadiness ?? AutomationReadiness.Candidate,
+          isReusable: current.isReusable ?? false,
+          folderId: current.folderId ?? null,
+          linkedPreconditions: current.linkedPreconditions?.map((link) => ({ testCaseId: link.testCaseId, sortOrder: link.sortOrder })) ?? [],
+          description: current.description ?? null,
+          preconditions: current.preconditions ?? null,
+          mainExpectedResult: current.mainExpectedResult ?? null,
+          steps: current.steps,
+          tags: current.tags,
+        };
+        const response = await ProjectsService.updateTestCase(current.projectId, id, payload);
+        return { id, current, saved: response.data };
       }));
-      setBulkStatus(''); setBulkPriority('');
+      const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+      results.forEach((result) => {
+        if (result.status === 'fulfilled') {
+          const { id, current, saved } = result.value;
+          setTestCases((items) => items.map((item) => item.id === id ? { ...item, ...toTestCase(saved, current.projectId) } : item));
+        }
+      });
+
+      const projectIds = [...new Set(targets.map(({ current }) => current.projectId))];
+      const refreshResults = await Promise.allSettled([
+        refreshTestCases(),
+        ...projectIds.map((projectId) => refreshFolders(projectId)),
+        refreshProjects(),
+      ]);
+      const refreshFailures = refreshResults.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+      const reason = (error: unknown) => error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Unknown error';
+      if (failures.length > 0) {
+        setSelectedIds(failures.map((failure) => targets[results.indexOf(failure)].id));
+        showToast(`${targets.length - failures.length} updated; ${failures.length} failed: ${reason(failures[0].reason)}`, 'error');
+        return false;
+      }
+      if (refreshFailures.length > 0) {
+        showToast(`Updated ${targets.length} test cases, but refresh failed: ${reason(refreshFailures[0].reason)}`, 'error');
+        setSelectedIds(ids);
+        return false;
+      }
+      setSelectedIds([]);
+      setBulkStatus(''); setBulkPriority(''); setBulkSectionId(''); setBulkTestingType(''); setBulkAutomationReadiness('');
       showToast(ids.length === 1 ? 'Test case updated successfully.' : `Updated ${ids.length} test cases successfully.`);
       return true;
-    } catch (error) {
-      showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Test case gagal diperbarui.', 'error');
-      return false;
+    } finally {
+      setIsBulkUpdating(false);
     }
   };
 
@@ -600,15 +718,38 @@ export const App: React.FC = () => {
     });
   };
 
-  const handleBulkApply = () => {
+  const handleBulkApply = async () => {
+    if (!canManageTestCases) return;
     const updates: Partial<TestCase> = {};
     if (bulkStatus) updates.status = bulkStatus;
     if (bulkPriority) updates.priority = bulkPriority;
+    if (bulkSectionId) updates.sectionId = bulkSectionId;
+    if (bulkTestingType) updates.automationType = bulkTestingType;
+    if (bulkAutomationReadiness) updates.automationReadiness = bulkAutomationReadiness;
 
-    if (Object.keys(updates).length > 0) {
+    if (Object.keys(updates).length === 0) return;
+    try {
+      const latestSections = activeProjectId && bulkSectionId ? await refreshSectionsForProject(activeProjectId) : undefined;
+      if (bulkSectionId && !latestSections?.some((section) => section.id === bulkSectionId)) {
+        showToast('Section tidak lagi tersedia pada project ini. Pilih Section kembali.', 'error');
+        setBulkSectionId('');
+        return;
+      }
       requestUpdate(scopedSelectedIds, updates);
+    } catch (error) {
+      showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Katalog Section tidak dapat disegarkan.', 'error');
     }
   };
+
+  const refreshBulkSections = useCallback(async () => {
+    if (!activeProjectId) return;
+    try {
+      await refreshSectionsForProject(activeProjectId);
+    } catch (error) {
+      showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Katalog Section tidak dapat disegarkan.', 'error');
+      throw error;
+    }
+  }, [activeProjectId, refreshSectionsForProject, showToast]);
 
   const handleSave = async (data: Partial<TestCase>, mode: TestCaseSubmitMode = 'close'): Promise<boolean> => {
     const projectId = editingCase ? editingCase.projectId : data.projectId ?? filters.projectId[0];
@@ -621,7 +762,7 @@ export const App: React.FC = () => {
     try {
       const payload = {
         title: data.title ?? editingCase?.title ?? 'Untitled', sectionId,
-        priority: data.priority ?? editingCase?.priority ?? Priority.Medium, status: data.status ?? editingCase?.status ?? Status.Draft,
+        priority: data.priority ?? editingCase?.priority ?? Priority.NotDefined, status: data.status ?? editingCase?.status ?? Status.Draft,
         automationType: data.automationType ?? editingCase?.automationType ?? AutomationType.Manual,
         automationReadiness: data.automationReadiness ?? editingCase?.automationReadiness ?? AutomationReadiness.Candidate,
         isReusable: data.isReusable ?? editingCase?.isReusable ?? false, folderId: data.folderId ?? editingCase?.folderId ?? activeFolderScope.folderId ?? null,
@@ -634,6 +775,12 @@ export const App: React.FC = () => {
       const saved = response.data;
       const testCase = toTestCase(saved, projectId);
       setTestCases((items) => editingCase ? items.map((item) => item.id === testCase.id ? { ...item, ...testCase } : item) : [testCase, ...items]);
+      const folderAssignmentChanged = !editingCase || (editingCase.folderId ?? null) !== (payload.folderId ?? null);
+      if (folderAssignmentChanged) {
+        await Promise.all([refreshTestCases(), refreshFolders(projectId)]).catch((refreshError) => {
+          showToast(refreshError && typeof refreshError === 'object' && 'message' in refreshError ? String(refreshError.message) : 'Data test case/folder belum dapat disegarkan.', 'error');
+        });
+      }
       if (!editingCase) {
         ProjectsService.invalidateList();
         await refreshProjects();
@@ -651,6 +798,7 @@ export const App: React.FC = () => {
   };
 
   const initiateDelete = (id?: string) => {
+    if (!canManageTestCases) return;
     const targetIds = id ? [id] : scopedSelectedIds;
     const count = targetIds.length;
 
@@ -674,6 +822,7 @@ export const App: React.FC = () => {
           setSelectedIds((items) => items.filter((item) => !successfulIds.includes(item)));
           ProjectsService.invalidateList();
           await refreshProjects();
+          await Promise.all([...new Set(targets.filter(({ id }) => successfulIds.includes(id)).map(({ testCase }) => testCase?.projectId).filter((projectId): projectId is string => Boolean(projectId)))].map((projectId) => refreshFolders(projectId)));
         }
         if (failures.length > 0) {
           const firstFailure = failures[0].reason;
@@ -821,6 +970,7 @@ export const App: React.FC = () => {
   );
 
   const handleToggleSelectAll = () => {
+    if (!canManageTestCases) return;
     if (!activeProjectId) return;
     const pageIds = paginatedTestCases.map((tc) => tc.id);
     const allPageSelected = pageIds.length > 0 && pageIds.every((id) => scopedSelectedIds.includes(id));
@@ -854,7 +1004,20 @@ export const App: React.FC = () => {
       onExpandedFolderIdsChange={setExpandedFolderIds}
       loading={foldersLoading}
       error={foldersError}
-      onSelect={(scope) => { setFolderScopeProjectId(activeProjectId); setFolderScope(scope); setSelectedIds([]); }}
+      onSelect={(scope) => {
+        if (!activeProjectId) return;
+        setFolderScopeProjectId(activeProjectId);
+        setFolderScope(scope);
+        setSelectedIds([]);
+        setCurrentView('test-cases');
+        updateWorkspaceQuery({
+          view: 'test-cases',
+          projectId: activeProjectId,
+          folderId: scope.folderId,
+          unfiled: scope.unfiled ? '1' : undefined,
+          includeSubfolders: scope.folderId && scope.includeSubfolders ? '1' : undefined,
+        });
+      }}
       onCreate={createFolder}
       onRename={renameFolder}
       onDelete={deleteFolder}
@@ -880,6 +1043,7 @@ export const App: React.FC = () => {
                 onCreate={handleCreateProject}
                 onEdit={handleEditProject}
                 onDelete={handleDeleteProject}
+                canManage={sessionUser?.roleSlug.toLowerCase() !== 'viewer'}
               />
               {canManagePendingDeletion && pendingDeletionAvailable && (
                 <div className="mt-8">
@@ -938,7 +1102,11 @@ export const App: React.FC = () => {
                 </div>
                 {activeFolderScope.folderId && (
                   <label className="flex shrink-0 items-center gap-2 text-sm text-slate-600">
-                    <input className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500" type="checkbox" checked={activeFolderScope.includeSubfolders} onChange={(event) => setFolderScope((scope) => ({ ...scope, includeSubfolders: event.target.checked }))} />
+                    <input className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500" type="checkbox" checked={activeFolderScope.includeSubfolders} onChange={(event) => {
+                      const includeSubfolders = event.target.checked;
+                      setFolderScope((scope) => ({ ...scope, includeSubfolders }));
+                      updateWorkspaceQuery({ includeSubfolders: includeSubfolders ? '1' : undefined });
+                    }} />
                     Include descendant folders
                   </label>
                 )}
@@ -1056,7 +1224,7 @@ export const App: React.FC = () => {
                   )}
                 </div>
 
-                {scopedSelectedIds.length > 0 && (
+                {canManageTestCases && scopedSelectedIds.length > 0 && (
                   <div className="animate-in fade-in slide-in-from-right-5 mt-2 flex items-center gap-2 rounded-lg border border-brand-100 bg-brand-50 py-1.5 pl-3 pr-2 shadow-sm duration-200">
                     <span className="text-brand-800 mr-1 text-xs font-semibold">
                       {scopedSelectedIds.length} Selected
@@ -1064,14 +1232,14 @@ export const App: React.FC = () => {
                     <div className="bg-brand-200 mx-1 h-4 w-px"></div>
 
                     {/* Bulk Actions with CTA */}
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       {activeProjectId && (
                         <div className="w-32" aria-busy={isBulkMoving}>
                           <Select
                             placeholder={isBulkMoving ? 'Moving…' : 'Move to…'}
                             value={bulkMoveDestination}
                             options={bulkMoveOptions}
-                            disabled={isBulkMoving}
+                            disabled={isBulkMoving || isBulkUpdating}
                             onChange={(value) => {
                               const destination = String(value);
                               setBulkMoveDestination('');
@@ -1087,6 +1255,7 @@ export const App: React.FC = () => {
                           placeholder="Set Status"
                           value={bulkStatus}
                           options={statusOptions}
+                          disabled={isBulkMoving || isBulkUpdating}
                           onChange={(val) => setBulkStatus(val as Status)}
                           className="w-full text-xs"
                         />
@@ -1096,25 +1265,63 @@ export const App: React.FC = () => {
                           placeholder="Set Priority"
                           value={bulkPriority}
                           options={priorityOptions}
+                          disabled={isBulkMoving || isBulkUpdating}
                           onChange={(val) => setBulkPriority(val as Priority)}
                           className="w-full text-xs"
                         />
                       </div>
+                      {activeProjectId && (
+                        <div className="w-32">
+                          <Select
+                            placeholder="Set Section"
+                            value={bulkSectionId}
+                            options={bulkSectionOptions}
+                            disabled={isBulkMoving || isBulkUpdating}
+                            onOpen={refreshBulkSections}
+                            onChange={(val) => setBulkSectionId(String(val))}
+                            className="w-full text-xs"
+                          />
+                        </div>
+                      )}
+                      <div className="w-36">
+                        <Select
+                          placeholder="Set Testing Type"
+                          value={bulkTestingType}
+                          options={automationOptions}
+                          disabled={isBulkMoving || isBulkUpdating}
+                          onChange={(val) => setBulkTestingType(val as AutomationType)}
+                          className="w-full text-xs"
+                        />
+                      </div>
+                      <div className="w-40">
+                        <Select
+                          placeholder="Set Automation Readiness"
+                          value={bulkAutomationReadiness}
+                          options={automationReadinessOptions}
+                          disabled={isBulkMoving || isBulkUpdating}
+                          onChange={(val) => setBulkAutomationReadiness(val as AutomationReadiness)}
+                          className="w-full text-xs"
+                        />
+                      </div>
 
-                      {(bulkStatus || bulkPriority) && (
+                      {(bulkStatus || bulkPriority || bulkSectionId || bulkTestingType || bulkAutomationReadiness) && (
                         <div className="flex items-center gap-1">
                           <Button
                             size="sm"
                             onClick={handleBulkApply}
+                            disabled={isBulkMoving || isBulkUpdating}
                             icon={<Check size={14} />}
                             className="ml-1 h-8 px-3"
                           >
-                            Update
+                            {isBulkUpdating ? 'Updating…' : 'Update'}
                           </Button>
                           <button
                             onClick={() => {
                               setBulkStatus('');
                               setBulkPriority('');
+                              setBulkSectionId('');
+                              setBulkTestingType('');
+                              setBulkAutomationReadiness('');
                             }}
                             className="flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-slate-400 transition-colors hover:border-slate-200 hover:bg-slate-100 hover:text-slate-600"
                             aria-label="Clear bulk fields"
@@ -1163,14 +1370,15 @@ export const App: React.FC = () => {
                   onEdit={handleEdit}
                   onDelete={initiateDelete}
                   onUpdate={(id, updates) => {
-                    if ('automationType' in updates || 'automationReadiness' in updates) {
+                    if ('automationType' in updates || 'automationReadiness' in updates || 'sectionId' in updates) {
                       return performUpdate([id], updates);
                     }
                     requestUpdate([id], updates);
                   }}
+                  sectionsByProject={sectionsByProject}
                   loading={isLoading}
                   hasProjectSelected={hasProjectSelected}
-                  canManage
+                  canManage={canManageTestCases}
                   pagination={{
                     currentPage,
                     totalPages:
@@ -1188,7 +1396,7 @@ export const App: React.FC = () => {
             </div>
           )}
 
-          {currentView === 'user-flows' && <UserFlowsPage projects={projects} projectId={selectedUserFlowProjectId} onProjectChange={setSelectedUserFlowProjectId} onOpenTestRun={(projectId, runId) => { setSelectedTestRunProjectId(projectId); setCurrentView('runs'); updateWorkspaceQuery({ view: 'runs', projectId, runId, executionId: undefined, userFlowId: undefined }); }} />}
+          {currentView === 'user-flows' && <UserFlowsPage canManage={sessionUser?.roleSlug.toLowerCase() !== 'viewer'} projects={projects} projectId={selectedUserFlowProjectId} onProjectChange={setSelectedUserFlowProjectId} onOpenTestRun={(projectId, runId) => { setSelectedTestRunProjectId(projectId); setCurrentView('runs'); updateWorkspaceQuery({ view: 'runs', projectId, runId, executionId: undefined, userFlowId: undefined }); }} />}
 
           {currentView === 'runs' && <TestRunsPage projects={projects} projectId={selectedTestRunProjectId} runId={queryView === 'runs' ? queryRunId : undefined} executionId={queryView === 'runs' ? queryExecutionId : undefined} returnToReports={query.get('reportReturn') === '1'} onReturnToReports={() => { setCurrentView('reports'); updateWorkspaceQuery({ view: 'reports', runId: undefined, executionId: undefined, reportReturn: undefined }); }} onProjectChange={(projectId) => { setSelectedTestRunProjectId(projectId); updateWorkspaceQuery({ view: 'runs', projectId, runId: undefined, userFlowId: undefined }); }} onRunChange={(runId) => updateWorkspaceQuery({ view: 'runs', projectId: selectedTestRunProjectId || undefined, runId, executionId: undefined, userFlowId: undefined })} />}
           {currentView === 'reports' && <ReportsPage projects={projects} projectId={selectedReportProjectId} filters={reportFilters} onProjectChange={(projectId) => { setSelectedReportProjectId(projectId); updateWorkspaceQuery({ view: 'reports', projectId, runId: undefined }); }} onFiltersChange={(nextFilters) => updateWorkspaceQuery({ view: 'reports', projectId: selectedReportProjectId || undefined, runId: nextFilters.runId, dateFrom: nextFilters.dateFrom, dateTo: nextFilters.dateTo, sectionId: nextFilters.sectionId, folderId: nextFilters.folderId, tag: nextFilters.tag, priority: nextFilters.priority, automationType: nextFilters.automationType, assigneeId: nextFilters.assigneeId, result: nextFilters.result, userFlowId: nextFilters.userFlowId })} onOpenTestRun={(runId) => { setSelectedTestRunProjectId(selectedReportProjectId); setCurrentView('runs'); updateWorkspaceQuery({ view: 'runs', projectId: selectedReportProjectId, runId, executionId: undefined, reportReturn: '1' }); }} onOpenExecution={(runId, executionId) => { setSelectedTestRunProjectId(selectedReportProjectId); setCurrentView('runs'); updateWorkspaceQuery({ view: 'runs', projectId: selectedReportProjectId, runId, executionId, reportReturn: '1' }); }} />}
@@ -1236,6 +1444,19 @@ export const App: React.FC = () => {
         onSave={handleSaveProject}
         initialData={editingProject}
         createdBy={currentUserLabel}
+      />
+
+      <PromptModal
+        key={`${folderPrompt?.mode ?? 'closed'}-${folderPrompt?.folder?.id ?? folderPrompt?.parentId ?? 'root'}`}
+        isOpen={Boolean(folderPrompt)}
+        title={folderPrompt?.mode === 'rename' ? 'Rename folder' : 'Create Folder'}
+        label="Folder name"
+        initialValue={folderPrompt?.folder?.name ?? ''}
+        submitLabel={folderPrompt?.mode === 'rename' ? 'Save changes' : 'Create Folder'}
+        isSubmitting={folderPromptBusy}
+        error={folderPromptError}
+        onSubmit={(name) => void submitFolderPrompt(name)}
+        onClose={() => { if (!folderPromptBusy) setFolderPrompt(null); }}
       />
 
       {folderDeleteDialog && (

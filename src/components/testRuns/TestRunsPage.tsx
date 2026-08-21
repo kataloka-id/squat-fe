@@ -11,7 +11,6 @@ import {
   Clock3,
   ChevronDown,
   Eye,
-  MoreHorizontal,
   PauseCircle,
   Play,
   Plus,
@@ -23,6 +22,9 @@ import { UserFlowsService, type UserFlow } from '@/src/api/user-flows.service.ts
 import { ProjectsService } from '@/src/api/projects.service.ts';
 import { onExecutionDataChanged } from '@/src/api/execution-refresh.ts';
 import { Button } from '@/src/components/projectsTestCases/ui/Button.tsx';
+import { Select } from '@/src/components/projectsTestCases/ui/Select.tsx';
+import { Chip } from '@/src/components/projectsTestCases/ui/Chip.tsx';
+import { ROW_ACTIONS_CELL_CLASS, RowActions } from '@/src/components/projectsTestCases/ui/RowActions.tsx';
 import type { Project } from '@/src/components/projectsTestCases/types.ts';
 import type {
   ProjectMemberRecord,
@@ -32,6 +34,7 @@ import type {
   TestRunRecord,
   TestRunResult,
 } from '@/src/types/api.ts';
+import { formatPercentage, percentageNumber } from '@/src/utils/percentage.ts';
 import { progressFromExecutions, resultLabel } from './metrics.ts';
 
 type Props = {
@@ -46,19 +49,6 @@ type Props = {
 };
 const label = (user?: { username?: string | null; email?: string | null } | null) =>
   user?.username || user?.email || '—';
-const statusClass = (value: string) =>
-  (
-    ({
-      Draft: 'bg-slate-100 text-slate-700',
-      'In Progress': 'bg-blue-50 text-blue-700',
-      Completed: 'bg-emerald-50 text-emerald-700',
-      Blocked: 'bg-red-50 text-red-700',
-      Passed: 'bg-emerald-50 text-emerald-700',
-      Failed: 'bg-red-50 text-red-700',
-      Skipped: 'bg-slate-100 text-slate-700',
-      Untested: 'bg-amber-50 text-amber-700',
-    }) as Record<string, string>
-  )[value] || 'bg-slate-100 text-slate-700';
 const StatusIcon = ({ value }: { value: string }) => {
   const props = { className: 'h-3 w-3', 'aria-hidden': true as const };
   if (value === 'Completed' || value === 'Passed') return <CheckCircle2 {...props} />;
@@ -69,12 +59,7 @@ const StatusIcon = ({ value }: { value: string }) => {
   return <Circle {...props} />;
 };
 const StatusBadge = ({ value }: { value: string }) => (
-  <span
-    className={`inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium ${statusClass(value)}`}
-  >
-    <StatusIcon value={value} />
-    {resultLabel(value)}
-  </span>
+  <Chip type="status" value={value} displayValue={resultLabel(value)} leadingIcon={<StatusIcon value={value} />} />
 );
 
 const ProjectSelect = ({
@@ -84,18 +69,7 @@ const ProjectSelect = ({
 }: Pick<Props, 'projects' | 'projectId' | 'onProjectChange'>) => (
   <label className="flex min-w-52 flex-col gap-1 text-xs font-medium text-slate-600">
     <span>Project</span>
-    <select
-      value={projectId}
-      onChange={(event) => onProjectChange(event.target.value)}
-      className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500"
-    >
-      <option value="">Pilih proyek</option>
-      {projects.map((project) => (
-        <option key={project.id} value={project.id}>
-          {project.name}
-        </option>
-      ))}
-    </select>
+    <Select aria-label="Project" value={projectId} onChange={(value) => onProjectChange(String(value))} options={projects.map((project) => ({ value: project.id, label: project.name }))} placeholder="Pilih proyek" size="md" />
   </label>
 );
 
@@ -223,35 +197,12 @@ export const TestRunsPage = ({
               className="flex flex-col gap-1 text-xs font-medium text-slate-600"
             >
               <span>{name}</span>
-              <select
-                disabled={!projectId}
-                value={String(filters[key as keyof TestRunFilters] || '')}
-                onChange={(event) => setFilter(key as keyof TestRunFilters, event.target.value)}
-                className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-              >
-                <option value="">Semua</option>
-                {(options as string[]).map((option) => (
-                  <option key={option}>{resultLabel(option)}</option>
-                ))}
-              </select>
+              <Select aria-label={String(name)} disabled={!projectId} value={String(filters[key as keyof TestRunFilters] || '')} onChange={(value) => setFilter(key as keyof TestRunFilters, String(value))} options={(options as string[]).map((option) => ({ value: option, label: resultLabel(option) }))} placeholder="Semua" size="md" />
             </label>
           ))}
           <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
             <span>Owner</span>
-            <select
-              aria-label="Owner"
-              disabled={!projectId}
-              value={filters.ownerId || ''}
-              onChange={(event) => setFilter('ownerId', event.target.value)}
-              className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-            >
-              <option value="">Semua</option>
-              {members.map((member) => (
-                <option key={member.userId || member.id} value={member.userId || member.id || ''}>
-                  {member.username || member.userEmail || member.email || 'User'}
-                </option>
-              ))}
-            </select>
+            <Select aria-label="Owner" disabled={!projectId} value={filters.ownerId || ''} onChange={(value) => setFilter('ownerId', String(value))} options={members.map((member) => ({ value: member.userId || member.id || '', label: member.username || member.userEmail || member.email || 'User' }))} placeholder="Semua" size="md" />
           </label>
           <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
             <span>Time range</span>
@@ -322,8 +273,8 @@ const RunsTable = ({ runs, onOpen }: { runs: TestRunRecord[]; onOpen: (id: strin
         <tr>
           {['Test Run', 'Status', 'Type', 'Progress', 'Result', 'Owner', 'Updated', 'Actions'].map(
             (head) => (
-              <th key={head} className="px-4 py-3 font-semibold">
-                {head}
+              <th key={head} className={`px-4 py-3 ${head === 'Actions' ? ROW_ACTIONS_CELL_CLASS : ''} font-semibold`}>
+                {head === 'Actions' ? <span className="sr-only">Actions</span> : head}
               </th>
             ),
           )}
@@ -334,7 +285,7 @@ const RunsTable = ({ runs, onOpen }: { runs: TestRunRecord[]; onOpen: (id: strin
           const progress = run.progress;
           return (
             <tr key={run.id} className="group hover:bg-slate-50">
-              <td className="px-4 py-3">
+              <td className={`px-4 py-3 ${ROW_ACTIONS_CELL_CLASS}`}>
                 <button
                   onClick={() => onOpen(run.id)}
                   className="font-semibold text-slate-800 hover:text-brand-700 hover:underline focus:outline-none focus:ring-2 focus:ring-brand-500"
@@ -358,10 +309,10 @@ const RunsTable = ({ runs, onOpen }: { runs: TestRunRecord[]; onOpen: (id: strin
                     <div className="mt-1 h-1.5 w-20 overflow-hidden rounded-full bg-slate-100">
                       <span
                         className="block h-full rounded-full bg-brand-600"
-                        style={{ width: `${progress.percentage}%` }}
+                        style={{ width: `${percentageNumber(progress.percentage, { hasDenominator: progress.total > 0 }) ?? 0}%` }}
                       />
                     </div>
-                    <span className="text-[11px] text-slate-500">{progress.percentage}%</span>
+                    <span className="text-[11px] text-slate-500">{formatPercentage(progress.percentage, { hasDenominator: progress.total > 0 })}</span>
                   </div>
                 ) : (
                   '—'
@@ -418,57 +369,12 @@ const RunsTable = ({ runs, onOpen }: { runs: TestRunRecord[]; onOpen: (id: strin
   </div>
 );
 const RunActions = ({ run, onOpen }: { run: TestRunRecord; onOpen: (id: string) => void }) => {
-  const [open, setOpen] = useState(false);
   const isComplete = run.status === 'Completed';
-  const panelId = useId();
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const close = () => {
-    setOpen(false);
-    requestAnimationFrame(() => triggerRef.current?.focus());
-  };
   return (
-    <div className="relative">
-      <button
-        ref={triggerRef}
-        type="button"
-        aria-label={`Aksi untuk ${run.name}`}
-        aria-expanded={open}
-        aria-controls={panelId}
-        onClick={() => setOpen((value) => !value)}
-        onKeyDown={(event) => {
-          if (event.key === 'Escape' && open) close();
-        }}
-        className="grid h-11 w-11 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500"
-      >
-        <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
-      </button>
-      {open && (
-        <div
-          id={panelId}
-          aria-label={`Aksi ${run.name}`}
-          className="absolute right-0 z-20 mt-1 w-44 rounded-lg border border-slate-200 bg-white p-1 shadow-lg"
-          onKeyDown={(event) => {
-            if (event.key === 'Escape') close();
-          }}
-        >
-          <button
-            onClick={() => onOpen(run.id)}
-            className="flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-brand-500"
-          >
-            <Eye className="h-4 w-4 text-slate-500" /> View details
-          </button>
-          {!isComplete && (
-            <button
-              onClick={() => onOpen(run.id)}
-              className="flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-brand-500"
-            >
-              <Play className="h-4 w-4 text-brand-600" />{' '}
-              {run.status === 'Draft' ? 'Start run' : 'Continue run'}
-            </button>
-          )}
-        </div>
-      )}
-    </div>
+    <RowActions aria-label={`Actions for ${run.name}`} actions={[
+      { label: 'View details', icon: <Eye className="h-4 w-4" />, onClick: () => onOpen(run.id) },
+      ...(!isComplete ? [{ label: run.status === 'Draft' ? 'Start run' : 'Continue run', icon: <Play className="h-4 w-4" />, onClick: () => onOpen(run.id) }] : []),
+    ]} />
   );
 };
 const Empty = ({
@@ -507,12 +413,12 @@ const ErrorState = ({ onRetry }: { onRetry: () => void }) => (
 
 const FlowSelector = ({ flows, query, health, priority, status, selected, onQuery, onHealth, onPriority, onStatus, onToggle }: { flows: UserFlow[]; query: string; health: string; priority: string; status: string; selected: string[]; onQuery: (value: string) => void; onHealth: (value: string) => void; onPriority: (value: string) => void; onStatus: (value: string) => void; onToggle: (id: string) => void }) => {
   const visible = flows.filter((flow) => (`${flow.flowKey} ${flow.title}`).toLowerCase().includes(query.toLowerCase()) && (!health || flow.health === health) && (!priority || flow.priority === priority) && (!status || flow.status === status));
-  const select = (label: string, value: string, setter: (value: string) => void, options: string[]) => <label className="flex min-w-28 flex-col gap-1 text-xs font-medium text-slate-600"><span>{label}</span><select value={value} onChange={(event) => setter(event.target.value)} className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm"><option value="">Semua</option>{options.map((item) => <option key={item} value={item}>{item.replace('_', ' ')}</option>)}</select></label>;
+  const select = (label: string, value: string, setter: (value: string) => void, options: string[]) => <label className="flex min-w-28 flex-col gap-1 text-xs font-medium text-slate-600"><span>{label}</span><Select aria-label={label} value={value} onChange={(next) => setter(String(next))} options={options.map((item) => ({ value: item, label: item.replace('_', ' ') }))} placeholder="Semua" /></label>;
   return <div>
     <label className="block text-sm font-medium">Pilih User Flows<input value={query} onChange={(event) => onQuery(event.target.value)} placeholder="Cari User Flow…" className="mt-1 w-full rounded-lg border p-2 focus:outline-none focus:ring-2 focus:ring-brand-500" /></label>
     <div className="mt-3 flex flex-wrap gap-2">{select('Health', health, onHealth, ['healthy', 'at_risk', 'broken', 'unknown'])}{select('Priority', priority, onPriority, ['critical', 'high', 'medium', 'low'])}{select('Status', status, onStatus, ['draft', 'active', 'deprecated'])}</div>
     <div className="mt-3 max-h-80 overflow-y-auto rounded-lg border">
-      {!flows.length ? <p className="p-5 text-sm text-slate-500"><strong className="block text-slate-800">Belum ada User Flow</strong>Buat atau tautkan User Flow terlebih dahulu sebelum membuat Test Run berdasarkan User Flow.</p> : !visible.length ? <p className="p-5 text-sm text-slate-500">Tidak ada User Flow yang sesuai filter.</p> : visible.map((flow) => <label key={flow.id} className="flex cursor-pointer gap-3 border-b p-3 text-sm hover:bg-slate-50"><input type="checkbox" checked={selected.includes(flow.id)} onChange={() => onToggle(flow.id)} /><span><strong>{flow.flowKey} · {flow.title}</strong><small className="mt-1 block text-slate-500">Health: {flow.health} · Priority: {flow.priority} · Status: {flow.status}</small><small className="mt-1 block text-slate-500">{flow.linkedTestCaseCount} linked Test Cases{typeof flow.coverage === 'number' ? ` · Coverage ${flow.coverage}%` : ''}</small></span></label>)}
+      {!flows.length ? <p className="p-5 text-sm text-slate-500"><strong className="block text-slate-800">Belum ada User Flow</strong>Buat atau tautkan User Flow terlebih dahulu sebelum membuat Test Run berdasarkan User Flow.</p> : !visible.length ? <p className="p-5 text-sm text-slate-500">Tidak ada User Flow yang sesuai filter.</p> : visible.map((flow) => <label key={flow.id} className="flex cursor-pointer gap-3 border-b p-3 text-sm hover:bg-slate-50"><input type="checkbox" checked={selected.includes(flow.id)} onChange={() => onToggle(flow.id)} /><span><strong>{flow.flowKey} · {flow.title}</strong><small className="mt-1 block text-slate-500">Health: {flow.health} · Priority: {flow.priority} · Status: {flow.status}</small><small className="mt-1 block text-slate-500">{flow.linkedTestCaseCount} linked Test Cases · Coverage {formatPercentage(flow.coverage, { hasDenominator: flow.linkedTestCaseCount > 0 })}</small></span></label>)}
     </div>
   </div>;
 };
@@ -654,18 +560,7 @@ export const CreateRun = ({
   }) => (
     <label className="flex min-w-28 flex-col gap-1 text-xs font-medium text-slate-600">
       <span>{filterLabel}</span>
-      <select
-        value={value}
-        onChange={(event) => setValue(event.target.value)}
-        className="h-9 rounded-lg border border-slate-200 bg-white px-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-      >
-        <option value="">Semua</option>
-        {options.map(([value, optionLabel]) => (
-          <option key={value} value={value}>
-            {optionLabel}
-          </option>
-        ))}
-      </select>
+      <Select aria-label={filterLabel} value={value} onChange={(next) => setValue(String(next))} options={options.map(([optionValue, optionLabel]) => ({ value: optionValue, label: optionLabel }))} placeholder="Semua" />
     </label>
   );
   return (
@@ -713,19 +608,7 @@ export const CreateRun = ({
             </label>
             <label className="block text-sm font-medium">
               Owner
-              <select
-                aria-label="Run owner"
-                value={ownerId}
-                onChange={(event) => setOwnerId(event.target.value)}
-                className="mt-1 h-10 w-full rounded-lg border px-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
-              >
-                <option value="">Unassigned</option>
-                {members.map((member) => (
-                  <option key={member.userId || member.id} value={member.userId || member.id || ''}>
-                    {member.username || member.userEmail || member.email || 'User'}
-                  </option>
-                ))}
-              </select>
+              <Select aria-label="Run owner" className="mt-1" value={ownerId} onChange={(value) => setOwnerId(String(value))} options={members.map((member) => ({ value: member.userId || member.id || '', label: member.username || member.userEmail || member.email || 'User' }))} placeholder="Unassigned" size="md" />
             </label>
             <label className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
               <input
@@ -991,9 +874,7 @@ export const RunDetail = ({
           {run.userFlows?.length ? (
             <div className="mt-2 flex flex-wrap gap-1.5" aria-label="User Flows dalam Test Run">
               {run.userFlows.map((flow) => (
-                <span key={flow.id} className="inline-flex items-center rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-xs font-medium text-violet-800">
-                  {flow.snapshot.flowKey} · {flow.snapshot.title}
-                </span>
+                <Chip key={flow.id} type="generic" value={`${flow.snapshot.flowKey} · ${flow.snapshot.title}`} className="border-violet-200 bg-violet-50 text-violet-800" />
               ))}
             </div>
           ) : null}
@@ -1052,7 +933,7 @@ export const RunDetail = ({
       <section className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
         <MetricTile
           label="Progress Eksekusi"
-          value={`${progress.percentage}%`}
+          value={formatPercentage(progress.percentage, { hasDenominator: progress.total > 0 })}
           detail={`${progress.executed} / ${progress.total} executed`}
           accent="bg-brand-600"
         />
@@ -1082,43 +963,9 @@ export const RunDetail = ({
               className="h-9 w-full rounded-lg border px-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
             />
             <div className="grid grid-cols-3 gap-2">
-              <select
-                aria-label="Filter result"
-                value={executionResult}
-                onChange={(event) => setExecutionResult(event.target.value)}
-                className="h-8 rounded border px-1 text-xs"
-              >
-                <option value="">Result</option>
-                {(['Passed', 'Failed', 'Blocked', 'Skipped', 'Untested'] as const).map((item) => (
-                  <option key={item}>{item}</option>
-                ))}
-              </select>
-              <select
-                aria-label="Filter priority"
-                value={executionPriority}
-                onChange={(event) => setExecutionPriority(event.target.value)}
-                className="h-8 rounded border px-1 text-xs"
-              >
-                <option value="">Priority</option>
-                {[
-                  ...new Set(run.executions.map((item) => item.snapshot.priority).filter(Boolean)),
-                ].map((item) => (
-                  <option key={item}>{item}</option>
-                ))}
-              </select>
-              <select
-                aria-label="Filter assignee"
-                value={executionAssignee}
-                onChange={(event) => setExecutionAssignee(event.target.value)}
-                className="h-8 rounded border px-1 text-xs"
-              >
-                <option value="">Assignee</option>
-                {assignees.map(([id, name]) => (
-                  <option key={id} value={id}>
-                    {name}
-                  </option>
-                ))}
-              </select>
+              <Select aria-label="Filter result" value={executionResult} onChange={(value) => setExecutionResult(String(value))} options={(['Passed', 'Failed', 'Blocked', 'Skipped', 'Untested'] as const).map((item) => ({ value: item, label: item }))} placeholder="Result" />
+              <Select aria-label="Filter priority" value={executionPriority} onChange={(value) => setExecutionPriority(String(value))} options={[...new Set(run.executions.map((item) => item.snapshot.priority).filter(Boolean))].map((item) => ({ value: item, label: item }))} placeholder="Priority" />
+              <Select aria-label="Filter assignee" value={executionAssignee} onChange={(value) => setExecutionAssignee(String(value))} options={assignees.map(([id, name]) => ({ value: id, label: name }))} placeholder="Assignee" />
             </div>
             <button
               type="button"
@@ -1264,9 +1111,7 @@ export const ExecutionDetail = ({
             <p className="text-xs font-medium text-slate-500">User Flow asal</p>
             <div className="mt-1 flex flex-wrap gap-1.5">
               {execution.userFlows.map((flow) => (
-                <span key={flow.id} className="rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-xs font-medium text-violet-800">
-                  {flow.snapshot.flowKey} · {flow.snapshot.title}
-                </span>
+                <Chip key={flow.id} type="generic" value={`${flow.snapshot.flowKey} · ${flow.snapshot.title}`} className="border-violet-200 bg-violet-50 text-violet-800" />
               ))}
             </div>
           </div>
@@ -1300,16 +1145,7 @@ export const ExecutionDetail = ({
       <section>
         <label className="block text-sm font-semibold">
           Result
-          <select
-            value={result}
-            onChange={(event) => setResult(event.target.value as TestRunResult)}
-            className="mt-1 block h-10 rounded-lg border px-3 focus:outline-none focus:ring-2 focus:ring-brand-500"
-          >
-            <option value="Untested">Belum diuji</option>
-            {(['Passed', 'Failed', 'Blocked', 'Skipped'] as TestRunResult[]).map((option) => (
-              <option key={option}>{resultLabel(option)}</option>
-            ))}
-          </select>
+          <Select aria-label="Result" className="mt-1 max-w-xs" value={result} onChange={(value) => setResult(String(value) as TestRunResult)} options={(['Untested', 'Passed', 'Failed', 'Blocked', 'Skipped'] as TestRunResult[]).map((option) => ({ value: option, label: resultLabel(option) }))} placeholder="Belum diuji" size="md" />
         </label>
       </section>
       <section>

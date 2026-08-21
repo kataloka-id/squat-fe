@@ -1,9 +1,16 @@
 export enum Priority {
+  NotDefined = 'Not Defined',
   Critical = 'Critical',
   High = 'High',
   Medium = 'Medium',
   Low = 'Low'
 }
+
+/** Maps missing or unsupported API values safely for legacy test cases. */
+export const normalizePriority = (value: unknown): Priority =>
+  Object.values(Priority).includes(value as Priority)
+    ? value as Priority
+    : Priority.NotDefined;
 
 export enum Status {
   Draft = 'Draft',

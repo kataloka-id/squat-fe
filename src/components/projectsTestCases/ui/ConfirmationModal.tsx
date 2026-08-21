@@ -28,7 +28,7 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
   const isDanger = variant === 'danger';
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+    <div role="dialog" aria-modal="true" aria-labelledby="confirmation-modal-title" className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200 border border-slate-100">
         <div className="p-6">
           <div className="flex items-start gap-4">
@@ -40,7 +40,7 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
               )}
             </div>
             <div className="flex-1 pt-1">
-              <h3 className="text-lg font-bold text-slate-900 leading-6">{title}</h3>
+              <h3 id="confirmation-modal-title" className="text-lg font-bold text-slate-900 leading-6">{title}</h3>
               <div className="mt-2">
                 <p className="text-sm text-slate-500 leading-relaxed">
                   {message}

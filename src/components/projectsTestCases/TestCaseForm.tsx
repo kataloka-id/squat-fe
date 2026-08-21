@@ -73,17 +73,13 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
   canEdit = true,
   onNotify = () => {},
 }) => {
-  const [loadedSectionsByProject, setLoadedSectionsByProject] = useState<
-    Record<string, SectionRecord[]>
-  >({});
   const [isLoadingSections, setIsLoadingSections] = useState(false);
   const [submitMode, setSubmitMode] = useState<TestCaseSubmitMode | null>(null);
   const [sectionsError, setSectionsError] = useState<string | null>(null);
   const sectionRequestVersion = useRef(0);
   const isSubmittingRef = useRef(false);
   const titleInputRef = useRef<HTMLInputElement>(null);
-  const getProjectSections = (projectId: string) =>
-    loadedSectionsByProject[projectId] ?? projectSections(sectionsByProject, projectId);
+  const getProjectSections = (projectId: string) => projectSections(sectionsByProject, projectId);
   const selectedInitialProjectId =
     initialData?.projectId ?? preselectedProjectId ?? projects[0]?.id ?? '';
   const initialSections = getProjectSections(selectedInitialProjectId);
@@ -92,7 +88,7 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
     projectId: selectedInitialProjectId,
     sectionId: initialSections[0]?.id || '',
     section: initialSections[0]?.name || '',
-    priority: Priority.Medium,
+    priority: Priority.NotDefined,
     status: Status.Draft,
     automationType: AutomationType.Manual,
     automationReadiness: AutomationReadiness.Candidate,
@@ -136,7 +132,7 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
       projectId: selectedInitialProjectId,
       sectionId: getProjectSections(selectedInitialProjectId)[0]?.id || '',
       section: getProjectSections(selectedInitialProjectId)[0]?.name || '',
-      priority: Priority.Medium,
+      priority: Priority.NotDefined,
       status: Status.Draft,
       automationType: AutomationType.Manual,
       automationReadiness: AutomationReadiness.Candidate,
@@ -222,7 +218,7 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
       projectId,
       sectionId: sections[0]?.id ?? '',
       section: sections[0]?.name ?? '',
-      priority: Priority.Medium,
+      priority: Priority.NotDefined,
       status: Status.Draft,
       automationType: AutomationType.Manual,
       automationReadiness: AutomationReadiness.Candidate,
@@ -238,7 +234,8 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
   const handleSubmit = async (event: React.FormEvent, mode: TestCaseSubmitMode = 'close') => {
     event.preventDefault();
     if (isSubmittingRef.current) return;
-    const selectedSection = availableSections.find((section) => section.id === formData.sectionId);
+    const selectedSection = availableSections.find((section) => section.id === formData.sectionId)
+      ?? (formData.sectionId && formData.section ? { id: formData.sectionId, name: formData.section, projectId: formData.projectId ?? '' } : undefined);
     if (!formData.title?.trim() || isLoadingSections || !selectedSection) return;
     isSubmittingRef.current = true;
     setSubmitMode(mode);
@@ -350,7 +347,8 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
     try {
       const sections = (await onProjectChange?.(projectId)) ?? getProjectSections(projectId);
       if (requestVersion !== sectionRequestVersion.current) return;
-      setLoadedSectionsByProject((current) => ({ ...current, [projectId]: sections }));
+      // The parent shared catalog is the only source of truth. The returned
+      // value is used only to select a valid default while its snapshot lands.
       setFormData((previous) =>
         previous.projectId === projectId
           ? { ...previous, sectionId: sections[0]?.id ?? '', section: sections[0]?.name ?? '' }
@@ -441,21 +439,7 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
                       <label className={fieldLabelClassName} htmlFor="test-case-project">
                         Project
                       </label>
-                      <select
-                        aria-describedby="project-assignment-help"
-                        className={`${inputClassName} ${!initialData && projects.length > 1 ? 'cursor-pointer' : 'cursor-not-allowed bg-slate-100 text-slate-500'}`}
-                        disabled={Boolean(initialData) || projects.length <= 1}
-                        id="test-case-project"
-                        name="projectId"
-                        onChange={(event) => handleProjectChange(event.target.value)}
-                        value={formData.projectId ?? ''}
-                      >
-                        {projects.map((project) => (
-                          <option key={project.id} value={project.id}>
-                            {project.key} — {project.name}
-                          </option>
-                        ))}
-                      </select>
+                      <Select aria-label="Project" className="mt-1" disabled={Boolean(initialData) || projects.length <= 1} value={formData.projectId ?? ''} onChange={(value) => handleProjectChange(String(value))} options={projects.map((project) => ({ value: project.id, label: `${project.key} — ${project.name}` }))} size="md" />
                       <p className="mt-1.5 text-xs text-slate-400" id="project-assignment-help">
                         Only projects assigned to you are available.
                       </p>
@@ -516,36 +500,14 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
                         <label className={fieldLabelClassName} htmlFor="test-case-section">
                           Section
                         </label>
-                        <select
-                          className={inputClassName}
-                          disabled={isLoadingSections || availableSections.length === 0}
-                          id="test-case-section"
-                          name="sectionId"
-                          onChange={(event) => {
-                            const selected = availableSections.find(
-                              (section) => section.id === event.target.value,
-                            );
+                        <Select aria-label="Section" className="mt-1" disabled={isLoadingSections || availableSections.length === 0} value={formData.sectionId ?? ''} onChange={(value) => {
+                            const selected = availableSections.find((section) => section.id === String(value));
                             setFormData((previous) => ({
                               ...previous,
                               sectionId: selected?.id ?? '',
                               section: selected?.name ?? '',
                             }));
-                          }}
-                          required
-                          value={formData.sectionId ?? ''}
-                        >
-                          {isLoadingSections ? (
-                            <option value="">Loading sections…</option>
-                          ) : availableSections.length === 0 ? (
-                            <option value="">No sections available</option>
-                          ) : (
-                            availableSections.map((section) => (
-                              <option key={section.id} value={section.id}>
-                                {section.name}
-                              </option>
-                            ))
-                          )}
-                        </select>
+                          }} options={availableSections.map((section) => ({ value: section.id, label: section.name }))} placeholder={isLoadingSections ? 'Loading sections…' : 'No sections available'} size="md" />
                         {sectionsError ? (
                           <p className="mt-1.5 text-xs text-red-600" role="alert">
                             {sectionsError}{' '}
@@ -581,7 +543,7 @@ export const TestCaseForm: React.FC<TestCaseFormProps> = ({
                           }))}
                           placeholder="Select priority"
                           size="md"
-                          value={formData.priority ?? Priority.Medium}
+                          value={formData.priority ?? Priority.NotDefined}
                         />
                       </div>
                     </div>

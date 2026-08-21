@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FlowDependencyManager, FlowForm, UserFlowDetail } from './UserFlowsPage.tsx';
+import { selectCustomOption } from '@/src/test/selectTestUtils.ts';
+import { sectionCatalogStore } from '@/src/state/section-catalog.ts';
 
 const serviceMocks = vi.hoisted(() => ({
   create: vi.fn().mockResolvedValue({}),
@@ -11,6 +13,7 @@ const serviceMocks = vi.hoisted(() => ({
   linkTestCases: vi.fn().mockResolvedValue({}),
   addDependency: vi.fn().mockResolvedValue({}),
   removeDependency: vi.fn().mockResolvedValue({}),
+  listSections: vi.fn().mockResolvedValue({ data: [{ id: 'section-checkout', projectId: 'p1', name: 'Checkout' }] }),
 }));
 vi.mock('@/src/api/user-flows.service.ts', async () => {
   const actual = await vi.importActual<typeof import('@/src/api/user-flows.service.ts')>(
@@ -28,6 +31,12 @@ vi.mock('@/src/api/user-flows.service.ts', async () => {
       removeDependency: serviceMocks.removeDependency,
     },
   };
+});
+vi.mock('@/src/api/projects.service.ts', async () => {
+  const actual = await vi.importActual<typeof import('@/src/api/projects.service.ts')>(
+    '@/src/api/projects.service.ts',
+  );
+  return { ...actual, ProjectsService: { ...actual.ProjectsService, listSections: serviceMocks.listSections } };
 });
 
 const flow = {
@@ -61,6 +70,7 @@ const cases = [
     tcNumber: 1,
     title: 'Card checkout',
     section: 'Checkout',
+    sectionId: 'section-checkout',
     priority: 'High',
     status: 'Ready',
     automationType: 'UI',
@@ -82,7 +92,10 @@ const cases = [
 ];
 
 describe('UserFlowDetail', () => {
-  afterEach(() => cleanup());
+  afterEach(() => {
+    cleanup();
+    sectionCatalogStore.clearProject('p1');
+  });
   it('shows distinct journey metadata', () => {
     render(
       <UserFlowDetail
@@ -172,6 +185,42 @@ describe('UserFlowDetail', () => {
     expect(serviceMocks.linkTestCases).toHaveBeenCalledWith('p1', 'flow-1', ['tc-1', 'tc-2']);
     expect(refresh).toHaveBeenCalled();
   });
+  it('selects all visible cases, exposes indeterminate state, and preserves hidden selections', async () => {
+    const user = userEvent.setup();
+    render(
+      <UserFlowDetail
+        projectId="p1"
+        flow={flow}
+        availableTestCases={cases}
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: /Test Cases/ }));
+    await user.click(screen.getByRole('button', { name: 'Link Test Cases' }));
+
+    const selectAll = screen.getByRole('checkbox', { name: 'Select all visible test cases' });
+    expect((selectAll as HTMLInputElement).checked).toBe(false);
+    expect((selectAll as HTMLInputElement).indeterminate).toBe(false);
+
+    await user.click(selectAll);
+    expect(screen.getByText('Selected: 2')).toBeTruthy();
+    expect((selectAll as HTMLInputElement).checked).toBe(true);
+
+    await user.click(screen.getByRole('checkbox', { name: 'SHOP-1' }));
+    expect(screen.getByText('Selected: 1')).toBeTruthy();
+    expect((selectAll as HTMLInputElement).checked).toBe(false);
+    expect((selectAll as HTMLInputElement).indeterminate).toBe(true);
+
+    await user.clear(screen.getByPlaceholderText('Search test cases...'));
+    await user.type(screen.getByPlaceholderText('Search test cases...'), 'cash');
+    expect(screen.getByText('Selected: 1')).toBeTruthy();
+    expect((screen.getByRole('checkbox', { name: 'SHOP-2' }) as HTMLInputElement).checked).toBe(true);
+    expect(
+      (screen.getByRole('checkbox', { name: 'Select all visible test cases' }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+  });
   it('renders the test case picker in the document portal with a full-viewport backdrop', async () => {
     const user = userEvent.setup();
     render(
@@ -208,7 +257,7 @@ describe('UserFlowDetail', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Add Dependency' }));
     expect(screen.queryByRole('option', { name: /UF-1/ })).toBeNull();
-    await user.selectOptions(screen.getByLabelText('Target flow'), 'flow-3');
+    await selectCustomOption(user, 'Target flow', 'flow-3');
     await user.click(
       within(screen.getByRole('dialog', { name: 'Add Dependency' })).getByRole('button', {
         name: 'Add Dependency',
@@ -368,9 +417,9 @@ describe('UserFlowDetail', () => {
     expect(
       within(dialog).getByText('Use when this flow normally continues to another flow.'),
     ).toBeTruthy();
-    await user.selectOptions(within(dialog).getByLabelText('Target flow'), 'flow-2');
+    await selectCustomOption(user, 'Target flow', 'flow-2');
     expect(within(dialog).getByText('Save Template → Export Creative')).toBeTruthy();
-    await user.selectOptions(within(dialog).getByLabelText('Relationship'), 'requires');
+    await selectCustomOption(user, 'Relationship', 'requires');
     expect(
       within(dialog).getByText('Use when this flow depends on another flow being completed first.'),
     ).toBeTruthy();
@@ -439,7 +488,7 @@ describe('UserFlowDetail', () => {
     await user.click(screen.getByRole('button', { name: 'Create User Flow' }));
     expect(serviceMocks.create).toHaveBeenCalledWith(
       'p1',
-      expect.objectContaining({ health: 'unknown', priority: 'medium', status: 'draft' }),
+      expect.objectContaining({ health: 'unknown', priority: 'not_defined', status: 'draft' }),
     );
   });
   it('edits existing QA metadata with lowercase enum payload', async () => {
@@ -453,8 +502,8 @@ describe('UserFlowDetail', () => {
       screen.getByPlaceholderText('Describe what the user is trying to achieve.'),
       'Updated goal',
     );
-    await user.selectOptions(screen.getByLabelText(/Priority/), 'low');
-    await user.selectOptions(screen.getByLabelText(/Status/), 'deprecated');
+    await selectCustomOption(user, /Priority/, 'low');
+    await selectCustomOption(user, /Status/, 'deprecated');
     await user.click(screen.getByRole('button', { name: 'Save Changes' }));
     expect(serviceMocks.update).toHaveBeenCalledWith(
       'p1',
@@ -492,6 +541,33 @@ describe('UserFlowDetail', () => {
     expect(screen.queryByRole('button', { name: 'Steps (1)' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Test Cases (1)' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Dependencies (1)' })).toBeTruthy();
+  });
+  it('shows N/A when coverage has no available denominator', () => {
+    render(
+      <UserFlowDetail
+        projectId="p1"
+        flow={{ ...flow, coverage: null, linkedTestCaseCount: 0, automatedTestCaseCount: 0 }}
+        availableTestCases={cases}
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('N/A')).toBeTruthy();
+    expect(screen.getByRole('progressbar', { name: 'Automation coverage: N/A' }).getAttribute('aria-valuenow')).toBeNull();
+  });
+  it('does not blank when detail metadata is nullable and collections are empty', () => {
+    render(
+      <UserFlowDetail
+        projectId="p1"
+        flow={{ ...flow, priority: null, health: null, status: null, updatedAt: 'not-a-date', linkedTestCaseCount: 0, automatedTestCaseCount: 0, coverage: null, dependencies: null, incomingDependencies: null, linkedTestCases: null } as never}
+        availableTestCases={[]}
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('heading', { name: 'Checkout' })).toBeTruthy();
+    expect(screen.getAllByText('Unknown').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('—').length).toBeGreaterThan(0);
   });
   it('keeps a single link CTA and does not offer linked cases as picker candidates', async () => {
     const user = userEvent.setup();
@@ -532,6 +608,8 @@ describe('UserFlowDetail', () => {
     expect(screen.getByRole('button', { name: 'Zulu checkout' })).toBeTruthy();
     expect(screen.getByText('Critical').parentElement?.className).toContain('border-red-200');
     expect(screen.getByText('Ready').parentElement?.className).toContain('border-blue-200');
+    expect(screen.getByRole('columnheader', { name: /Section/ })).toBeTruthy();
+    expect(screen.getAllByText('Checkout').some((element) => element.parentElement?.className.includes('bg-slate-50'))).toBe(true);
 
     await user.click(screen.getByRole('button', { name: 'SHOP-1' }));
     const drawer = screen.getByRole('dialog', { name: 'Zulu checkout' });
@@ -594,6 +672,31 @@ describe('UserFlowDetail', () => {
       'descending',
     );
     expect(titleOrder()).toEqual(['Zulu checkout', 'Alpha checkout']);
+  });
+  it('renders Uncategorized neutrally and reflects a renamed Section from the shared catalog', async () => {
+    const user = userEvent.setup();
+    const longSection = 'Checkout / Authentication / Payment Provider Configuration';
+    const linkedCases = [
+      { ...cases[0], section: '', sectionId: undefined },
+      { ...cases[1], section: 'Stale section label', sectionId: 'section-checkout' },
+    ];
+    render(
+      <UserFlowDetail
+        projectId="p1"
+        flow={{ ...flow, linkedTestCases: linkedCases }}
+        availableTestCases={linkedCases}
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Test Cases (0)' }));
+    expect(screen.getByText('Uncategorized').parentElement?.className).toContain('bg-slate-50');
+    expect(screen.getAllByText('Checkout').length).toBeGreaterThan(0);
+    await act(async () => {
+      sectionCatalogStore.replace('p1', [{ id: 'section-checkout', projectId: 'p1', name: longSection }]);
+    });
+    expect(screen.getByTitle(longSection).textContent).toBe(longSection);
+    expect(screen.getByTitle(longSection).className).toContain('truncate');
   });
   it('uses the complete project test case record for in-context detail when link data is sparse', async () => {
     const user = userEvent.setup();

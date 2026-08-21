@@ -1,4 +1,15 @@
-import { useState } from 'react';
-import { MoreVertical } from 'lucide-react';
+import { Eye, Pencil, Trash2 } from 'lucide-react';
+import { RowActions } from '@/src/components/projectsTestCases/ui/RowActions.tsx';
 
-export const FlowActions = ({ onView, onEdit, onDelete }: { onView: () => void; onEdit: () => void; onDelete: () => void }) => { const [open, setOpen] = useState(false); return <div className="relative"><button aria-label="Flow actions" aria-expanded={open} onClick={() => setOpen(!open)} className="rounded p-2 hover:bg-slate-100"><MoreVertical size={18}/></button>{open && <div role="menu" className="absolute right-0 z-20 mt-1 w-32 rounded border bg-white p-1 shadow"><button role="menuitem" className="block w-full rounded px-3 py-2 text-left text-sm hover:bg-slate-50" onClick={onView}>View</button><button role="menuitem" className="block w-full rounded px-3 py-2 text-left text-sm hover:bg-slate-50" onClick={onEdit}>Edit</button><button role="menuitem" className="block w-full rounded px-3 py-2 text-left text-sm text-red-600 hover:bg-red-50" onClick={onDelete}>Delete</button></div>}</div>; };
+export const FlowActions = ({ onView, onEdit, onDelete, canManage = true }: { onView: () => void; onEdit: () => void; onDelete: () => void; canManage?: boolean }) => (
+  <RowActions
+    aria-label="User flow row actions"
+    actions={[
+      { label: 'View', icon: <Eye className="h-4 w-4" />, onClick: onView },
+      ...(canManage ? [
+        { label: 'Edit', icon: <Pencil className="h-4 w-4" />, onClick: onEdit },
+        { label: 'Delete', icon: <Trash2 className="h-4 w-4" />, onClick: onDelete, tone: 'danger' as const },
+      ] : []),
+    ]}
+  />
+);

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, Folder, FolderOpen, MoreHorizontal, Plus } from 'lucide-react';
+import { ChevronDown, ChevronRight, Folder, FolderOpen, FolderPlus, Pencil, Plus, Trash2 } from 'lucide-react';
 import type { TestCaseFolderRecord } from '@/src/types/api.ts';
+import { RowActions } from './ui/RowActions.tsx';
 
 export type FolderScope = { folderId?: string; unfiled?: boolean; includeSubfolders: boolean };
 
@@ -37,8 +38,6 @@ export const TestCaseFolderTree: React.FC<Props> = ({
   error,
 }) => {
   const [uncontrolledOpen, setUncontrolledOpen] = useState<Set<string>>(() => new Set(folders.map((folder) => folder.id)));
-  const [openActionFolderId, setOpenActionFolderId] = useState<string | null>(null);
-  const actionTriggerRefs = React.useRef(new Map<string, HTMLButtonElement>());
   const open = expandedFolderIds ?? uncontrolledOpen;
   // eslint-disable-next-line no-unused-vars -- TypeScript callback parameter, not a runtime binding.
   const setOpen = useCallback((update: (current: Set<string>) => Set<string>) => {
@@ -81,11 +80,6 @@ export const TestCaseFolderTree: React.FC<Props> = ({
       next.has(folderId) ? next.delete(folderId) : next.add(folderId);
       return next;
     });
-  };
-
-  const closeFolderActions = (folderId: string) => {
-    setOpenActionFolderId(null);
-    actionTriggerRefs.current.get(folderId)?.focus();
   };
 
   const handleTreeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -163,43 +157,11 @@ export const TestCaseFolderTree: React.FC<Props> = ({
             </span>
           </button>
           {!disabled && (
-            <div className="relative ml-1 shrink-0">
-              <button
-                type="button"
-                ref={(element) => { if (element) actionTriggerRefs.current.set(folder.id, element); else actionTriggerRefs.current.delete(folder.id); }}
-                aria-label={`Folder actions for ${folder.name}`}
-                aria-expanded={openActionFolderId === folder.id}
-                aria-controls={`folder-actions-${folder.id}`}
-                onClick={() => setOpenActionFolderId((current) => current === folder.id ? null : folder.id)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Escape' && openActionFolderId === folder.id) {
-                    event.preventDefault();
-                    closeFolderActions(folder.id);
-                  }
-                }}
-                className={`flex min-h-8 min-w-8 items-center justify-center rounded p-1.5 transition-opacity hover:bg-slate-700 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 ${openActionFolderId === folder.id ? 'opacity-100 bg-slate-700' : 'opacity-0 group-hover:opacity-100'}`}
-              >
-                <MoreHorizontal size={15} />
-              </button>
-              {openActionFolderId === folder.id && (
-                <div
-                  id={`folder-actions-${folder.id}`}
-                  role="menu"
-                  aria-label={`Folder actions for ${folder.name}`}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Escape') {
-                      event.preventDefault();
-                      closeFolderActions(folder.id);
-                    }
-                  }}
-                  className="absolute right-0 top-full z-50 mt-1 w-40 rounded-md border border-slate-700 bg-slate-900 p-1 shadow-xl"
-                >
-                  <button type="button" role="menuitem" onClick={() => { setOpenActionFolderId(null); onCreate(folder.id); }} className="w-full rounded px-2 py-1.5 text-left text-xs text-slate-100 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">New subfolder</button>
-                  <button type="button" role="menuitem" onClick={() => { setOpenActionFolderId(null); onRename(folder); }} className="w-full rounded px-2 py-1.5 text-left text-xs text-slate-100 hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500">Rename</button>
-                  <button type="button" role="menuitem" onClick={() => { setOpenActionFolderId(null); onDelete(folder); }} className="w-full rounded px-2 py-1.5 text-left text-xs text-red-300 hover:bg-red-950/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400">Delete</button>
-                </div>
-              )}
-            </div>
+            <RowActions aria-label={`Folder actions for ${folder.name}`} actions={[
+              { label: 'New subfolder', icon: <FolderPlus className="h-4 w-4" />, onClick: () => onCreate(folder.id) },
+              { label: 'Rename', icon: <Pencil className="h-4 w-4" />, onClick: () => onRename(folder) },
+              { label: 'Delete', icon: <Trash2 className="h-4 w-4" />, onClick: () => onDelete(folder), tone: 'danger' },
+            ]} />
           )}
         </div>
         {expanded && nested.length > 0 && <div role="group" className="relative before:absolute before:bottom-1 before:left-4 before:top-0 before:border-l before:border-slate-700/80">{nested.map((child) => node(child, depth + 1))}</div>}
