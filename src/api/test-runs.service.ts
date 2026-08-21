@@ -1,6 +1,7 @@
 import api from './axios';
-import { getCached, invalidateReadCache, type ReadOptions } from './read-cache';
-import { notifyExecutionDataChanged } from './execution-refresh';
+import { getCached, type ReadOptions } from './read-cache';
+import { invalidateProjectResources } from './cache-invalidation.ts';
+import { queryKeys } from './query-keys.ts';
 import type {
   ApiResponse,
   TestRunDetailRecord,
@@ -46,11 +47,15 @@ const queryKey = (path: string, params?: object) =>
       .map(([key, value]) => [key, String(value)]),
   ).toString()}`;
 const invalidate = (projectId: string) => {
-  invalidateReadCache(base(projectId));
-  invalidateReadCache(`/v1/projects/${projectId}/reports`);
-  invalidateReadCache(`/v1/projects/${projectId}/user-flows`);
-  invalidateReadCache('/v1/projects');
-  notifyExecutionDataChanged(projectId);
+  invalidateProjectResources(projectId, ['runs', 'reports', 'flows', 'projects']);
+};
+const executionMutationEpochs = new Map<string, number>();
+const executionMutationKey = (projectId: string, runId: string, executionId: string) =>
+  `${projectId}:${runId}:${executionId}`;
+const nextExecutionEpoch = (key: string) => {
+  const epoch = (executionMutationEpochs.get(key) ?? 0) + 1;
+  executionMutationEpochs.set(key, epoch);
+  return epoch;
 };
 
 export const TestRunsService = {
@@ -103,7 +108,7 @@ export const TestRunsService = {
     >,
   get: (projectId: string, runId: string, options?: ReadOptions) =>
     getCached(
-      `${base(projectId)}/${runId}`,
+      queryKeys.projectRuns(projectId) + `/${runId}`,
       async () => {
         const [response, executionResponse] = await Promise.all([
           api.get(`${base(projectId)}/${runId}`) as Promise<ApiResponse<any>>,
@@ -182,7 +187,7 @@ export const TestRunsService = {
     filters: ExecutionFilters = {},
     options?: ReadOptions,
   ) => {
-    const path = `${base(projectId)}/${runId}/executions`;
+    const path = `${queryKeys.projectRuns(projectId)}/${runId}/executions`;
     return getCached(
       queryKey(path, filters),
       async () => {
@@ -219,15 +224,13 @@ export const TestRunsService = {
       durationSeconds?: number | null;
     },
   ) => {
+    const mutationKey = executionMutationKey(projectId, runId, executionId);
+    const mutationEpoch = nextExecutionEpoch(mutationKey);
     await api.patch(`${base(projectId)}/${runId}/executions/${executionId}`, payload);
     invalidate(projectId);
     try {
-      const executions = await TestRunsService.listExecutions(
-        projectId,
-        runId,
-        {},
-        { force: true },
-      );
+      let executions = await TestRunsService.listExecutions(projectId, runId, {}, { force: true });
+      const superseded = executionMutationEpochs.get(mutationKey) !== mutationEpoch;
       const execution = executions.data.find((item) => item.id === executionId);
       if (!execution) throw new Error('TEST_RUN_EXECUTION_NOT_FOUND');
       return {
@@ -235,6 +238,7 @@ export const TestRunsService = {
         code: 'TEST_RUN_EXECUTION_UPDATE_SUCCESS',
         message: '',
         data: execution,
+        superseded,
       } as ApiResponse<TestRunExecutionRecord>;
     } catch (cause) {
       if ((cause as Error).message === 'TEST_RUN_EXECUTION_NOT_FOUND') throw cause;
@@ -252,12 +256,15 @@ export const TestRunsService = {
     stepId: string,
     payload: { result: TestRunResult | null; notes?: string | null },
   ) => {
+    const mutationKey = executionMutationKey(projectId, runId, executionId);
+    const mutationEpoch = nextExecutionEpoch(mutationKey);
     await api.patch(
       `${base(projectId)}/${runId}/executions/${executionId}/steps/${stepId}`,
       payload,
     );
     invalidate(projectId);
-    const executions = await TestRunsService.listExecutions(projectId, runId, {}, { force: true });
+    let executions = await TestRunsService.listExecutions(projectId, runId, {}, { force: true });
+    const superseded = executionMutationEpochs.get(mutationKey) !== mutationEpoch;
     const execution = executions.data.find((item) => item.id === executionId);
     if (!execution) throw new Error('TEST_RUN_EXECUTION_NOT_FOUND');
     return {
@@ -265,6 +272,7 @@ export const TestRunsService = {
       code: 'TEST_RUN_EXECUTION_STEP_UPDATE_SUCCESS',
       message: '',
       data: execution,
+      superseded,
     } as ApiResponse<TestRunExecutionRecord>;
   },
 };

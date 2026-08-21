@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const api = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() }));
-const cache = vi.hoisted(() => ({ getCached: vi.fn(), invalidateReadCache: vi.fn() }));
+const cache = vi.hoisted(() => ({
+  getCached: vi.fn((_key: string, request: () => Promise<unknown>) => request()),
+  invalidateReadCache: vi.fn(),
+}));
 vi.mock('./axios.ts', () => ({ default: api }));
 vi.mock('./read-cache.ts', () => cache);
 
@@ -21,7 +24,9 @@ describe('CompaniesService', () => {
   it('uses authenticated blob and multipart endpoints for company logos', async () => {
     const file = new File(['logo'], 'logo.png', { type: 'image/png' });
     api.get.mockResolvedValue(new Blob(['logo'], { type: 'image/png' }));
-    api.post.mockResolvedValue({ data: { hasLogo: true, logoVersion: '2026-07-29T00:00:00.000Z' } });
+    api.post.mockResolvedValue({
+      data: { hasLogo: true, logoVersion: '2026-07-29T00:00:00.000Z' },
+    });
     api.delete.mockResolvedValue({ data: { hasLogo: false, logoVersion: null } });
     await CompaniesService.getLogoBlob();
     await CompaniesService.uploadLogo(file);

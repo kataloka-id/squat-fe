@@ -117,6 +117,8 @@ export interface ApiResponse<T> {
   code: string;
   message: string;
   data: T;
+  /** Client-only marker used when a concurrent mutation superseded this response. */
+  superseded?: boolean;
 }
 
 export interface AttachmentRecord {
