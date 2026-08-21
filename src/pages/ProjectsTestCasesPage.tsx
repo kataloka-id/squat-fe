@@ -23,12 +23,13 @@ import { Select } from '@/src/components/projectsTestCases/ui/Select.tsx';
 import { Toast,ToastType } from '@/src/components/projectsTestCases/ui/Toast.tsx';
 import { SettingsPage } from '@/src/components/settings/SettingsPage.tsx';
 import { TeamPage } from '@/src/components/team/TeamPage.tsx';
-import { ProjectsService, type TestCasePayload } from '@/src/api/projects.service.ts';
+import { ProjectsService, type BulkTestCaseUpdates, type TestCasePayload } from '@/src/api/projects.service.ts';
 import { onExecutionDataChanged } from '@/src/api/execution-refresh.ts';
 import type { FolderDeleteImpact, ProjectAssignmentRecord, ProjectTestCaseRecord, TestCaseFolderRecord } from '@/src/types/api.ts';
 import { useSessionUser } from '@/src/auth/SessionContext.tsx';
 import { isCurrentProjectRequest } from '@/src/utils/projectStats.ts';
 import { getVisibleTestCases } from '@/src/utils/testCaseSorting.ts';
+import { formatBulkUpdateConfirmation } from '@/src/utils/bulkUpdateConfirmation.ts';
 import { sectionCatalogStore, useSectionCatalogs } from '@/src/state/section-catalog.ts';
 import { Plus, Filter, Trash2, Search, Briefcase, Zap, Check, X, Upload } from 'lucide-react';
 import type { TestCaseImportPayload } from '@/src/types/api.ts';
@@ -139,6 +140,7 @@ export const App: React.FC = () => {
   const [bulkMoveDestination, setBulkMoveDestination] = useState('');
   const [isBulkMoving, setIsBulkMoving] = useState(false);
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
+  const bulkResetVersion = useRef(0);
 
   // --- Toast State ---
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
@@ -220,6 +222,22 @@ export const App: React.FC = () => {
     confirmLabel: 'Confirm',
     onConfirm: () => {},
   });
+
+  const clearBulkActionDraft = useCallback(() => {
+    bulkResetVersion.current += 1;
+    setBulkStatus('');
+    setBulkPriority('');
+    setBulkSectionId('');
+    setBulkTestingType('');
+    setBulkAutomationReadiness('');
+    setBulkMoveDestination('');
+  }, []);
+
+  const resetBulkSelectionState = useCallback(() => {
+    setSelectedIds([]);
+    clearBulkActionDraft();
+    setConfirmState((current) => current.isOpen ? { ...current, isOpen: false } : current);
+  }, [clearBulkActionDraft]);
 
   // Filters & Sort
   const [filters, setFilters] = useState<FilterState>({
@@ -464,14 +482,12 @@ export const App: React.FC = () => {
   // Selection is intentionally local to the Test Cases workspace and its project/folder scope.
   // This prevents a stale selection being applied after navigation or a catalog switch.
   useEffect(() => {
-    setSelectedIds([]);
-    setBulkStatus('');
-    setBulkPriority('');
-    setBulkSectionId('');
-    setBulkTestingType('');
-    setBulkAutomationReadiness('');
-    setBulkMoveDestination('');
-  }, [activeFolderScope.folderId, activeFolderScope.includeSubfolders, activeFolderScope.unfiled, currentView, filters.projectId]);
+    resetBulkSelectionState();
+  }, [activeFolderScope.folderId, activeFolderScope.includeSubfolders, activeFolderScope.unfiled, currentView, filters.projectId, resetBulkSelectionState]);
+
+  useEffect(() => {
+    if (selectedIds.length === 0) resetBulkSelectionState();
+  }, [resetBulkSelectionState, selectedIds.length]);
 
   // Reset pagination when filters change
   useEffect(() => {
@@ -590,7 +606,7 @@ export const App: React.FC = () => {
     catch (error) { showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Folder tidak dapat dihapus. Konflik atau reusable precondition eksternal tidak mengubah data.', 'error'); }
     finally { setFolderDeleteBusy(false); }
   };
-  const moveSelected = async (folderId: string | null) => {
+  const performMove = async (folderId: string | null) => {
     if (!canManageTestCases) return;
     const scopedIds = scopedSelectedIds.filter((id) => testCases.some((testCase) => testCase.id === id && testCase.projectId === activeProjectId));
     if (isBulkMoving || !activeProjectId || !scopedIds.length) return;
@@ -603,9 +619,7 @@ export const App: React.FC = () => {
         return;
       }
 
-      setSelectedIds([]);
-      setBulkStatus('');
-      setBulkPriority('');
+      resetBulkSelectionState();
       await Promise.all([refreshTestCases(), refreshFolders(activeProjectId)]).catch((error) => {
         showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Data test case/folder belum dapat disegarkan.', 'error');
       });
@@ -613,6 +627,19 @@ export const App: React.FC = () => {
     } finally {
       setIsBulkMoving(false);
     }
+  };
+
+  const requestMove = (folderId: string | null) => {
+    const ids = scopedSelectedIds;
+    if (!ids.length || !activeProjectId) return;
+    setConfirmState({
+      isOpen: true,
+      title: 'Bulk Update',
+      message: formatBulkUpdateConfirmation({ count: ids.length, updates: { folderId }, folders: foldersByProject[activeProjectId] ?? [] }),
+      variant: 'primary',
+      confirmLabel: 'Update',
+      onConfirm: () => { void performMove(folderId); },
+    });
   };
 
   const handleImport = async (projectId: string, payload: TestCaseImportPayload) => {
@@ -642,6 +669,32 @@ export const App: React.FC = () => {
     if (!targets.length) return false;
     setIsBulkUpdating(true);
     try {
+      if (targets.length > 1) {
+        const projectId = targets[0].current.projectId;
+        const bulkUpdates: BulkTestCaseUpdates = {};
+        if (updates.sectionId !== undefined) bulkUpdates.sectionId = updates.sectionId;
+        if (updates.priority !== undefined) bulkUpdates.priority = updates.priority;
+        if (updates.status !== undefined) bulkUpdates.status = updates.status;
+        if (updates.automationType !== undefined) bulkUpdates.automationType = updates.automationType;
+        if (updates.automationReadiness !== undefined) bulkUpdates.automationReadiness = updates.automationReadiness;
+        if (updates.folderId !== undefined) bulkUpdates.folderId = updates.folderId;
+        try {
+          await ProjectsService.bulkUpdateTestCases(projectId, { testCaseIds: targets.map(({ id }) => id), updates: bulkUpdates });
+        } catch (error) {
+          showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Bulk update gagal; tidak ada test case yang diubah.', 'error');
+          return false;
+        }
+        try {
+          await Promise.all([refreshTestCases(), refreshFolders(projectId), refreshProjects()]);
+        } catch (error) {
+          setSelectedIds(ids);
+          showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Data test case/folder belum dapat disegarkan.', 'error');
+          return false;
+        }
+        resetBulkSelectionState();
+        showToast(`Updated ${ids.length} test cases successfully.`);
+        return true;
+      }
       const results = await Promise.allSettled(targets.map(async ({ id, current }) => {
         const payload: TestCasePayload = {
           title: current.title,
@@ -688,8 +741,7 @@ export const App: React.FC = () => {
         setSelectedIds(ids);
         return false;
       }
-      setSelectedIds([]);
-      setBulkStatus(''); setBulkPriority(''); setBulkSectionId(''); setBulkTestingType(''); setBulkAutomationReadiness('');
+      resetBulkSelectionState();
       showToast(ids.length === 1 ? 'Test case updated successfully.' : `Updated ${ids.length} test cases successfully.`);
       return true;
     } finally {
@@ -698,20 +750,19 @@ export const App: React.FC = () => {
   };
 
   // Initiates update with Confirmation Modal
-  const requestUpdate = (ids: string[], updates: Partial<TestCase>) => {
+  const requestUpdate = (ids: string[], updates: Partial<TestCase>, displayContext?: { sections?: typeof sectionsByProject[string]; folders?: TestCaseFolderRecord[] }) => {
     const isBulk = ids.length > 1;
-
-    // Create a readable list of changes
-    const changesList = Object.entries(updates)
-      .map(([k, v]) => `${k.charAt(0).toUpperCase() + k.slice(1)} to "${v}"`)
-      .join(', ');
+    const projectId = testCases.find((testCase) => ids.includes(testCase.id))?.projectId;
 
     setConfirmState({
       isOpen: true,
       title: isBulk ? 'Bulk Update' : 'Update Test Case',
-      message: isBulk
-        ? `Are you sure you want to update ${ids.length} selected test cases? This will set ${changesList}.`
-        : `Are you sure you want to update this test case? This will set ${changesList}.`,
+      message: formatBulkUpdateConfirmation({
+        count: ids.length,
+        updates,
+        sections: displayContext?.sections ?? (projectId ? sectionsByProject[projectId] : undefined),
+        folders: displayContext?.folders ?? (projectId ? foldersByProject[projectId] : undefined),
+      }),
       variant: 'primary',
       confirmLabel: 'Update',
       onConfirm: () => { void performUpdate(ids, updates); },
@@ -728,14 +779,16 @@ export const App: React.FC = () => {
     if (bulkAutomationReadiness) updates.automationReadiness = bulkAutomationReadiness;
 
     if (Object.keys(updates).length === 0) return;
+    const requestResetVersion = bulkResetVersion.current;
     try {
       const latestSections = activeProjectId && bulkSectionId ? await refreshSectionsForProject(activeProjectId) : undefined;
+      if (requestResetVersion !== bulkResetVersion.current || selectedIds.length === 0) return;
       if (bulkSectionId && !latestSections?.some((section) => section.id === bulkSectionId)) {
         showToast('Section tidak lagi tersedia pada project ini. Pilih Section kembali.', 'error');
         setBulkSectionId('');
         return;
       }
-      requestUpdate(scopedSelectedIds, updates);
+      requestUpdate(scopedSelectedIds, updates, { sections: latestSections ?? (activeProjectId ? sectionsByProject[activeProjectId] : []), folders: activeProjectId ? foldersByProject[activeProjectId] : [] });
     } catch (error) {
       showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Katalog Section tidak dapat disegarkan.', 'error');
     }
@@ -1008,7 +1061,7 @@ export const App: React.FC = () => {
         if (!activeProjectId) return;
         setFolderScopeProjectId(activeProjectId);
         setFolderScope(scope);
-        setSelectedIds([]);
+        resetBulkSelectionState();
         setCurrentView('test-cases');
         updateWorkspaceQuery({
           view: 'test-cases',
@@ -1243,7 +1296,7 @@ export const App: React.FC = () => {
                             onChange={(value) => {
                               const destination = String(value);
                               setBulkMoveDestination('');
-                              void moveSelected(destination === '__unfiled__' ? null : destination);
+                              requestMove(destination === '__unfiled__' ? null : destination);
                             }}
                             className="w-full text-xs"
                           />
@@ -1316,13 +1369,7 @@ export const App: React.FC = () => {
                             {isBulkUpdating ? 'Updating…' : 'Update'}
                           </Button>
                           <button
-                            onClick={() => {
-                              setBulkStatus('');
-                              setBulkPriority('');
-                              setBulkSectionId('');
-                              setBulkTestingType('');
-                              setBulkAutomationReadiness('');
-                            }}
+                            onClick={clearBulkActionDraft}
                             className="flex h-8 w-8 items-center justify-center rounded-lg border border-transparent text-slate-400 transition-colors hover:border-slate-200 hover:bg-slate-100 hover:text-slate-600"
                             aria-label="Clear bulk fields"
                             title="Clear bulk fields"
@@ -1335,7 +1382,7 @@ export const App: React.FC = () => {
 
                     <button
                       type="button"
-                      onClick={() => setSelectedIds([])}
+                      onClick={resetBulkSelectionState}
                       className="rounded-md px-2 py-1.5 text-xs font-medium text-brand-700 transition-colors hover:bg-brand-100"
                     >
                       Unselect All
@@ -1464,7 +1511,7 @@ export const App: React.FC = () => {
           <div className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
             <h2 id="folder-delete-title" className="text-lg font-bold">Delete folder “{folderDeleteDialog.folder.name}”</h2>
             <p className="mt-2 text-sm text-slate-600">This folder has {folderDeleteDialog.impact.directTestCaseCount ?? 0} direct test case(s), {folderDeleteDialog.impact.directChildFolderCount ?? 0} child folder(s), and {folderDeleteDialog.impact.descendantFolderCount ?? 0} descendant folder(s) containing {folderDeleteDialog.impact.totalTestCaseCount ?? 0} test case(s). Every delete is transactional.</p>
-            {(folderDeleteDialog.impact.externalReferences?.referenceCount ?? 0) > 0 && <div role="alert" className="mt-3 rounded bg-amber-50 p-3 text-sm text-amber-800"><p>{folderDeleteDialog.impact.externalReferences?.referenceCount} reusable-precondition reference(s) outside this subtree may block permanent deletion. Remove or replace those links first.</p><ul className="mt-1 list-disc pl-5">{folderDeleteDialog.impact.externalReferences?.references.map((reference) => <li key={`${reference.sourceId}-${reference.consumerId}`}>{reference.sourceTitle ?? reference.sourceId} → {reference.consumerTitle ?? reference.consumerId}</li>)}</ul></div>}
+            {(folderDeleteDialog.impact.externalReferences?.referenceCount ?? 0) > 0 && <div role="alert" className="mt-3 rounded bg-amber-50 p-3 text-sm text-amber-800"><p>{folderDeleteDialog.impact.externalReferences?.referenceCount} reusable-precondition reference(s) outside this subtree may block permanent deletion. Remove or replace those links first.</p><ul className="mt-1 list-disc pl-5">{folderDeleteDialog.impact.externalReferences?.references.map((reference) => <li key={`${reference.sourceId}-${reference.consumerId}`}>{reference.sourceTitle ?? 'Source test case'} → {reference.consumerTitle ?? 'Dependent test case'}</li>)}</ul></div>}
             <fieldset className="mt-4 space-y-2"><legend className="text-sm font-semibold">Delete strategy</legend>
               <label className="flex gap-2 text-sm"><input type="radio" checked={folderDeleteStrategy === 'MOVE_TO_PARENT'} onChange={() => setFolderDeleteStrategy('MOVE_TO_PARENT')} /> Move direct test cases and child folders to the parent</label>
               <label className="flex gap-2 text-sm"><input type="radio" checked={folderDeleteStrategy === 'MOVE_TEST_CASES_TO_UNFILED'} onChange={() => setFolderDeleteStrategy('MOVE_TEST_CASES_TO_UNFILED')} /> Move direct test cases to Unfiled; move child folders to the parent</label>

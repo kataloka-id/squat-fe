@@ -29,6 +29,21 @@ describe('ProjectsService cache invalidation', () => {
     expect(invalidateReadCache).toHaveBeenCalledWith('/v1/projects/project-1/test-case-folders');
   });
 
+  it('sends one project-scoped bulk update and invalidates related caches after completion', async () => {
+    api.patch.mockResolvedValue({ data: { updatedCount: 3, failedCount: 0, skippedCount: 0 } });
+    await ProjectsService.bulkUpdateTestCases('project-1', {
+      testCaseIds: ['case-1', 'case-2', 'case-3'],
+      updates: { priority: 'High', folderId: null },
+    });
+    expect(api.patch).toHaveBeenCalledTimes(1);
+    expect(api.patch).toHaveBeenCalledWith('/v1/projects/project-1/test-cases/bulk', {
+      testCaseIds: ['case-1', 'case-2', 'case-3'], updates: { priority: 'High', folderId: null },
+    });
+    expect(invalidateReadCache).toHaveBeenCalledWith('/v1/projects/project-1/test-cases');
+    expect(invalidateReadCache).toHaveBeenCalledWith('/v1/projects/project-1/test-case-folders');
+    expect(invalidateReadCache).toHaveBeenCalledWith('/v1/projects');
+  });
+
   it('uses the pending-deletion lifecycle endpoints and invalidates both project lists', async () => {
     api.get.mockResolvedValue({ data: [] });
     api.post.mockResolvedValue({ data: { id: 'project-1' } });

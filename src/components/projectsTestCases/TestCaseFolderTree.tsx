@@ -122,7 +122,7 @@ export const TestCaseFolderTree: React.FC<Props> = ({
           aria-expanded={nested.length ? expanded : undefined}
           data-folder-id={folder.id}
           tabIndex={selected || (!active.folderId && depth === 0 && folder === children.__root__?.[0]) ? 0 : -1}
-          className={`group relative flex min-w-0 items-center rounded-md pr-1 text-sm focus-within:ring-2 focus-within:ring-brand-500 ${selected ? 'bg-brand-600 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}
+          className={`group relative flex min-w-0 items-center rounded-md pr-1 text-sm transition-[padding] duration-200 ease-out focus-within:ring-2 focus-within:ring-brand-500 focus-within:pr-[116px] focus:pr-[116px] hover:pr-[116px] ${selected ? 'bg-brand-600 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}
           style={{ paddingLeft: `${8 + Math.min(depth, 4) * 16}px` }}
         >
           <button
@@ -161,7 +161,7 @@ export const TestCaseFolderTree: React.FC<Props> = ({
               { label: 'New subfolder', icon: <FolderPlus className="h-4 w-4" />, onClick: () => onCreate(folder.id) },
               { label: 'Rename', icon: <Pencil className="h-4 w-4" />, onClick: () => onRename(folder) },
               { label: 'Delete', icon: <Trash2 className="h-4 w-4" />, onClick: () => onDelete(folder), tone: 'danger' },
-            ]} />
+            ]} overlay />
           )}
         </div>
         {expanded && nested.length > 0 && <div role="group" className="relative before:absolute before:bottom-1 before:left-4 before:top-0 before:border-l before:border-slate-700/80">{nested.map((child) => node(child, depth + 1))}</div>}

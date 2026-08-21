@@ -13,10 +13,9 @@ import type { SectionRecord } from '@/src/types/api.ts';
 import { Badge } from './ui/Badge';
 import { formatTestCaseDisplayId } from '@/src/utils/testCaseDisplayId.ts';
 import { markdownToPlainText } from '@/src/utils/markdown.ts';
-import { Button } from './ui/Button';
-import { Select } from './ui/Select';
 import { InlineBadgeSelect } from './ui/InlineBadgeSelect.tsx';
 import { ROW_ACTIONS_CELL_CLASS, RowActions } from './ui/RowActions.tsx';
+import { TablePagination } from '../table/TablePagination';
 
 interface PaginationProps {
   currentPage: number;
@@ -141,8 +140,8 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
   }
 
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-soft flex flex-col h-full min-h-[500px] relative overflow-visible">
-      <div className="overflow-x-auto overflow-y-visible flex-1">
+    <div className="bg-white rounded-xl border border-slate-200 shadow-soft flex h-full min-h-[500px] min-h-0 flex-col overflow-hidden">
+      <div className="min-h-0 flex-1 overflow-x-auto overflow-y-auto">
         <table className="min-w-[94rem] w-full table-fixed divide-y divide-slate-100">
           <colgroup>
             {canManage && <col className="w-14" />}
@@ -285,53 +284,15 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
       
       {/* Pagination Footer */}
       {(hasProjectSelected && !loading && pagination) && (
-        <div className="bg-white px-6 py-4 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4 sticky bottom-0 z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-          <div className="flex flex-wrap items-center gap-4">
-            {/* Rows Per Page Dropdown */}
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-slate-500">Rows:</span>
-              <Select
-                aria-label="Rows per page"
-                value={pagination.itemsPerPage}
-                onChange={(val) => pagination.onItemsPerPageChange(Number(val))}
-                options={[
-                  { label: '20', value: 20 },
-                  { label: 'All', value: -1 }
-                ]}
-                className="w-24 shrink-0"
-              />
-            </div>
-            {/* Showing Count */}
-            <p className="text-sm text-slate-500">
-              Showing <span className="font-medium text-slate-900">
-                {pagination.totalItems === 0 ? 0 : (pagination.itemsPerPage === -1 ? 1 : (pagination.currentPage - 1) * pagination.itemsPerPage + 1)}
-              </span> to <span className="font-medium text-slate-900">
-                {pagination.itemsPerPage === -1 ? pagination.totalItems : Math.min(pagination.currentPage * pagination.itemsPerPage, pagination.totalItems)}
-              </span> of <span className="font-medium text-slate-900">
-                {pagination.totalItems}
-              </span> results
-            </p>
-          </div>
-          
-          <div className="flex gap-2">
-            <Button 
-              variant="secondary" 
-              size="sm" 
-              disabled={pagination.currentPage === 1}
-              onClick={() => pagination.onPageChange(pagination.currentPage - 1)}
-            >
-              Previous
-            </Button>
-            <Button 
-              variant="secondary" 
-              size="sm"
-              disabled={pagination.currentPage === pagination.totalPages || pagination.totalItems === 0}
-              onClick={() => pagination.onPageChange(pagination.currentPage + 1)}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
+        <TablePagination
+          aria-label="Test case pagination"
+          currentPage={pagination.currentPage}
+          itemsPerPage={pagination.itemsPerPage}
+          totalItems={pagination.totalItems}
+          totalPages={pagination.totalPages}
+          onPageChange={pagination.onPageChange}
+          onItemsPerPageChange={pagination.onItemsPerPageChange}
+        />
       )}
     </div>
   );

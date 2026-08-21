@@ -55,7 +55,7 @@ describe('TestCaseFolderTree', () => {
     expect(onRename).toHaveBeenCalledWith(folders[0]);
   });
 
-  it('truncates long names while preserving their title, count, and management actions', () => {
+  it('prioritizes the label while idle and reserves action space on hover or focus', () => {
     const longName = 'A very long folder name that should remain readable through its tooltip';
     const { container } = render(
       <TestCaseFolderTree
@@ -79,7 +79,49 @@ describe('TestCaseFolderTree', () => {
     expect(count).not.toBeNull();
     expect(folderName.parentElement?.className).toContain('items-center');
     expect(folderName.parentElement?.className).toContain('gap-1.5');
-    expect(actionTrigger.className).toContain('inline-flex');
+    const row = container.querySelector('[role="treeitem"]')!;
+    expect(row.className).toContain('focus:pr-[116px]');
+    expect(row.className).toContain('hover:pr-[116px]');
+    expect(row.className).toContain('transition-[padding]');
+    expect(actionTrigger.className).toContain('absolute');
+    expect(actionTrigger.className).toContain('right-1');
+  });
+
+  it('reveals actions from keyboard focus without changing the selected row styling', () => {
+    const { container } = render(
+      <TestCaseFolderTree
+        folders={folders}
+        active={{ folderId: 'root', includeSubfolders: false }}
+        onSelect={vi.fn()}
+        onCreate={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    const row = container.querySelector<HTMLElement>('[role="treeitem"][data-folder-id="root"]')!;
+    row.focus();
+    expect(row.className).toContain('bg-brand-600');
+    expect(row.className).toContain('focus:pr-[116px]');
+    expect(row.className).toContain('focus-within:pr-[116px]');
+    expect(container.querySelector('[aria-label="Folder actions for Login"] > span')?.className).toContain('group-focus:opacity-100');
+  });
+
+  it('applies the same action layout to nested folders', () => {
+    const { container } = render(
+      <TestCaseFolderTree
+        folders={folders}
+        active={{ folderId: 'child', includeSubfolders: false }}
+        onSelect={vi.fn()}
+        onCreate={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    const child = container.querySelector<HTMLElement>('[role="treeitem"][data-folder-id="child"]')!;
+    expect(child.className).toContain('hover:pr-[116px]');
+    expect(container.querySelector('[aria-label="Folder actions for MFA"]')?.className).toContain('absolute');
   });
 
   it('auto-expands an active folder parent and supports tree arrow navigation', async () => {
