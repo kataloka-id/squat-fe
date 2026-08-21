@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import React from 'react';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { TestCaseFolderTree } from './TestCaseFolderTree.tsx';
@@ -144,6 +144,122 @@ describe('TestCaseFolderTree', () => {
     expect(container.querySelector('[role="treeitem"][data-folder-id="child"]')).toBe(document.activeElement);
   });
 
+  it('allows an active parent to collapse and expand again without selecting it', async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    const { container } = render(
+      <TestCaseFolderTree
+        folders={folders}
+        active={{ folderId: 'root', includeSubfolders: false }}
+        onSelect={onSelect}
+        onCreate={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    const getChevron = () => within(container.querySelector('[data-folder-id="root"]')!).getByRole('button', { name: 'Collapse Login' });
+    expect(container.querySelector('[data-folder-id="child"]')).not.toBeNull();
+    await user.click(getChevron());
+    expect(container.querySelector('[data-folder-id="child"]')).toBeNull();
+    expect(onSelect).not.toHaveBeenCalled();
+    await user.click(within(container.querySelector('[data-folder-id="root"]')!).getByRole('button', { name: 'Expand Login' }));
+    expect(container.querySelector('[data-folder-id="child"]')).not.toBeNull();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it('keeps chevron, label, and action clicks independent for nested active folders', async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    const onRename = vi.fn();
+    const nestedFolders = [...folders, { id: 'leaf', projectId: 'p1', name: 'OTP', parentId: 'child', testCaseCount: 1 }];
+    const { container } = render(
+      <TestCaseFolderTree
+        folders={nestedFolders}
+        active={{ folderId: 'child', includeSubfolders: false }}
+        onSelect={onSelect}
+        onCreate={vi.fn()}
+        onRename={onRename}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    await user.click(within(container.querySelector('[data-folder-id="child"]')!).getByRole('button', { name: 'Collapse MFA' }));
+    expect(container.querySelector('[data-folder-id="leaf"]')).toBeNull();
+    expect(onSelect).not.toHaveBeenCalled();
+    await user.click(within(container.querySelector('[data-folder-id="child"]')!).getByRole('button', { name: 'MFA' }));
+    expect(onSelect).toHaveBeenCalledWith({ folderId: 'child', includeSubfolders: false });
+    await user.click(within(container.querySelector('[aria-label="Folder actions for MFA"]')!).getByRole('button', { name: 'Rename' }));
+    expect(onRename).toHaveBeenCalledWith(nestedFolders[1]);
+    expect(onSelect).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves controlled expansion while navigating between selected folders', async () => {
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    let expanded = new Set(['root']);
+    const onExpandedFolderIdsChange = vi.fn((next: Set<string>) => { expanded = next; });
+    const { container, rerender } = render(
+      <TestCaseFolderTree
+        folders={folders}
+        active={{ folderId: 'root', includeSubfolders: false }}
+        expandedFolderIds={expanded}
+        onExpandedFolderIdsChange={onExpandedFolderIdsChange}
+        onSelect={onSelect}
+        onCreate={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    await user.click(within(container.querySelector('[data-folder-id="root"]')!).getByRole('button', { name: 'Collapse Login' }));
+    expect(expanded.has('root')).toBe(false);
+    rerender(
+      <TestCaseFolderTree
+        folders={folders}
+        active={{ folderId: 'child', includeSubfolders: false }}
+        expandedFolderIds={expanded}
+        onExpandedFolderIdsChange={onExpandedFolderIdsChange}
+        onSelect={onSelect}
+        onCreate={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+    rerender(
+      <TestCaseFolderTree
+        folders={folders}
+        active={{ folderId: 'child', includeSubfolders: false }}
+        expandedFolderIds={expanded}
+        onExpandedFolderIdsChange={onExpandedFolderIdsChange}
+        onSelect={onSelect}
+        onCreate={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+    expect(container.querySelector('[data-folder-id="child"]')).not.toBeNull();
+    expect(expanded.has('root')).toBe(true);
+  });
+
+  it('does not notify the controlled owner when active ancestors are already expanded', () => {
+    const onExpandedFolderIdsChange = vi.fn();
+    render(
+      <TestCaseFolderTree
+        folders={folders}
+        active={{ folderId: 'child', includeSubfolders: false }}
+        expandedFolderIds={new Set(['root'])}
+        onExpandedFolderIdsChange={onExpandedFolderIdsChange}
+        onSelect={vi.fn()}
+        onCreate={vi.fn()}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    expect(onExpandedFolderIdsChange).not.toHaveBeenCalled();
+  });
+
   it('selects and expands a focused tree item with Enter and Space, including after focusing an inner control', async () => {
     const user = userEvent.setup();
     const onSelect = vi.fn();
@@ -154,7 +270,7 @@ describe('TestCaseFolderTree', () => {
     expect(onSelect).toHaveBeenCalledWith({ folderId: 'root', includeSubfolders: false });
     await user.keyboard(' ');
     expect(parent.getAttribute('aria-expanded')).toBe('false');
-    const expand = screen.getByRole('button', { name: 'Expand Login' });
+    const expand = within(container.querySelector('[data-folder-id="root"]')!).getByRole('button', { name: 'Expand Login' });
     expand.focus();
     await user.keyboard('{ArrowRight}');
     expect(parent.getAttribute('aria-expanded')).toBe('true');
