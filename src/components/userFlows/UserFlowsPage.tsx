@@ -48,6 +48,8 @@ import { InlineBadgeSelect } from '@/src/components/projectsTestCases/ui/InlineB
 import { Toast, type ToastType } from '@/src/components/projectsTestCases/ui/Toast.tsx';
 import {
   UserFlowsService,
+  FLOW_HEALTHS,
+  userFlowLabel,
   FLOW_PRIORITIES,
   FLOW_STATUSES,
   type DependencyRelationshipType,
@@ -57,6 +59,8 @@ import {
 } from '@/src/api/user-flows.service.ts';
 import { ProjectsService } from '@/src/api/projects.service.ts';
 import { useSectionCatalog } from '@/src/state/section-catalog.ts';
+import { useUserFlowAreaCatalog } from '@/src/state/user-flow-area-catalog.ts';
+import type { UserFlowArea } from '@/src/api/user-flow-areas.service.ts';
 import { onExecutionDataChanged } from '@/src/api/execution-refresh.ts';
 import {
   AutomationReadiness,
@@ -75,8 +79,7 @@ import { FlowActions } from './FlowActions.tsx';
 import { formatUserFlowDate } from './utils.ts';
 import { TablePagination } from '@/src/components/table/TablePagination.tsx';
 
-const title = (value: unknown) =>
-  (typeof value === 'string' ? value : 'Not defined').replace('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+const title = (value: unknown) => userFlowLabel(typeof value === 'string' ? value : undefined);
 const flowChipType = (value: unknown) => value === 'healthy' || value === 'at_risk' || value === 'broken' || value === 'unknown' ? 'health' as const : value === 'critical' || value === 'high' || value === 'medium' || value === 'low' || value === 'not_defined' ? 'priority' as const : 'status' as const;
 const Badge = ({ value }: { value: unknown }) => {
   const normalized = typeof value === 'string' && value ? value : 'unknown';
@@ -221,7 +224,7 @@ export const filterUserFlows = (
       `${flow.flowKey} ${flow.title} ${flow.description || ''}`
         .toLowerCase()
         .includes(filters.query.toLowerCase()) &&
-      (!filters.area || flow.area === filters.area) &&
+      (!filters.area || flow.areaId === filters.area || flow.area === filters.area) &&
       (!filters.priority || flow.priority === filters.priority) &&
       (!filters.health || flow.health === filters.health) &&
       (!filters.status || flow.status === filters.status),
@@ -2122,7 +2125,7 @@ export const FlowForm = ({
 }: {
   projectId: string;
   initial: UserFlow | 'new';
-  areas: string[];
+  areas: Array<UserFlowArea | string>;
   onDone: () => void;
   onSaved?: () => void;
   onError: (message: string) => void;
@@ -2134,7 +2137,7 @@ export const FlowForm = ({
     goal: editing ? initial.goal || '' : '',
     entryPoint: editing ? initial.entryPoint || '' : '',
     successCriteria: editing ? initial.successCriteria || '' : '',
-    area: editing ? initial.area || '' : '',
+    areaId: editing ? initial.areaId || initial.area || '' : '',
     priority: editing ? initial.priority : 'not_defined',
     status: editing ? initial.status : 'draft',
   });
@@ -2146,7 +2149,8 @@ export const FlowForm = ({
       return;
     }
     try {
-      const payload = { ...data, health: editing ? initial.health : 'unknown' };
+      const catalogArea = areas.find((area) => typeof area !== 'string' && area.id === data.areaId);
+      const payload = { ...data, ...(catalogArea ? {} : { area: data.areaId || null, areaId: undefined }), health: editing ? initial.health : 'unknown' };
       if (editing) await UserFlowsService.update(projectId, initial.id, payload);
       else await UserFlowsService.create(projectId, payload);
       onSaved();
@@ -2213,19 +2217,8 @@ export const FlowForm = ({
           ))}
           <label className="block text-sm">
             Area
-            <input
-              list="existing-areas"
-              className="mt-1 w-full rounded border p-2"
-              value={data.area}
-              onChange={(event) =>
-                setData({ ...data, area: event.target.value.trim().replace(/\s+/g, ' ') })
-              }
-            />
-            <datalist id="existing-areas">
-              {areas.map((area) => (
-                <option key={area} value={area} />
-              ))}
-            </datalist>
+            <Select aria-label="Area" className="mt-1" value={data.areaId} onChange={(value) => setData({ ...data, areaId: String(value) })} placeholder={areas.length ? 'Pilih Area' : 'Belum ada Area'} disabled={!areas.length} options={areas.map((area) => typeof area === 'string' ? ({ value: area, label: area }) : ({ value: area.id, label: area.name }))} size="md" />
+            {!areas.length && <span className="mt-1 block text-xs text-slate-500">Tambahkan Area melalui Settings terlebih dahulu.</span>}
           </label>
           <div className="grid grid-cols-2 gap-3">
             <label className="text-sm">
@@ -2264,6 +2257,8 @@ export const UserFlowsPage = ({
   /** Matches the existing User Flow edit permission surface; the API remains authoritative. */
   canManage?: boolean;
 }) => {
+  const areaCatalog = useUserFlowAreaCatalog();
+  const areas = areaCatalog.areas;
   const [flows, setFlows] = useState<UserFlow[]>([]);
   const [summary, setSummary] = useState({
     total: 0,
@@ -2480,11 +2475,7 @@ export const UserFlowsPage = ({
           <FlowForm
             projectId={projectId}
             initial={form}
-            areas={Array.from(
-              new Set(
-                flows.map((item) => item.area).filter((item): item is string => Boolean(item)),
-              ),
-            )}
+            areas={areas}
             onDone={() => {
               setForm(null);
             }}
@@ -2539,21 +2530,21 @@ export const UserFlowsPage = ({
                 'Area',
                 areaFilter,
                 setAreaFilter,
-                Array.from(new Set(flows.map((flow) => flow.area).filter(Boolean))),
+                areas,
               ],
               [
                 'Priority',
                 priorityFilter,
                 setPriorityFilter,
-                ['not_defined', 'critical', 'high', 'medium', 'low'],
+                FLOW_PRIORITIES,
               ],
               [
                 'Health',
                 healthFilter,
                 setHealthFilter,
-                ['healthy', 'at_risk', 'broken', 'unknown'],
+                FLOW_HEALTHS,
               ],
-              ['Status', statusFilter, setStatusFilter, ['draft', 'active', 'deprecated']],
+              ['Status', statusFilter, setStatusFilter, FLOW_STATUSES],
             ].map(([label, value, setValue, options]) => (
               <label
                 key={String(label)}
@@ -2561,7 +2552,7 @@ export const UserFlowsPage = ({
               >
                 <span className="sr-only">{String(label)}</span>
                 <Filter className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-                <Select aria-label={String(label)} className="min-w-28 pl-8" disabled={!projectId} value={String(value)} onChange={(next) => (setValue as (value: string) => void)(String(next))} options={(options as string[]).map((option) => ({ value: option, label: title(option) }))} placeholder={String(label)} />
+                <Select aria-label={String(label)} className="min-w-28 pl-8" disabled={!projectId} value={String(value)} onChange={(next) => (setValue as (value: string) => void)(String(next))} options={(options as Array<string | UserFlowArea>).map((option) => typeof option === 'string' ? ({ value: option, label: title(option) }) : ({ value: option.id, label: option.name }))} placeholder={String(label)} />
               </label>
             ))}
           </div>
@@ -2765,9 +2756,7 @@ export const UserFlowsPage = ({
         <FlowForm
           projectId={projectId}
           initial={form}
-          areas={Array.from(
-            new Set(flows.map((item) => item.area).filter((item): item is string => Boolean(item))),
-          )}
+          areas={areas}
           onDone={() => {
             setForm(null);
             void load();

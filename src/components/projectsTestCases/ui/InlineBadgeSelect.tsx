@@ -1,7 +1,7 @@
 /* eslint-disable no-unused-vars -- TypeScript-only callback and option types. */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { LoaderCircle } from 'lucide-react';
+import { AlertCircle, LoaderCircle } from 'lucide-react';
 import { Badge } from './Badge.tsx';
 
 export type InlineBadgeSelectType = 'priority' | 'status' | 'automation' | 'automationReadiness' | 'section';
@@ -14,10 +14,13 @@ interface InlineBadgeSelectProps {
   onChange: (value: string) => void | Promise<void>;
   disabled?: boolean;
   optionLabel?: (value: string) => string;
+  loading?: boolean;
+  error?: string | null;
+  emptyMessage?: string;
 }
 
 /** Shared anchored, portal-backed enum editor used by table badge fields. */
-export const InlineBadgeSelect = ({ type, value, options, onChange, label, disabled = false, optionLabel = (option) => option }: InlineBadgeSelectProps) => {
+export const InlineBadgeSelect = ({ type, value, options, onChange, label, disabled = false, optionLabel = (option) => option, loading = false, error = null, emptyMessage = `No ${label.toLowerCase()} options available` }: InlineBadgeSelectProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
@@ -83,7 +86,7 @@ export const InlineBadgeSelect = ({ type, value, options, onChange, label, disab
       {isOpen && createPortal(
         <div ref={menuRef} role="listbox" aria-label={`${label} options`} style={{ top: menuPosition?.top, left: menuPosition?.left, minWidth: triggerRef.current?.getBoundingClientRect().width, visibility: menuPosition ? 'visible' : 'hidden' }} className="fixed z-50 max-h-[calc(100vh-1rem)] w-max max-w-[calc(100vw-2rem)] overflow-x-hidden overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-xl animate-in fade-in zoom-in-95 duration-150">
           <div className="py-1">
-            {options.map((option) => (
+            {loading ? <div role="status" className="flex items-center gap-2 px-3 py-3 text-sm text-slate-500"><LoaderCircle className="h-4 w-4 animate-spin" />Loading...</div> : error ? <div role="alert" className="flex items-center gap-2 px-3 py-3 text-sm text-red-700"><AlertCircle className="h-4 w-4" />{error}</div> : options.length === 0 ? <div role="status" aria-disabled="true" className="px-3 py-3 text-center text-sm text-slate-500">{emptyMessage}</div> : options.map((option) => (
               <button key={option} type="button" role="option" aria-selected={value === option} disabled={isSaving} onClick={async () => { setIsSaving(true); setIsOpen(false); try { await onChange(option); } catch { /* The owner reports mutation errors through existing feedback. */ } finally { setIsSaving(false); } }} className="flex w-full shrink-0 cursor-pointer items-center whitespace-nowrap px-3 py-1.5 text-left hover:bg-slate-50 disabled:cursor-wait">
                 <Badge type={type} value={option} displayValue={optionLabel(option)} className="pointer-events-none" />
               </button>

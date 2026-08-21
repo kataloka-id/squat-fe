@@ -7,9 +7,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { UserFlowsPage } from './UserFlowsPage.tsx';
 import { selectCustomOptionSync } from '@/src/test/selectTestUtils.ts';
 
-const serviceMocks = vi.hoisted(() => ({ list: vi.fn(), graph: vi.fn(), get: vi.fn(), update: vi.fn(), FLOW_PRIORITIES: ['not_defined', 'critical', 'high', 'medium', 'low'], FLOW_STATUSES: ['draft', 'active', 'deprecated'] }));
+const serviceMocks = vi.hoisted(() => ({ list: vi.fn(), graph: vi.fn(), get: vi.fn(), update: vi.fn(), FLOW_HEALTHS: ['healthy', 'at_risk', 'broken', 'unknown'], FLOW_PRIORITIES: ['not_defined', 'critical', 'high', 'medium', 'low'], FLOW_STATUSES: ['draft', 'active', 'deprecated'], userFlowLabel: (value?: string) => value ? value.replace('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()) : 'Not Defined' }));
 const projectMocks = vi.hoisted(() => ({ listTestCases: vi.fn() }));
-vi.mock('@/src/api/user-flows.service.ts', () => ({ UserFlowsService: serviceMocks, FLOW_PRIORITIES: serviceMocks.FLOW_PRIORITIES, FLOW_STATUSES: serviceMocks.FLOW_STATUSES }));
+vi.mock('@/src/api/user-flows.service.ts', () => ({ UserFlowsService: serviceMocks, FLOW_HEALTHS: serviceMocks.FLOW_HEALTHS, FLOW_PRIORITIES: serviceMocks.FLOW_PRIORITIES, FLOW_STATUSES: serviceMocks.FLOW_STATUSES, userFlowLabel: serviceMocks.userFlowLabel }));
 vi.mock('@/src/api/projects.service.ts', () => ({ ProjectsService: projectMocks }));
 
 type Deferred<T> = { promise: Promise<T>; resolve: (value: T) => void };

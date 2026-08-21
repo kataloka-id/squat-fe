@@ -5,16 +5,28 @@ import type { ApiResponse, ProjectTestCaseRecord, TestRunProgress, TestRunStatus
 export type FlowHealth = 'healthy' | 'at_risk' | 'broken' | 'unknown';
 export type FlowPriority = 'not_defined' | 'critical' | 'high' | 'medium' | 'low';
 export type FlowStatus = 'draft' | 'active' | 'deprecated';
+export const FLOW_HEALTHS: FlowHealth[] = ['healthy', 'at_risk', 'broken', 'unknown'];
 export const FLOW_PRIORITIES: FlowPriority[] = ['not_defined', 'critical', 'high', 'medium', 'low'];
 export const FLOW_STATUSES: FlowStatus[] = ['draft', 'active', 'deprecated'];
+export const FLOW_LABELS: Record<FlowHealth | FlowPriority | FlowStatus, string> = {
+  healthy: 'Healthy', at_risk: 'At Risk', broken: 'Broken', unknown: 'Unknown',
+  not_defined: 'Not Defined', critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low',
+  draft: 'Draft', active: 'Active', deprecated: 'Deprecated',
+};
+export const userFlowLabel = (value: string | null | undefined) =>
+  (value && value in FLOW_LABELS
+    ? FLOW_LABELS[value as keyof typeof FLOW_LABELS]
+    : value
+      ? value.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
+      : 'Not Defined');
 export type DependencyRelationshipType = 'next' | 'requires' | 'optional' | 'alternative' | 'blocks';
 export interface UserFlowStep { id: string; stepOrder: number; title: string; action?: string | null; expectedResult?: string | null; }
 export interface UserFlowDependency { id?: string; sourceFlowId?: string; targetFlowId?: string; flowKey?: string; title?: string; health?: FlowHealth | null; relationshipType?: DependencyRelationshipType | null; }
 export interface UserFlowLatestRun { id: string; name: string; status: TestRunStatus; updatedAt: string; progress?: TestRunProgress | null; }
-export interface UserFlow { id: string; flowKey: string; title: string; description?: string | null; goal?: string | null; entryPoint?: string | null; successCriteria?: string | null; area?: string | null; priority: FlowPriority; health: FlowHealth; status: FlowStatus; linkedTestCaseCount: number; automatedTestCaseCount: number; coverage: number | null; lastTestedAt?: string | null; latestRun?: UserFlowLatestRun | null; updatedAt?: string; steps?: UserFlowStep[]; linkedTestCases?: ProjectTestCaseRecord[]; dependencies?: UserFlowDependency[]; incomingDependencies?: UserFlowDependency[]; }
+export interface UserFlow { id: string; flowKey: string; title: string; description?: string | null; goal?: string | null; entryPoint?: string | null; successCriteria?: string | null; areaId?: string | null; areaName?: string | null; area?: string | null; priority: FlowPriority; health: FlowHealth; status: FlowStatus; linkedTestCaseCount: number; automatedTestCaseCount: number; coverage: number | null; lastTestedAt?: string | null; latestRun?: UserFlowLatestRun | null; updatedAt?: string; steps?: UserFlowStep[]; linkedTestCases?: ProjectTestCaseRecord[]; dependencies?: UserFlowDependency[]; incomingDependencies?: UserFlowDependency[]; }
 export interface UserFlowSummary { total: number; healthy: number; atRisk: number; broken: number; coverage: number; }
 export interface UserFlowCollection { flows: UserFlow[]; summary: UserFlowSummary; }
-export type UserFlowPayload = Pick<UserFlow, 'title' | 'description' | 'goal' | 'entryPoint' | 'successCriteria' | 'area' | 'priority' | 'health' | 'status'>;
+export type UserFlowPayload = Pick<UserFlow, 'title' | 'description' | 'goal' | 'entryPoint' | 'successCriteria' | 'areaId' | 'priority' | 'health' | 'status'> & { area?: string | null };
 
 const base = (projectId: string) => `/v1/projects/${projectId}/user-flows`;
 const invalidate = (projectId: string) => invalidateReadCache(base(projectId));

@@ -30,6 +30,7 @@ type MarkdownEditorProps = {
   className?: string;
   /** Enables private image uploads for this project/test-case context. */
   attachmentContext?: AttachmentContext;
+  disabled?: boolean;
 };
 
 type InlinePart =
@@ -289,6 +290,7 @@ export const MarkdownEditor = ({
   rows = 3,
   className = '',
   attachmentContext,
+  disabled = false,
 }: MarkdownEditorProps) => {
   const [mode, setMode] = useState<'write' | 'preview'>('write');
   const [uploading, setUploading] = useState(false);
@@ -547,7 +549,7 @@ export const MarkdownEditor = ({
                 <button
                   aria-label="Add image"
                   className={toolbarButtonClassName}
-                  disabled={uploading}
+                  disabled={uploading || disabled}
                   onClick={() => {
                     rememberSelection();
                     fileInputRef.current?.click();
@@ -631,6 +633,7 @@ export const MarkdownEditor = ({
             ref={textareaRef}
             required={required}
             rows={rows}
+            disabled={disabled}
             value={value}
           />
         </div>

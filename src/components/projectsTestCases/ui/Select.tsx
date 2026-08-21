@@ -1,41 +1,50 @@
+/* eslint-disable no-unused-vars -- option callback types are consumed by TypeScript. */
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, Check } from 'lucide-react';
+import { AlertCircle, Check, ChevronDown, LoaderCircle, RefreshCw } from 'lucide-react';
 
-interface Option { label: string; value: string | number; disabled?: boolean; }
+export interface SelectOption { label: string; value: string | number; disabled?: boolean; }
 interface SelectProps {
   value: string | number;
   onChange: (value: string | number) => void;
-  options: Option[];
+  options: SelectOption[];
   disabled?: boolean;
   required?: boolean;
   className?: string;
   placeholder?: string;
   size?: 'sm' | 'md';
   onOpen?: () => void | Promise<void>;
+  loading?: boolean;
+  error?: string | null;
+  emptyMessage?: string;
+  onRetry?: () => void | Promise<void>;
   'aria-label'?: string;
 }
 type MenuPosition = { left: number; top: number; width: number; maxHeight: number };
 
-export const Select: React.FC<SelectProps> = ({ value, onChange, options, disabled = false, required = false, className = '', placeholder = 'Select...', size = 'sm', onOpen, 'aria-label': ariaLabel }) => {
+export const Select: React.FC<SelectProps> = ({ value, onChange, options, disabled = false, required = false, className = '', placeholder = 'Select...', size = 'sm', onOpen, loading = false, error = null, emptyMessage = 'No options available', onRetry, 'aria-label': ariaLabel }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null);
   const [isMenuPositioned, setIsMenuPositioned] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [isOpening, setIsOpening] = useState(false);
+  const [openError, setOpenError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const listboxId = useId();
   const selectedOption = options.find((option) => option.value === value);
   const firstEnabledIndex = () => options.findIndex((option) => !option.disabled);
+  const hasOptions = options.length > 0;
+  const effectiveLoading = loading || isOpening;
+  const effectiveError = error || openError;
   const paddingY = size === 'md' ? 'py-2.5' : 'py-1.5';
 
   const positionMenu = () => {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
     const viewportPadding = 8;
-    const preferredHeight = Math.min(240, Math.max(48, options.length * 36 + 8));
+    const preferredHeight = Math.min(240, Math.max(64, (effectiveLoading || effectiveError || !hasOptions ? 1 : options.length) * 36 + 8));
     const below = window.innerHeight - rect.bottom - viewportPadding;
     const above = rect.top - viewportPadding;
     const openAbove = below < preferredHeight && above > below;
@@ -54,7 +63,7 @@ export const Select: React.FC<SelectProps> = ({ value, onChange, options, disabl
     window.addEventListener('resize', update);
     window.addEventListener('scroll', update, true);
     return () => { window.removeEventListener('resize', update); window.removeEventListener('scroll', update, true); };
-  }, [isOpen, isOpening, options.length]);
+  }, [effectiveError, effectiveLoading, isOpen, isOpening, options.length]);
 
   useEffect(() => {
     const closeOnOutside = (event: MouseEvent) => {
@@ -68,7 +77,7 @@ export const Select: React.FC<SelectProps> = ({ value, onChange, options, disabl
     return () => document.removeEventListener('mousedown', closeOnOutside);
   }, []);
 
-  const selectOption = (option: Option) => { if (option.disabled) return; onChange(option.value); setIsOpen(false); setIsMenuPositioned(false); triggerRef.current?.focus(); };
+  const selectOption = (option: SelectOption) => { if (option.disabled || loading || error) return; onChange(option.value); setIsOpen(false); setIsMenuPositioned(false); triggerRef.current?.focus(); };
   const toggleMenu = () => {
     if (isOpen) {
       setIsOpen(false);
@@ -90,13 +99,14 @@ export const Select: React.FC<SelectProps> = ({ value, onChange, options, disabl
     setActiveIndex(selectedOption && !selectedOption.disabled ? options.indexOf(selectedOption) : firstEnabledIndex());
     setIsOpen(true);
     if (onOpen) {
+      setOpenError(null);
       setIsOpening(true);
       void Promise.resolve(onOpen())
         .then(() => setIsOpening(false))
         .catch(() => {
           setIsOpening(false);
-          setIsOpen(false);
-          setIsMenuPositioned(false);
+          setOpenError('Failed to load options');
+          setIsMenuPositioned(true);
         });
     }
   };
@@ -123,9 +133,15 @@ export const Select: React.FC<SelectProps> = ({ value, onChange, options, disabl
   }, [activeIndex, isOpen, listboxId]);
 
   const menu = isOpen && menuPosition && typeof document !== 'undefined' ? createPortal(
-    <div ref={menuRef} id={listboxId} role="listbox" aria-label={ariaLabel || placeholder} className="fixed z-[100] w-max max-w-[calc(100vw-1rem)] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg" style={{ left: menuPosition.left, top: menuPosition.top, minWidth: menuPosition.width, visibility: isMenuPositioned ? 'visible' : 'hidden' }}>
+    <div ref={menuRef} id={listboxId} role="listbox" aria-label={ariaLabel || placeholder} className="fixed z-[100] w-max max-w-[calc(100vw-1rem)] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg" style={{ left: menuPosition.left, top: menuPosition.top, minWidth: menuPosition.width, visibility: isMenuPositioned || effectiveLoading ? 'visible' : 'hidden' }}>
       <div className="overflow-y-auto p-1 custom-scrollbar" style={{ maxHeight: menuPosition.maxHeight }}>
-        {options.map((option, index) => <button key={option.value} id={`${listboxId}-option-${index}`} data-value={String(option.value)} type="button" role="option" aria-selected={option.value === value} aria-disabled={option.disabled || undefined} onMouseEnter={() => !option.disabled && setActiveIndex(index)} onClick={() => selectOption(option)} className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm transition-colors ${option.disabled ? 'cursor-not-allowed text-slate-400' : index === activeIndex || option.value === value ? 'bg-brand-50 font-medium text-brand-700' : 'text-slate-700 hover:bg-slate-50'}`}>
+        {effectiveLoading ? (
+          <div role="status" className="flex items-center gap-2 px-3 py-3 text-sm text-slate-500"><LoaderCircle size={16} className="animate-spin" />Loading...</div>
+        ) : effectiveError ? (
+          <div className="flex items-center gap-2 px-3 py-3 text-sm text-red-700" role="alert"><AlertCircle size={16} className="shrink-0" /><span className="flex-1">{effectiveError}</span>{(onRetry || onOpen) && <button type="button" aria-label="Retry loading options" onClick={() => { setOpenError(null); if (onRetry) void onRetry(); else { setIsOpening(true); void Promise.resolve(onOpen?.()).then(() => setIsOpening(false)).catch(() => { setIsOpening(false); setOpenError('Failed to load options'); }); } }} className="rounded p-1 hover:bg-red-100"><RefreshCw size={14} /></button>}</div>
+        ) : !hasOptions ? (
+          <div role="status" aria-disabled="true" className="px-3 py-4 text-center text-sm text-slate-500">{emptyMessage}</div>
+        ) : options.map((option, index) => <button key={option.value} id={`${listboxId}-option-${index}`} data-value={String(option.value)} type="button" role="option" aria-selected={option.value === value} aria-disabled={option.disabled || undefined} onMouseEnter={() => !option.disabled && setActiveIndex(index)} onClick={() => selectOption(option)} className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm transition-colors ${option.disabled ? 'cursor-not-allowed text-slate-400' : index === activeIndex || option.value === value ? 'bg-brand-50 font-medium text-brand-700' : 'text-slate-700 hover:bg-slate-50'}`}>
           <span className="break-words">{option.label}</span>
           {option.value === value && <Check size={14} className="ml-2 shrink-0 text-brand-600" />}
         </button>)}

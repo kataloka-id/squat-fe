@@ -45,6 +45,8 @@ import { RowActions } from '@/src/components/projectsTestCases/ui/RowActions.tsx
 import { CompanyLogo } from '@/src/components/company/CompanyLogo.tsx';
 import { DEFAULT_COMPANY_BRAND } from '@/src/components/company/company-brand.ts';
 import { sectionCatalogStore, useSectionCatalog } from '@/src/state/section-catalog.ts';
+import { UserFlowAreasService, type UserFlowArea } from '@/src/api/user-flow-areas.service.ts';
+import { userFlowAreaCatalogStore, useUserFlowAreaCatalog } from '@/src/state/user-flow-area-catalog.ts';
 
 type Notice = { type: 'success' | 'error'; message: string } | null;
 type UserEditor = Pick<UserRecord, 'id' | 'email' | 'username' | 'roleSlug' | 'isActive'> & {
@@ -126,6 +128,7 @@ export const SettingsPage = () => {
   const isKatalokaAdmin = roleSlug === 'kataloka_admin';
   const isCompanyAdmin = roleSlug === 'admin';
   const isAdmin = isKatalokaAdmin || isCompanyAdmin;
+  const canManageAreaCatalog = Boolean(roleSlug && roleSlug !== 'viewer');
   const canEditCompanyProfile = isCompanyAdmin && !isKatalokaAdmin;
   const [users, setUsers] = useState<UserRecord[]>([]);
   const [roles, setRoles] = useState<RoleRecord[]>([]);
@@ -134,6 +137,8 @@ export const SettingsPage = () => {
   const [newSectionName, setNewSectionName] = useState('');
   const sectionCatalog = useSectionCatalog(selectedSectionProjectId);
   const sections = sectionCatalog.sections;
+  const areaCatalog = useUserFlowAreaCatalog(canManageAreaCatalog || roleSlug === 'viewer');
+  const [newAreaName, setNewAreaName] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<Notice>(null);
@@ -919,6 +924,10 @@ export const SettingsPage = () => {
     });
   };
 
+  const createArea = async (event: FormEvent) => { event.preventDefault(); if (!newAreaName.trim()) return; setSaving(true); try { await userFlowAreaCatalogStore.mutate(() => UserFlowAreasService.create({ name: newAreaName.trim() })); setNewAreaName(''); setNotice({ type: 'success', message: 'Area ditambahkan.' }); } catch (error) { setNotice({ type: 'error', message: errorMessage(error) }); } finally { setSaving(false); } };
+  const editArea = (area: UserFlowArea) => { setSettingsPrompt({ title: 'Ubah Area', label: 'Nama Area', initialValue: area.name, onSubmit: (name) => { setSettingsPrompt(null); if (!name.trim() || name.trim() === area.name) return; setSaving(true); void userFlowAreaCatalogStore.mutate(() => UserFlowAreasService.update(area.id, { name: name.trim() })).then(() => setNotice({ type: 'success', message: 'Area diperbarui.' })).catch((error) => setNotice({ type: 'error', message: errorMessage(error) })).finally(() => setSaving(false)); } }); };
+  const deleteArea = (area: UserFlowArea) => { askConfirmation('Hapus Area', `Hapus Area ${area.name}?`, () => { setConfirmation(null); setSaving(true); void userFlowAreaCatalogStore.mutate(() => UserFlowAreasService.remove(area.id)).then(() => setNotice({ type: 'success', message: 'Area dihapus.' })).catch((error) => setNotice({ type: 'error', message: errorMessage(error) })).finally(() => setSaving(false)); }); };
+
   const assignableRoles = roles.filter(
     (role) => role.isActive !== false && role.slug.toLowerCase() !== 'kataloka_admin',
   );
@@ -1240,6 +1249,11 @@ export const SettingsPage = () => {
                 </Button>
               </div>
             </form>
+          </section>
+          <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="mb-5"><h2 className="font-semibold text-slate-900">Katalog Area User Flow</h2><p className="text-sm text-slate-500">Area menjadi pilihan terkelola yang digunakan bersama oleh seluruh User Flow.</p></div>
+            {canManageAreaCatalog ? <form onSubmit={createArea} className="mb-4 flex max-w-xl gap-3"><input required maxLength={150} value={newAreaName} onChange={(event) => setNewAreaName(event.target.value)} placeholder="Nama Area" className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20" /><Button type="submit" disabled={saving} icon={<Plus size={16} />}>Tambah Area</Button></form> : <p className="mb-4 text-sm text-slate-500">Katalog Area bersifat view-only untuk role viewer.</p>}
+            {areaCatalog.areas.length === 0 ? <p className="rounded-lg border border-dashed border-slate-300 p-4 text-sm text-slate-500">Belum ada Area.</p> : <ul className="divide-y rounded-lg border border-slate-200">{areaCatalog.areas.map((area) => <li key={area.id} className="flex items-center justify-between gap-4 p-3"><span className="text-sm font-medium text-slate-800">{area.name}<span className="ml-2 text-xs font-normal text-slate-500">{area.usageCount} User Flow</span></span>{canManageAreaCatalog && <RowActions aria-label={`Actions for ${area.name}`} actions={[{ label: 'Edit', icon: <Pencil size={15} />, onClick: () => editArea(area), disabled: saving }, { label: 'Delete', icon: <Trash2 size={15} />, onClick: () => deleteArea(area), tone: 'danger', disabled: saving || area.usageCount > 0 }]} />}</li>)}</ul>}
           </section>
           {isKatalokaAdmin && (
             <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">

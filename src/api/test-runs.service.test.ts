@@ -4,10 +4,11 @@ const mocks = vi.hoisted(() => ({
   patch: vi.fn(),
   get: vi.fn(),
   post: vi.fn(),
+  delete: vi.fn(),
   invalidateReadCache: vi.fn(),
 }));
 
-vi.mock('./axios', () => ({ default: { patch: mocks.patch, get: mocks.get, post: mocks.post } }));
+vi.mock('./axios', () => ({ default: { patch: mocks.patch, get: mocks.get, post: mocks.post, delete: mocks.delete } }));
 vi.mock('./read-cache', () => ({
   getCached: (_key: string, loader: () => unknown) => loader(),
   invalidateReadCache: mocks.invalidateReadCache,
@@ -53,5 +54,14 @@ describe('TestRunsService.get', () => {
     mocks.get.mockResolvedValueOnce({ data: [] });
     const response = await TestRunsService.get('project-1', 'run-1', { force: true });
     expect(response.data.userFlows).toEqual([{ id: 'flow-1', snapshot: { flowKey: 'UF-1', title: 'Checkout' } }]);
+  });
+});
+
+describe('TestRunsService.delete', () => {
+  it('uses the project-scoped soft-delete endpoint and invalidates reads', async () => {
+    mocks.delete.mockResolvedValueOnce({ success: true, data: { id: 'run-1' } });
+    await TestRunsService.delete('project-1', 'run-1');
+    expect(mocks.delete).toHaveBeenCalledWith('/v1/projects/project-1/test-runs/run-1');
+    expect(mocks.invalidateReadCache).toHaveBeenCalledWith('/v1/projects/project-1/test-runs');
   });
 });

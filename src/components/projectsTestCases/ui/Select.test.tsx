@@ -91,4 +91,36 @@ describe('Select', () => {
     fireEvent.keyDown(trigger, { key: 'Escape' });
     expect(screen.queryByRole('listbox', { name: 'Priority' })).toBeNull();
   });
+
+  it('shows a padded non-selectable empty state instead of a blank popover', () => {
+    const onChange = vi.fn();
+    render(<Select value="" onChange={onChange} placeholder="Tags" options={[]} emptyMessage="No tags available" />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Tags' }));
+    expect(screen.getByRole('status').textContent).toContain('No tags available');
+    expect(screen.queryAllByRole('option')).toHaveLength(0);
+    expect(screen.getByRole('status').className).toContain('py-4');
+    fireEvent.click(screen.getByRole('status'));
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('distinguishes loading and failed option states and supports retry', () => {
+    const retry = vi.fn();
+    const { rerender } = render(<Select value="" onChange={vi.fn()} placeholder="Sections" options={[]} loading />);
+    fireEvent.click(screen.getByRole('button', { name: 'Sections' }));
+    expect(screen.getByRole('status').textContent).toContain('Loading...');
+
+    rerender(<Select value="" onChange={vi.fn()} placeholder="Sections" options={[]} error="Failed to load options" onRetry={retry} />);
+    expect(screen.getByRole('alert').textContent).toContain('Failed to load options');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry loading options' }));
+    expect(retry).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a required empty selector understandable', () => {
+    render(<Select value="" onChange={vi.fn()} placeholder="Project" options={[]} required emptyMessage="No projects available" />);
+    const trigger = screen.getByRole('button', { name: 'Project' }) as HTMLButtonElement;
+    expect(trigger.disabled).toBe(false);
+    fireEvent.click(trigger);
+    expect(screen.getByRole('status').textContent).toContain('No projects available');
+  });
 });
