@@ -12,8 +12,19 @@ export type ReadOptions = {
   cacheTtlMs?: number;
 };
 
-type CacheEntry<T> = { value: T; expiresAt: number; session: number; version: number; generation: number };
-type PendingEntry<T> = { promise: Promise<T>; session: number; version: number; generation: number };
+type CacheEntry<T> = {
+  value: T;
+  expiresAt: number;
+  session: number;
+  version: number;
+  generation: number;
+};
+type PendingEntry<T> = {
+  promise: Promise<T>;
+  session: number;
+  version: number;
+  generation: number;
+};
 
 const DEFAULT_TTL_MS = 30_000;
 const MAX_ENTRIES = 100;
@@ -29,20 +40,43 @@ const bumpKeyVersion = (key: string) => keyVersions.set(key, getKeyVersion(key) 
 const purgeExpired = () => {
   const now = Date.now();
   for (const [key, entry] of cache) {
-    if (entry.expiresAt <= now || entry.session !== sessionGeneration || entry.generation !== cacheGeneration || entry.version !== getKeyVersion(key)) cache.delete(key);
+    if (
+      entry.expiresAt <= now ||
+      entry.session !== sessionGeneration ||
+      entry.generation !== cacheGeneration ||
+      entry.version !== getKeyVersion(key)
+    )
+      cache.delete(key);
   }
 };
 
-const remember = (key: string, value: unknown, ttlMs: number, session: number, version: number, generation: number) => {
+const remember = (
+  key: string,
+  value: unknown,
+  ttlMs: number,
+  session: number,
+  version: number,
+  generation: number,
+) => {
   // A GET begun before a mutation, explicit refresh, or login transition may
   // still finish later. Its response must never repopulate the newer cache.
-  if (ttlMs <= 0 || session !== sessionGeneration || version !== getKeyVersion(key) || generation !== cacheGeneration) return;
+  if (
+    ttlMs <= 0 ||
+    session !== sessionGeneration ||
+    version !== getKeyVersion(key) ||
+    generation !== cacheGeneration
+  )
+    return;
   cache.delete(key); // Map insertion order provides bounded LRU eviction.
   cache.set(key, { value, expiresAt: Date.now() + ttlMs, session, version, generation });
   while (cache.size > MAX_ENTRIES) cache.delete(cache.keys().next().value!);
 };
 
-export const getCached = <T>(key: string, request: () => Promise<T>, options: ReadOptions = {}): Promise<T> => {
+export const getCached = <T>(
+  key: string,
+  request: () => Promise<T>,
+  options: ReadOptions = {},
+): Promise<T> => {
   const ttlMs = options.cacheTtlMs ?? DEFAULT_TTL_MS;
   // A user-requested refresh must win over an older in-flight request too.
   if (options.force) bumpKeyVersion(key);
@@ -53,9 +87,19 @@ export const getCached = <T>(key: string, request: () => Promise<T>, options: Re
 
   if (!options.force) {
     const cached = cache.get(key) as CacheEntry<T> | undefined;
-    if (cached?.session === session && cached.version === version && cached.generation === generation) return Promise.resolve(cached.value);
+    if (
+      cached?.session === session &&
+      cached.version === version &&
+      cached.generation === generation
+    )
+      return Promise.resolve(cached.value);
     const active = pending.get(key) as PendingEntry<T> | undefined;
-    if (active?.session === session && active.version === version && active.generation === generation) return active.promise;
+    if (
+      active?.session === session &&
+      active.version === version &&
+      active.generation === generation
+    )
+      return active.promise;
   }
 
   const promise = request();
@@ -87,6 +131,13 @@ export const invalidateReadCache = (keyPrefix?: string) => {
       bumpKeyVersion(key);
     }
   }
+};
+
+/** Invalidates only one canonical query key, including its in-flight request. */
+export const invalidateReadCacheExact = (key: string) => {
+  cache.delete(key);
+  pending.delete(key);
+  bumpKeyVersion(key);
 };
 
 /** Prevents a response belonging to a previous login from being reused. */

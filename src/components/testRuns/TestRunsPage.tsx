@@ -23,10 +23,20 @@ import {
   XCircle,
 } from 'lucide-react';
 import { TestRunsService, type TestRunFilters } from '@/src/api/test-runs.service.ts';
-import { FLOW_HEALTHS, FLOW_LABELS, FLOW_PRIORITIES, FLOW_STATUSES, UserFlowsService, type UserFlow } from '@/src/api/user-flows.service.ts';
+import {
+  FLOW_HEALTHS,
+  FLOW_LABELS,
+  FLOW_PRIORITIES,
+  FLOW_STATUSES,
+  UserFlowsService,
+  type UserFlow,
+} from '@/src/api/user-flows.service.ts';
 import { ProjectsService } from '@/src/api/projects.service.ts';
 import { onExecutionDataChanged } from '@/src/api/execution-refresh.ts';
-import { MarkdownContent, MarkdownEditor } from '@/src/components/projectsTestCases/ui/Markdown.tsx';
+import {
+  MarkdownContent,
+  MarkdownEditor,
+} from '@/src/components/projectsTestCases/ui/Markdown.tsx';
 import { ConfirmationModal } from '@/src/components/projectsTestCases/ui/ConfirmationModal.tsx';
 import { Modal } from '@/src/components/projectsTestCases/ui/Modal.tsx';
 import { Button } from '@/src/components/projectsTestCases/ui/Button.tsx';
@@ -54,7 +64,11 @@ import {
   resultBreakdown,
   resultLabel,
 } from './metrics.ts';
-import { canTransitionExecutionResult, executionResultOptions, isTerminalExecutionResult } from './result-transition.ts';
+import {
+  canTransitionExecutionResult,
+  executionResultOptions,
+  isTerminalExecutionResult,
+} from './result-transition.ts';
 import { InfoPopover } from '@/src/components/projectsTestCases/ui/InfoPopover.tsx';
 import { useSessionUser } from '@/src/auth/SessionContext.tsx';
 import { canManageTestRuns, testRunActions } from './test-run-actions.ts';
@@ -587,9 +601,22 @@ const RunActions = ({
     <RowActions
       aria-label={`Actions for ${run.name}`}
       actions={[
-        ...(actions.includes('view') ? [{ label: 'View', icon: <Eye className="h-4 w-4" />, onClick: () => onOpen(run.id) }] : []),
-        ...(actions.includes('edit') ? [{ label: 'Edit', icon: <Pencil className="h-4 w-4" />, onClick: () => onEdit(run) }] : []),
-        ...(actions.includes('delete') ? [{ label: 'Delete', icon: <Trash2 className="h-4 w-4" />, onClick: () => onDelete(run), tone: 'danger' as const }] : []),
+        ...(actions.includes('view')
+          ? [{ label: 'View', icon: <Eye className="h-4 w-4" />, onClick: () => onOpen(run.id) }]
+          : []),
+        ...(actions.includes('edit')
+          ? [{ label: 'Edit', icon: <Pencil className="h-4 w-4" />, onClick: () => onEdit(run) }]
+          : []),
+        ...(actions.includes('delete')
+          ? [
+              {
+                label: 'Delete',
+                icon: <Trash2 className="h-4 w-4" />,
+                onClick: () => onDelete(run),
+                tone: 'danger' as const,
+              },
+            ]
+          : []),
       ]}
     />
   );
@@ -663,27 +690,71 @@ const TestRunEditor = ({
     }
   };
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/40 p-4" role="dialog" aria-modal="true" aria-labelledby="test-run-editor-title">
+    <div
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="test-run-editor-title"
+    >
       <section className="w-full max-w-lg rounded-xl border border-slate-200 bg-white shadow-2xl">
         <header className="border-b border-slate-100 px-6 py-4">
-          <h2 id="test-run-editor-title" className="text-lg font-bold text-slate-900">Edit Run</h2>
-          <p className="mt-1 text-sm text-slate-500">Execution history dan hasil tetap immutable.</p>
+          <h2 id="test-run-editor-title" className="text-lg font-bold text-slate-900">
+            Edit Run
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Execution history dan hasil tetap immutable.
+          </p>
         </header>
         <div className="space-y-4 px-6 py-5">
-          <label className="block text-sm font-medium text-slate-700">Nama Test Run
-            <input aria-label="Nama Test Run" value={name} onChange={(event) => setName(event.target.value)} className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          <label className="block text-sm font-medium text-slate-700">
+            Nama Test Run
+            <input
+              aria-label="Nama Test Run"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              className="mt-1.5 h-10 w-full rounded-lg border border-slate-200 px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
           </label>
-          <label className="block text-sm font-medium text-slate-700">Owner
-            <Select aria-label="Owner Test Run" value={ownerId} onChange={(value) => setOwnerId(String(value))} options={members.map((member) => ({ value: member.userId || member.id || '', label: member.username || member.userEmail || member.email || 'User' }))} placeholder="Pilih owner" size="md" />
+          <label className="block text-sm font-medium text-slate-700">
+            Owner
+            <Select
+              aria-label="Owner Test Run"
+              value={ownerId}
+              onChange={(value) => setOwnerId(String(value))}
+              options={members.map((member) => ({
+                value: member.userId || member.id || '',
+                label: member.username || member.userEmail || member.email || 'User',
+              }))}
+              placeholder="Pilih owner"
+              size="md"
+            />
           </label>
-          <label className="block text-sm font-medium text-slate-700">Description
-            <textarea aria-label="Description Test Run" value={description} onChange={(event) => setDescription(event.target.value)} rows={4} className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          <label className="block text-sm font-medium text-slate-700">
+            Description
+            <textarea
+              aria-label="Description Test Run"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              rows={4}
+              className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
           </label>
-          {error && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+          {error && (
+            <p
+              role="alert"
+              className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+            >
+              {error}
+            </p>
+          )}
         </div>
         <footer className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50/50 px-6 py-4">
-          <Button variant="secondary" onClick={onClose} disabled={saving}>Cancel</Button>
-          <Button onClick={() => void submit()} disabled={saving || !name.trim()}>{saving ? 'Saving…' : 'Save changes'}</Button>
+          <Button variant="secondary" onClick={onClose} disabled={saving}>
+            Cancel
+          </Button>
+          <Button onClick={() => void submit()} disabled={saving || !name.trim()}>
+            {saving ? 'Saving…' : 'Save changes'}
+          </Button>
         </footer>
       </section>
     </div>
@@ -734,7 +805,10 @@ const FlowSelector = ({
         aria-label={label}
         value={value}
         onChange={(next) => setter(String(next))}
-        options={options.map((item) => ({ value: item, label: FLOW_LABELS[item as keyof typeof FLOW_LABELS] }))}
+        options={options.map((item) => ({
+          value: item,
+          label: FLOW_LABELS[item as keyof typeof FLOW_LABELS],
+        }))}
         placeholder="Semua"
       />
     </label>
@@ -779,7 +853,8 @@ const FlowSelector = ({
                   {flow.flowKey} · {flow.title}
                 </strong>
                 <small className="mt-1 block text-slate-500">
-                  Health: {FLOW_LABELS[flow.health]} · Priority: {FLOW_LABELS[flow.priority]} · Status: {FLOW_LABELS[flow.status]}
+                  Health: {FLOW_LABELS[flow.health]} · Priority: {FLOW_LABELS[flow.priority]} ·
+                  Status: {FLOW_LABELS[flow.status]}
                 </small>
                 <small className="mt-1 block text-slate-500">
                   {flow.linkedTestCaseCount} linked Test Cases · Coverage{' '}
@@ -812,15 +887,18 @@ export const CreateRun = ({
     const scrollContainer = document.querySelector('main');
     const previousOverflow = body.style.overflow;
     const previousPaddingRight = body.style.paddingRight;
-    const previousContainerOverflow = scrollContainer instanceof HTMLElement ? scrollContainer.style.overflow : '';
-    const previousContainerPaddingRight = scrollContainer instanceof HTMLElement ? scrollContainer.style.paddingRight : '';
+    const previousContainerOverflow =
+      scrollContainer instanceof HTMLElement ? scrollContainer.style.overflow : '';
+    const previousContainerPaddingRight =
+      scrollContainer instanceof HTMLElement ? scrollContainer.style.paddingRight : '';
     const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
     body.style.overflow = 'hidden';
     if (scrollbarWidth > 0) body.style.paddingRight = `${scrollbarWidth}px`;
     if (scrollContainer instanceof HTMLElement) {
       const containerScrollbarWidth = scrollContainer.offsetWidth - scrollContainer.clientWidth;
       scrollContainer.style.overflow = 'hidden';
-      if (containerScrollbarWidth > 0) scrollContainer.style.paddingRight = `${containerScrollbarWidth}px`;
+      if (containerScrollbarWidth > 0)
+        scrollContainer.style.paddingRight = `${containerScrollbarWidth}px`;
     }
     return () => {
       body.style.overflow = previousOverflow;
@@ -1006,7 +1084,7 @@ export const CreateRun = ({
       maxWidth="max-w-none"
       contentClassName="flex max-h-[calc(100dvh-2rem)] w-full flex-col rounded-2xl sm:w-[80vw] sm:max-h-[85vh] sm:max-w-6xl"
     >
-      <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-5">
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-5">
         <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(260px,.85fr)_minmax(0,1.35fr)]">
           <div className="space-y-4">
             <div
@@ -1240,19 +1318,19 @@ export const CreateRun = ({
         </p>
       )}
       <footer className="flex shrink-0 justify-end gap-2 border-t p-4">
-          <Button variant="secondary" onClick={onClose}>
-            Batal
-          </Button>
-          <Button
-            disabled={
-              saving ||
-              flowLoading ||
-              (mode === 'flows' ? !resolution?.uniqueEligibleTestCases : !selected.length)
-            }
-            onClick={() => void submit()}
-          >
-            {saving ? 'Menyimpan…' : 'Buat Test Run'}
-          </Button>
+        <Button variant="secondary" onClick={onClose}>
+          Batal
+        </Button>
+        <Button
+          disabled={
+            saving ||
+            flowLoading ||
+            (mode === 'flows' ? !resolution?.uniqueEligibleTestCases : !selected.length)
+          }
+          onClick={() => void submit()}
+        >
+          {saving ? 'Menyimpan…' : 'Buat Test Run'}
+        </Button>
       </footer>
     </Modal>
   );
@@ -1333,10 +1411,13 @@ export const RunDetail = ({
   const assignees = [
     ...new Map(
       members
-        .map((member) => [
-          member.userId || member.id || '',
-          member.username || member.userEmail || member.email || 'User',
-        ] as [string, string])
+        .map(
+          (member) =>
+            [
+              member.userId || member.id || '',
+              member.username || member.userEmail || member.email || 'User',
+            ] as [string, string],
+        )
         .filter(([id]) => Boolean(id)),
     ).entries(),
   ];
@@ -1350,16 +1431,17 @@ export const RunDetail = ({
     payload: { result?: TestRunResult | null; notes?: string; assigneeId?: string },
   ) => {
     const response = await TestRunsService.updateExecution(projectId, runId, executionId, payload);
-    setRun((current) => {
-      if (!current) return current;
-      const executions = current.executions.map((execution) =>
-        execution.id === executionId ? response.data : execution,
-      );
-      return { ...current, executions, progress: progressFromExecutions(executions) };
-    });
+    if (!response.superseded)
+      setRun((current) => {
+        if (!current) return current;
+        const executions = current.executions.map((execution) =>
+          execution.id === executionId ? response.data : execution,
+        );
+        return { ...current, executions, progress: progressFromExecutions(executions) };
+      });
     // The mutation response contains one execution only. Refetch the run so
     // status and all summary KPIs always come from the server's central helper.
-    await load();
+    if (!response.superseded) await load();
   };
   const saveStep = async (
     executionId: string,
@@ -1373,14 +1455,15 @@ export const RunDetail = ({
       stepId,
       payload,
     );
-    setRun((current) => {
-      if (!current) return current;
-      const executions = current.executions.map((item) =>
-        item.id === executionId ? response.data : item,
-      );
-      return { ...current, executions, progress: progressFromExecutions(executions) };
-    });
-    await load();
+    if (!response.superseded)
+      setRun((current) => {
+        if (!current) return current;
+        const executions = current.executions.map((item) =>
+          item.id === executionId ? response.data : item,
+        );
+        return { ...current, executions, progress: progressFromExecutions(executions) };
+      });
+    if (!response.superseded) await load();
   };
   const detailActions = testRunActions(run, { canManage });
   const deleteRun = async () => {
@@ -1434,57 +1517,64 @@ export const RunDetail = ({
           ) : null}
         </div>
         <div className="flex flex-wrap items-start justify-end gap-2">
-          {canManage && <div className="relative">
-            <Button
-              variant="secondary"
-              size="md"
-              type="button"
-              icon={<ChevronDown className="h-4 w-4" aria-hidden="true" />}
-              aria-expanded={actionsOpen}
-              aria-controls={actionsPanelId}
-              onClick={() => setActionsOpen((value) => !value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Escape' && actionsOpen) closeActions();
-              }}
-            >Aksi</Button>
-            {actionsOpen && (
-              <div
-                id={actionsPanelId}
-                aria-label="Aksi Test Run"
-                className="absolute right-0 z-20 mt-1 w-44 rounded-lg border border-slate-200 bg-white p-1 shadow-lg"
+          {canManage && (
+            <div className="relative">
+              <Button
+                variant="secondary"
+                size="md"
+                type="button"
+                icon={<ChevronDown className="h-4 w-4" aria-hidden="true" />}
+                aria-expanded={actionsOpen}
+                aria-controls={actionsPanelId}
+                onClick={() => setActionsOpen((value) => !value)}
                 onKeyDown={(event) => {
-                  if (event.key === 'Escape') closeActions();
+                  if (event.key === 'Escape' && actionsOpen) closeActions();
                 }}
               >
-                {detailActions.includes('edit') && (
-                  <button
-                    onClick={() => {
-                      setActionsOpen(false);
-                      setEditing(true);
-                    }}
-                    className="flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-brand-500"
-                  >
-                    <Pencil className="h-4 w-4 text-slate-500" /> Edit Run
-                  </button>
-                )}
-                {detailActions.includes('delete') && (
-                  <button
-                    onClick={() => {
-                      setActionsOpen(false);
-                      setDeleteError(null);
-                      setDeleteConfirmOpen(true);
-                    }}
-                    className="flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500"
-                  >
-                    <Trash2 className="h-4 w-4" /> Delete Run
-                  </button>
-                )}
-              </div>
-            )}
-          </div>}
+                Aksi
+              </Button>
+              {actionsOpen && (
+                <div
+                  id={actionsPanelId}
+                  aria-label="Aksi Test Run"
+                  className="absolute right-0 z-20 mt-1 w-44 rounded-lg border border-slate-200 bg-white p-1 shadow-lg"
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape') closeActions();
+                  }}
+                >
+                  {detailActions.includes('edit') && (
+                    <button
+                      onClick={() => {
+                        setActionsOpen(false);
+                        setEditing(true);
+                      }}
+                      className="flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    >
+                      <Pencil className="h-4 w-4 text-slate-500" /> Edit Run
+                    </button>
+                  )}
+                  {detailActions.includes('delete') && (
+                    <button
+                      onClick={() => {
+                        setActionsOpen(false);
+                        setDeleteError(null);
+                        setDeleteConfirmOpen(true);
+                      }}
+                      className="flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-red-700 hover:bg-red-50 focus:outline-none focus:ring-2 focus:ring-red-500"
+                    >
+                      <Trash2 className="h-4 w-4" /> Delete Run
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </header>
-      <section aria-label="Execution summary" className="grid shrink-0 grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+      <section
+        aria-label="Execution summary"
+        className="grid shrink-0 grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6"
+      >
         <MetricTile
           label="Progress Eksekusi"
           value={formatPercentage(progress.percentage, { hasDenominator: progress.total > 0 })}
@@ -1497,7 +1587,14 @@ export const RunDetail = ({
         <MetricTile label="Skipped" value={progress.skipped} accent="bg-slate-400" />
         <MetricTile label="Untested" value={progress.untested} accent="bg-slate-300" />
       </section>
-      {deleteError && <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">{deleteError}</p>}
+      {deleteError && (
+        <p
+          role="alert"
+          className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+        >
+          {deleteError}
+        </p>
+      )}
       {editing && (
         <TestRunEditor
           projectId={projectId}
@@ -1523,7 +1620,7 @@ export const RunDetail = ({
         <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
           <section
             aria-label="Deskripsi Test Run"
-            className="shrink-0 border-b border-slate-200 border-l-4 border-l-brand-500 bg-slate-50/70 p-4"
+            className="shrink-0 border-b border-l-4 border-slate-200 border-l-brand-500 bg-slate-50/70 p-4"
           >
             <div className="flex items-center gap-2 text-slate-900">
               <FileText className="h-4 w-4 text-brand-600" aria-hidden="true" />
@@ -1590,28 +1687,28 @@ export const RunDetail = ({
             </button>
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
-          {executions.map((execution) => (
-            <button
-              key={execution.id}
-              onClick={() => setSelectedId(execution.id)}
-              aria-current={execution.id === selected?.id ? 'true' : undefined}
-              className={`flex w-full items-start gap-2.5 border-b border-slate-100 p-3 text-left text-sm focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand-500 ${execution.id === selected?.id ? 'border-l-4 border-l-brand-600 bg-brand-50/70 pl-2' : 'border-l-4 border-l-transparent hover:bg-slate-50'}`}
-            >
-              <ResultIcon result={execution.result} />
-              <span className="min-w-0">
-                <span className="block text-xs text-slate-500">
-                  TC-{execution.snapshot.tcNumber ?? '—'} · {execution.snapshot.priority || '—'}
+            {executions.map((execution) => (
+              <button
+                key={execution.id}
+                onClick={() => setSelectedId(execution.id)}
+                aria-current={execution.id === selected?.id ? 'true' : undefined}
+                className={`flex w-full items-start gap-2.5 border-b border-slate-100 p-3 text-left text-sm focus:outline-none focus:ring-2 focus:ring-inset focus:ring-brand-500 ${execution.id === selected?.id ? 'border-l-4 border-l-brand-600 bg-brand-50/70 pl-2' : 'border-l-4 border-l-transparent hover:bg-slate-50'}`}
+              >
+                <ResultIcon result={execution.result} />
+                <span className="min-w-0">
+                  <span className="block text-xs text-slate-500">
+                    TC-{execution.snapshot.tcNumber ?? '—'} · {execution.snapshot.priority || '—'}
+                  </span>
+                  <strong className="block truncate">{execution.snapshot.title}</strong>
+                  <span className="mt-1 block">
+                    <StatusBadge value={execution.result} />
+                  </span>
                 </span>
-                <strong className="block truncate">{execution.snapshot.title}</strong>
-                <span className="mt-1 block">
-                  <StatusBadge value={execution.result} />
-                </span>
-              </span>
-            </button>
-          ))}
-          {!executions.length && (
-            <p className="p-4 text-sm text-slate-500">Tidak ada hasil yang cocok.</p>
-          )}
+              </button>
+            ))}
+            {!executions.length && (
+              <p className="p-4 text-sm text-slate-500">Tidak ada hasil yang cocok.</p>
+            )}
           </div>
           <footer className="shrink-0 border-t border-slate-200 px-3 py-2 text-xs text-slate-500">
             Showing {executions.length} of {run.executions.length} test cases
@@ -1727,9 +1824,12 @@ export const ExecutionDetail = ({
     if (savedTimeout.current) clearTimeout(savedTimeout.current);
     savedTimeout.current = setTimeout(() => setSaved(false), 3000);
   };
-  useEffect(() => () => {
-    if (savedTimeout.current) clearTimeout(savedTimeout.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (savedTimeout.current) clearTimeout(savedTimeout.current);
+    },
+    [],
+  );
   useEffect(() => {
     setSaved(false);
   }, [execution.id]);
@@ -1755,7 +1855,9 @@ export const ExecutionDetail = ({
       const payload = {
         result,
         notes,
-        ...(assigneeId !== (execution.assignee?.id || '') ? { assigneeId: assigneeId || undefined } : {}),
+        ...(assigneeId !== (execution.assignee?.id || '')
+          ? { assigneeId: assigneeId || undefined }
+          : {}),
       };
       const globalChanged = globalApplyPending || notes !== (execution.notes || '');
       const changedSteps = stepDrafts.filter((step) => {
@@ -1803,7 +1905,9 @@ export const ExecutionDetail = ({
       showSaved();
     } catch (cause) {
       setAssigneeId(execution.assignee?.id || '');
-      setSaveError(`Gagal menyimpan assignee. ${(cause as { message?: string }).message || 'Coba lagi.'}`);
+      setSaveError(
+        `Gagal menyimpan assignee. ${(cause as { message?: string }).message || 'Coba lagi.'}`,
+      );
     } finally {
       setSaving(false);
     }
@@ -1829,195 +1933,230 @@ export const ExecutionDetail = ({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto pr-1">
         <div className="space-y-5 pb-5">
-      <header className="border-b border-slate-100 pb-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-1.5" aria-label="Test case metadata">
-          <Chip type="generic" value={`TC-${execution.snapshot.tcNumber ?? '—'}`} />
-          <Chip type="automation" value={execution.snapshot.automationType || '—'} />
-          <Chip type="priority" value={execution.snapshot.priority || '—'} />
-          {execution.userFlows?.map((flow) => (
-            <Chip
-              key={flow.id}
-              type="generic"
-              value={`${flow.snapshot.flowKey} · ${flow.snapshot.title}`}
-              className="border-violet-200 bg-violet-50 text-violet-800"
-              onClick={onOpenUserFlow && projectId && flow.sourceUserFlowId ? () => onOpenUserFlow(projectId, flow.sourceUserFlowId!) : undefined}
-            />
-          ))}
-        </div>
-        <h2 className="mt-1 text-xl font-bold text-slate-900">{execution.snapshot.title}</h2>
-          </div>
-          {saving && (
-            <span aria-label="Saving" className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-600">
-              <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Saving…
-            </span>
-          )}
-          {!saving && saved && (
-            <span aria-label="Saved" className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
-              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> Saved
-            </span>
-          )}
-        </div>
-        <p className="mt-2 text-xs text-slate-500">
-          Last saved {new Date(execution.updatedAt).toLocaleString()}
-        </p>
-        <div className="mt-3">
-          <label className="block text-sm font-medium text-slate-700">
-            Assignee
-            <Select
-              aria-label="Assignee"
-              className="mt-1"
-              value={assigneeId}
-              onChange={(value) => {
-                const nextAssigneeId = String(value);
-                setAssigneeId(nextAssigneeId);
-                void saveAssignee(nextAssigneeId);
-              }}
-              options={assignees}
-              placeholder="Pilih assignee"
-              size="md"
-              disabled={readOnly || saving || !assignees.length}
-            />
-          </label>
-        </div>
-      </header>
-      <section className="grid gap-3 sm:grid-cols-2">
-        <div>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Preconditions</h3>
-        <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">
-          {execution.snapshot.preconditions || '—'}
-        </p>
-        </div>
-        <div>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Expected Result</h3>
-        <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">
-          {execution.snapshot.expectedResult || '—'}
-        </p>
-        </div>
-      </section>
-      <section>
-        <h3 className="font-semibold">Steps</h3>
-        <ol className="mt-2 space-y-2">
-          {(execution.snapshot.steps || []).map((step, index) => {
-            const draft = stepDrafts.find((item) => item.position === index + 1);
-            if (!draft)
-              return (
-                <li key={step.id || index} className="rounded-lg border p-3 text-sm">
-                  <strong>
-                    {index + 1}. {step.action}
-                  </strong>
-                  <p className="mt-1 text-slate-500">Expected: {step.expectedResult}</p>
-                </li>
-              );
-            return (
-              <li key={step.id || index} className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/40 p-3 text-sm">
-                <div className="flex items-start gap-2">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white">{index + 1}</span>
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Action</p>
-                    <p className="font-semibold text-slate-900">{draft.action || '—'}</p>
-                    <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">Expected Result</p>
-                    <p className="text-slate-600">{draft.expectedResult || '—'}</p>
-                  </div>
+          <header className="border-b border-slate-100 pb-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div
+                  className="flex flex-wrap items-center gap-1.5"
+                  aria-label="Test case metadata"
+                >
+                  <Chip type="generic" value={`TC-${execution.snapshot.tcNumber ?? '—'}`} />
+                  <Chip type="automation" value={execution.snapshot.automationType || '—'} />
+                  <Chip type="priority" value={execution.snapshot.priority || '—'} />
+                  {execution.userFlows?.map((flow) => (
+                    <Chip
+                      key={flow.id}
+                      type="generic"
+                      value={`${flow.snapshot.flowKey} · ${flow.snapshot.title}`}
+                      className="border-violet-200 bg-violet-50 text-violet-800"
+                      onClick={
+                        onOpenUserFlow && projectId && flow.sourceUserFlowId
+                          ? () => onOpenUserFlow(projectId, flow.sourceUserFlowId!)
+                          : undefined
+                      }
+                    />
+                  ))}
                 </div>
-                <label className="block text-sm font-semibold">
-                  Result
-                  <Select
-                    aria-label={`Step ${index + 1} Result`}
-                    className="mt-1 max-w-xs"
-                    disabled={readOnly}
-                    value={draft.result}
-                    onChange={(value) => updateStepResult(draft.id, String(value) as TestRunResult)}
-                    options={executionResultOptions(
-                      draft.result,
-                      stepDrafts.some((step) => isTerminalExecutionResult(step.result)),
-                    ).map((option) => ({ ...option, label: resultLabel(option.value) }))}
-                    size="md"
-                  />
-                </label>
-                <div className="border-t border-slate-100 pt-3">
-                  <MarkdownEditor
-                    id={`execution-step-${draft.id}-notes`}
-                    label={`Step ${index + 1} Notes`}
-                    value={draft.notes || ''}
-                    attachmentContext={
-                      projectId ? { projectId, testCaseId: execution.sourceTestCaseId } : undefined
-                    }
-                    onChange={(value) => {
-                      setGlobalApplyPending(false);
-                      setStepDrafts((items) =>
-                        items.map((item) =>
-                          item.id === draft.id ? { ...item, notes: value } : item,
-                        ),
-                      );
-                    }}
-                    rows={3}
-                    disabled={readOnly}
-                  />
-                </div>
-              </li>
-            );
-          })}
-        </ol>
-      </section>
-      <section>
-        <label className="block text-sm font-semibold">
-          Result (Test Case)
-          <Select
-            aria-label="Result"
-            className="mt-1 max-w-xs"
-            disabled={readOnly}
-            value={result}
-            onChange={(value) => {
-              const nextResult = String(value) as TestRunResult;
-              if (nextResult !== result && stepDrafts.some((step) => step.result !== nextResult)) {
-                setPendingGlobalResult(nextResult);
-                return;
+                <h2 className="mt-1 text-xl font-bold text-slate-900">
+                  {execution.snapshot.title}
+                </h2>
+              </div>
+              {saving && (
+                <span
+                  aria-label="Saving"
+                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-medium text-slate-600"
+                >
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> Saving…
+                </span>
+              )}
+              {!saving && saved && (
+                <span
+                  aria-label="Saved"
+                  className="inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700"
+                >
+                  <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" /> Saved
+                </span>
+              )}
+            </div>
+            <p className="mt-2 text-xs text-slate-500">
+              Last saved {new Date(execution.updatedAt).toLocaleString()}
+            </p>
+            <div className="mt-3">
+              <label className="block text-sm font-medium text-slate-700">
+                Assignee
+                <Select
+                  aria-label="Assignee"
+                  className="mt-1"
+                  value={assigneeId}
+                  onChange={(value) => {
+                    const nextAssigneeId = String(value);
+                    setAssigneeId(nextAssigneeId);
+                    void saveAssignee(nextAssigneeId);
+                  }}
+                  options={assignees}
+                  placeholder="Pilih assignee"
+                  size="md"
+                  disabled={readOnly || saving || !assignees.length}
+                />
+              </label>
+            </div>
+          </header>
+          <section className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Preconditions
+              </h3>
+              <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">
+                {execution.snapshot.preconditions || '—'}
+              </p>
+            </div>
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Expected Result
+              </h3>
+              <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">
+                {execution.snapshot.expectedResult || '—'}
+              </p>
+            </div>
+          </section>
+          <section>
+            <h3 className="font-semibold">Steps</h3>
+            <ol className="mt-2 space-y-2">
+              {(execution.snapshot.steps || []).map((step, index) => {
+                const draft = stepDrafts.find((item) => item.position === index + 1);
+                if (!draft)
+                  return (
+                    <li key={step.id || index} className="rounded-lg border p-3 text-sm">
+                      <strong>
+                        {index + 1}. {step.action}
+                      </strong>
+                      <p className="mt-1 text-slate-500">Expected: {step.expectedResult}</p>
+                    </li>
+                  );
+                return (
+                  <li
+                    key={step.id || index}
+                    className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/40 p-3 text-sm"
+                  >
+                    <div className="flex items-start gap-2">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-bold text-white">
+                        {index + 1}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          Action
+                        </p>
+                        <p className="font-semibold text-slate-900">{draft.action || '—'}</p>
+                        <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          Expected Result
+                        </p>
+                        <p className="text-slate-600">{draft.expectedResult || '—'}</p>
+                      </div>
+                    </div>
+                    <label className="block text-sm font-semibold">
+                      Result
+                      <Select
+                        aria-label={`Step ${index + 1} Result`}
+                        className="mt-1 max-w-xs"
+                        disabled={readOnly}
+                        value={draft.result}
+                        onChange={(value) =>
+                          updateStepResult(draft.id, String(value) as TestRunResult)
+                        }
+                        options={executionResultOptions(
+                          draft.result,
+                          stepDrafts.some((step) => isTerminalExecutionResult(step.result)),
+                        ).map((option) => ({ ...option, label: resultLabel(option.value) }))}
+                        size="md"
+                      />
+                    </label>
+                    <div className="border-t border-slate-100 pt-3">
+                      <MarkdownEditor
+                        id={`execution-step-${draft.id}-notes`}
+                        label={`Step ${index + 1} Notes`}
+                        value={draft.notes || ''}
+                        attachmentContext={
+                          projectId
+                            ? { projectId, testCaseId: execution.sourceTestCaseId }
+                            : undefined
+                        }
+                        onChange={(value) => {
+                          setGlobalApplyPending(false);
+                          setStepDrafts((items) =>
+                            items.map((item) =>
+                              item.id === draft.id ? { ...item, notes: value } : item,
+                            ),
+                          );
+                        }}
+                        rows={3}
+                        disabled={readOnly}
+                      />
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          </section>
+          <section>
+            <label className="block text-sm font-semibold">
+              Result (Test Case)
+              <Select
+                aria-label="Result"
+                className="mt-1 max-w-xs"
+                disabled={readOnly}
+                value={result}
+                onChange={(value) => {
+                  const nextResult = String(value) as TestRunResult;
+                  if (
+                    nextResult !== result &&
+                    stepDrafts.some((step) => step.result !== nextResult)
+                  ) {
+                    setPendingGlobalResult(nextResult);
+                    return;
+                  }
+                  applyGlobalResult(nextResult);
+                }}
+                options={executionResultOptions(
+                  result,
+                  stepDrafts.some((step) => isTerminalExecutionResult(step.result)),
+                ).map((option) => ({ ...option, label: resultLabel(option.value) }))}
+                placeholder="Belum diuji"
+                size="md"
+              />
+            </label>
+          </section>
+          <section className="border-t border-slate-100 pt-4">
+            <MarkdownEditor
+              id="execution-notes"
+              label="Notes"
+              value={notes}
+              disabled={readOnly}
+              onChange={setNotes}
+              attachmentContext={
+                projectId ? { projectId, testCaseId: execution.sourceTestCaseId } : undefined
               }
-              applyGlobalResult(nextResult);
+              rows={4}
+            />
+          </section>
+          {saveError && (
+            <p
+              role="alert"
+              className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+            >
+              {saveError}
+            </p>
+          )}
+          <ConfirmationModal
+            isOpen={pendingGlobalResult !== null}
+            title="Update all step results?"
+            message={`Global result ${pendingGlobalResult ? resultLabel(pendingGlobalResult) : ''} akan mengubah semua step. Lanjutkan?`}
+            confirmLabel="Lanjutkan"
+            cancelLabel="Batal"
+            onConfirm={() => {
+              if (pendingGlobalResult) applyGlobalResult(pendingGlobalResult);
             }}
-            options={executionResultOptions(
-              result,
-              stepDrafts.some((step) => isTerminalExecutionResult(step.result)),
-            ).map((option) => ({ ...option, label: resultLabel(option.value) }))}
-            placeholder="Belum diuji"
-            size="md"
+            onClose={() => setPendingGlobalResult(null)}
           />
-        </label>
-      </section>
-      <section className="border-t border-slate-100 pt-4">
-          <MarkdownEditor
-            id="execution-notes"
-            label="Notes"
-            value={notes}
-            disabled={readOnly}
-          onChange={setNotes}
-          attachmentContext={
-            projectId ? { projectId, testCaseId: execution.sourceTestCaseId } : undefined
-          }
-          rows={4}
-        />
-      </section>
-      {saveError && (
-        <p
-          role="alert"
-          className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
-        >
-          {saveError}
-        </p>
-      )}
-      <ConfirmationModal
-        isOpen={pendingGlobalResult !== null}
-        title="Update all step results?"
-        message={`Global result ${pendingGlobalResult ? resultLabel(pendingGlobalResult) : ''} akan mengubah semua step. Lanjutkan?`}
-        confirmLabel="Lanjutkan"
-        cancelLabel="Batal"
-        onConfirm={() => {
-          if (pendingGlobalResult) applyGlobalResult(pendingGlobalResult);
-        }}
-        onClose={() => setPendingGlobalResult(null)}
-      />
         </div>
       </div>
       <footer className="flex shrink-0 justify-between gap-2 border-t border-slate-200 bg-white pt-3">

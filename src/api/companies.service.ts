@@ -1,6 +1,15 @@
 import api from './axios';
-import { getCached, invalidateReadCache, type ReadOptions } from './read-cache';
-import type { ApiResponse, CompanyDetailsRecord, CompanyRecord, EnterpriseCategoryRecord, EnterpriseTypeRecord, ManagedCompanyRecord } from '@/src/types/api.ts';
+import { getCached, type ReadOptions } from './read-cache';
+import { invalidateSettingsResources } from './cache-invalidation.ts';
+import { queryKeys } from './query-keys.ts';
+import type {
+  ApiResponse,
+  CompanyDetailsRecord,
+  CompanyRecord,
+  EnterpriseCategoryRecord,
+  EnterpriseTypeRecord,
+  ManagedCompanyRecord,
+} from '@/src/types/api.ts';
 
 type EnterpriseTypeApiRecord = Partial<EnterpriseTypeRecord> & {
   business_type?: string;
@@ -40,10 +49,17 @@ export interface ManagedCompanyPayload {
 
 export const CompaniesService = {
   getProfile: (options?: ReadOptions) =>
-    getCached('/v1/company/profile', () => api.get('/v1/company/profile') as Promise<ApiResponse<CompanyRecord>>, options),
+    getCached(
+      '/v1/company/profile',
+      () => api.get('/v1/company/profile') as Promise<ApiResponse<CompanyRecord>>,
+      options,
+    ),
   updateProfile: async (payload: CompanyProfilePayload) => {
-    const response = await api.patch('/v1/company/profile', payload) as ApiResponse<CompanyRecord>;
-    invalidateReadCache('/v1/company/profile');
+    const response = (await api.patch(
+      '/v1/company/profile',
+      payload,
+    )) as ApiResponse<CompanyRecord>;
+    invalidateSettingsResources('company');
     return response;
   },
   getLogoBlob: () => api.get('/v1/company/logo', { responseType: 'blob' }) as Promise<Blob>,
@@ -52,49 +68,127 @@ export const CompaniesService = {
     formData.append('file', file);
     // Clear the instance JSON default. In browsers Axios then delegates the
     // multipart Content-Type (including its boundary) to FormData/XHR.
-    const response = await api.post('/v1/company/logo', formData, {
+    const response = (await api.post('/v1/company/logo', formData, {
       headers: { 'Content-Type': undefined },
-    }) as ApiResponse<CompanyLogoMetadata>;
-    invalidateReadCache('/v1/company/profile');
+    })) as ApiResponse<CompanyLogoMetadata>;
+    invalidateSettingsResources('company');
     return response;
   },
   removeLogo: async () => {
-    const response = await api.delete('/v1/company/logo') as ApiResponse<CompanyLogoMetadata>;
-    invalidateReadCache('/v1/company/profile');
+    const response = (await api.delete('/v1/company/logo')) as ApiResponse<CompanyLogoMetadata>;
+    invalidateSettingsResources('company');
     return response;
   },
   listManaged: (options?: ReadOptions) =>
-    getCached('/v1/companies', () => api.get('/v1/companies') as Promise<ApiResponse<ManagedCompanyRecord[]>>, options),
+    getCached(
+      '/v1/companies',
+      () => api.get('/v1/companies') as Promise<ApiResponse<ManagedCompanyRecord[]>>,
+      options,
+    ),
   createManaged: async (payload: ManagedCompanyPayload) => {
-    const response = await api.post('/v1/companies', payload) as ApiResponse<ManagedCompanyRecord>;
-    invalidateReadCache('/v1/companies');
+    const response = (await api.post(
+      '/v1/companies',
+      payload,
+    )) as ApiResponse<ManagedCompanyRecord>;
+    invalidateSettingsResources('company');
     return response;
   },
   updateManagedStatus: async (id: string, isActive: boolean) => {
-    const response = await api.patch(`/v1/companies/${id}/status`, { isActive }) as ApiResponse<ManagedCompanyRecord>;
-    invalidateReadCache('/v1/companies');
+    const response = (await api.patch(`/v1/companies/${id}/status`, {
+      isActive,
+    })) as ApiResponse<ManagedCompanyRecord>;
+    invalidateSettingsResources('company');
     return response;
   },
-  getManaged: (id: string) => api.get(`/v1/companies/${id}`) as Promise<ApiResponse<ManagedCompanyRecord>>,
+  getManaged: (id: string) =>
+    api.get(`/v1/companies/${id}`) as Promise<ApiResponse<ManagedCompanyRecord>>,
   deleteManaged: async (id: string) => {
-    const response = await api.delete(`/v1/companies/${id}`) as ApiResponse<null>;
-    invalidateReadCache('/v1/companies');
+    const response = (await api.delete(`/v1/companies/${id}`)) as ApiResponse<null>;
+    invalidateSettingsResources('company');
     return response;
   },
   getDetails: () => api.get('/v1/company/details') as Promise<ApiResponse<CompanyDetailsRecord>>,
-  updateDetails: (payload: Omit<CompanyDetailsRecord, 'id' | 'isActive' | 'hasLogo' | 'logoVersion'>) => api.patch('/v1/company/details', payload) as Promise<ApiResponse<CompanyDetailsRecord>>,
-  listCategories: async (activeOnly = true) => {
-    const response = await api.get(activeOnly ? '/v1/enterprise-categories?is_active=true' : '/v1/enterprise-categories') as { data: EnterpriseCategoryApiRecord[] };
-    return { ...response, data: response.data.map(normalizeCategory) };
+  updateDetails: async (
+    payload: Omit<CompanyDetailsRecord, 'id' | 'isActive' | 'hasLogo' | 'logoVersion'>,
+  ) => {
+    const response = (await api.patch(
+      '/v1/company/details',
+      payload,
+    )) as ApiResponse<CompanyDetailsRecord>;
+    invalidateSettingsResources('company');
+    return response;
   },
-  listTypes: async (activeOnly = true) => {
-    const response = await api.get(activeOnly ? '/v1/enterprise-types?is_active=true' : '/v1/enterprise-types') as { data: EnterpriseTypeApiRecord[] };
-    return { ...response, data: response.data.map(normalizeType) };
+  listCategories: (activeOnly = true, options?: ReadOptions) =>
+    getCached(
+      `${queryKeys.enterpriseCategories()}${activeOnly ? '?is_active=true' : ''}`,
+      async () => {
+        const response = (await api.get(
+          activeOnly
+            ? `${queryKeys.enterpriseCategories()}?is_active=true`
+            : queryKeys.enterpriseCategories(),
+        )) as { data: EnterpriseCategoryApiRecord[] };
+        return { ...response, data: response.data.map(normalizeCategory) };
+      },
+      options,
+    ),
+  listTypes: (activeOnly = true, options?: ReadOptions) =>
+    getCached(
+      `${queryKeys.enterpriseTypes()}${activeOnly ? '?is_active=true' : ''}`,
+      async () => {
+        const response = (await api.get(
+          activeOnly
+            ? `${queryKeys.enterpriseTypes()}?is_active=true`
+            : queryKeys.enterpriseTypes(),
+        )) as { data: EnterpriseTypeApiRecord[] };
+        return { ...response, data: response.data.map(normalizeType) };
+      },
+      options,
+    ),
+  createType: async (payload: Omit<EnterpriseTypeRecord, 'isActive'> & { isActive?: boolean }) => {
+    const r = (await api.post(
+      '/v1/enterprise-types',
+      payload,
+    )) as ApiResponse<EnterpriseTypeRecord>;
+    invalidateSettingsResources('catalogs');
+    return r;
   },
-  createType: (payload: Omit<EnterpriseTypeRecord, 'isActive'> & { isActive?: boolean }) => api.post('/v1/enterprise-types', payload) as Promise<ApiResponse<EnterpriseTypeRecord>>,
-  updateType: (id: number, payload: Partial<Omit<EnterpriseTypeRecord, 'id'>>) => api.patch(`/v1/enterprise-types/${id}`, payload) as Promise<ApiResponse<EnterpriseTypeRecord>>,
-  deleteType: (id: number) => api.delete(`/v1/enterprise-types/${id}`) as Promise<ApiResponse<null>>,
-  createCategory: (payload: Omit<EnterpriseCategoryRecord, 'isActive' | 'description'> & { description: string; isActive?: boolean }) => api.post('/v1/enterprise-categories', payload) as Promise<ApiResponse<EnterpriseCategoryRecord>>,
-  updateCategory: (id: number, payload: Partial<Omit<EnterpriseCategoryRecord, 'id'>>) => api.patch(`/v1/enterprise-categories/${id}`, payload) as Promise<ApiResponse<EnterpriseCategoryRecord>>,
-  deleteCategory: (id: number) => api.delete(`/v1/enterprise-categories/${id}`) as Promise<ApiResponse<null>>,
+  updateType: async (id: number, payload: Partial<Omit<EnterpriseTypeRecord, 'id'>>) => {
+    const r = (await api.patch(
+      `/v1/enterprise-types/${id}`,
+      payload,
+    )) as ApiResponse<EnterpriseTypeRecord>;
+    invalidateSettingsResources('catalogs');
+    return r;
+  },
+  deleteType: async (id: number) => {
+    const r = (await api.delete(`/v1/enterprise-types/${id}`)) as ApiResponse<null>;
+    invalidateSettingsResources('catalogs');
+    return r;
+  },
+  createCategory: async (
+    payload: Omit<EnterpriseCategoryRecord, 'isActive' | 'description'> & {
+      description: string;
+      isActive?: boolean;
+    },
+  ) => {
+    const r = (await api.post(
+      '/v1/enterprise-categories',
+      payload,
+    )) as ApiResponse<EnterpriseCategoryRecord>;
+    invalidateSettingsResources('catalogs');
+    return r;
+  },
+  updateCategory: async (id: number, payload: Partial<Omit<EnterpriseCategoryRecord, 'id'>>) => {
+    const r = (await api.patch(
+      `/v1/enterprise-categories/${id}`,
+      payload,
+    )) as ApiResponse<EnterpriseCategoryRecord>;
+    invalidateSettingsResources('catalogs');
+    return r;
+  },
+  deleteCategory: async (id: number) => {
+    const r = (await api.delete(`/v1/enterprise-categories/${id}`)) as ApiResponse<null>;
+    invalidateSettingsResources('catalogs');
+    return r;
+  },
 };

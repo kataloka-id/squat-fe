@@ -927,7 +927,11 @@ export const App: React.FC = () => {
       onConfirm: () => { void (async () => {
         try {
         await ProjectsService.remove(projectId);
+        // Any project list request started before this mutation is stale. The
+        // version bump prevents its response from re-adding the deleted item.
+        projectRequestVersion.current += 1;
         setProjects((prev) => prev.filter((p) => p.id !== projectId));
+        setAuthorizedProjectIds((current) => current?.filter((id) => id !== projectId) ?? current);
         setTestCases((prev) => prev.filter((tc) => tc.projectId !== projectId));
         // Clear selection if needed
         if (filters.projectId.includes(projectId)) {
@@ -1017,7 +1021,15 @@ export const App: React.FC = () => {
       const response = editingProject ? await ProjectsService.update(editingProject.id, payload) : await ProjectsService.create(payload);
       const saved = response.data;
       const project: Project = { id: saved.id, name: saved.name, key: saved.key ?? saved.name.slice(0, 4).toUpperCase(), description: saved.description ?? '', lead: saved.lead ?? 'Unassigned', externalLink: saved.externalLink, createdBy: saved.createdBy ?? currentUserLabel, status: saved.status === 'Completed' ? 'Completed' : 'Active', dueDate: saved.dueDate ? new Date(saved.dueDate) : new Date(), updatedAt: saved.updatedAt ? new Date(saved.updatedAt) : new Date(), members: [], stats: { testCasesCount: saved.testCasesCount ?? 0, userFlowsCount: saved.userFlowsCount ?? 0, passRate: 0 } };
+      // Commit the mutation as the newest project-list snapshot. This also
+      // invalidates any in-flight initial/refresh GET before it can overwrite
+      // the newly created project in local state.
+      projectRequestVersion.current += 1;
       setProjects((current) => editingProject ? current.map((item) => item.id === project.id ? project : item) : [project, ...current]);
+      setAuthorizedProjectIds((current) => {
+        if (!current) return [project.id];
+        return editingProject ? current : [project.id, ...current.filter((id) => id !== project.id)];
+      });
       showToast(editingProject ? 'Project details updated successfully.' : 'New project created successfully.');
       setIsProjectFormOpen(false); setEditingProject(null);
     } catch (error) { showToast(error && typeof error === 'object' && 'message' in error ? String(error.message) : 'Project gagal disimpan.', 'error'); }
