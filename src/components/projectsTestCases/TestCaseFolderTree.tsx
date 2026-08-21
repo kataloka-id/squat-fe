@@ -42,6 +42,7 @@ export const TestCaseFolderTree: React.FC<Props> = ({
   // eslint-disable-next-line no-unused-vars -- TypeScript callback parameter, not a runtime binding.
   const setOpen = useCallback((update: (current: Set<string>) => Set<string>) => {
     const next = update(open);
+    if (next === open) return;
     if (expandedFolderIds) onExpandedFolderIdsChange?.(next);
     else setUncontrolledOpen(next);
   }, [expandedFolderIds, onExpandedFolderIdsChange, open]);
@@ -128,7 +129,11 @@ export const TestCaseFolderTree: React.FC<Props> = ({
           <button
             type="button"
             aria-label={`${expanded ? 'Collapse' : 'Expand'} ${folder.name}`}
-            onClick={() => toggle(folder.id)}
+            onClick={(event) => {
+              // Keep expansion independent from folder selection and any row-level handlers.
+              event.stopPropagation();
+              toggle(folder.id);
+            }}
             className="shrink-0 p-1 text-slate-400 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
           >
             {nested.length ? (

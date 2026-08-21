@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SessionContext } from '@/src/auth/SessionContext.tsx';
 import { selectCustomOption } from '@/src/test/selectTestUtils.ts';
+import { sectionCatalogStore } from '@/src/state/section-catalog.ts';
 
 const company = { id: 'c1', name: 'Acme', hasLogo: false, logoVersion: null, profileColour: '#123456' };
 const companies = vi.hoisted(() => ({ getProfile: vi.fn(), updateProfile: vi.fn(), getLogoBlob: vi.fn(), uploadLogo: vi.fn(), removeLogo: vi.fn(), getDetails: vi.fn(), updateDetails: vi.fn(), listManaged: vi.fn(), createManaged: vi.fn(), updateManagedStatus: vi.fn(), getManaged: vi.fn(), deleteManaged: vi.fn(), listCategories: vi.fn(), listTypes: vi.fn(), updateType: vi.fn(), updateCategory: vi.fn() }));
@@ -11,9 +12,11 @@ const users = vi.hoisted(() => ({ getMe: vi.fn(), updateMe: vi.fn(), list: vi.fn
 const roles = vi.hoisted(() => ({ list: vi.fn(), assignable: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn() }));
 const projects = vi.hoisted(() => ({ list: vi.fn() }));
 const sections = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn() }));
+const areas = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn() }));
 vi.mock('@/src/api/companies.service.ts', () => ({ CompaniesService: companies }));
 vi.mock('@/src/api/users.service.ts', () => ({ UsersService: users, RolesService: roles }));
 vi.mock('@/src/api/projects.service.ts', () => ({ ProjectsService: projects, SectionsService: sections }));
+vi.mock('@/src/api/user-flow-areas.service.ts', () => ({ UserFlowAreasService: areas }));
 
 import { SettingsPage } from './SettingsPage.tsx';
 
@@ -27,6 +30,8 @@ describe('SettingsPage Company Profile', () => {
   afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
   beforeEach(() => {
     vi.clearAllMocks();
+    sectionCatalogStore.clearProject('p1');
+    sectionCatalogStore.clearProject('p2');
     companies.getLogoBlob.mockRejectedValue({ message: 'No logo blob' });
     users.getMe.mockResolvedValue({ data: me });
     companies.getProfile.mockResolvedValue({ data: company });
@@ -35,7 +40,43 @@ describe('SettingsPage Company Profile', () => {
     companies.listCategories.mockResolvedValue({ data: [{ id: 1, code: 'MICRO', name: 'Micro', isActive: true }] });
     companies.listTypes.mockResolvedValue({ data: [{ id: 1, businessType: 'PT', isActive: true }] });
     companies.getManaged.mockResolvedValue({ data: { ...company, isActive: false } });
-    roles.list.mockResolvedValue({ data: [] }); roles.assignable.mockResolvedValue({ data: [] }); users.list.mockResolvedValue({ data: [] }); projects.list.mockResolvedValue({ data: [] }); sections.list.mockResolvedValue({ data: [] });
+    roles.list.mockResolvedValue({ data: [] }); roles.assignable.mockResolvedValue({ data: [] }); users.list.mockResolvedValue({ data: [] }); projects.list.mockResolvedValue({ data: [] }); sections.list.mockResolvedValue({ data: [] }); areas.list.mockResolvedValue({ data: [] });
+  });
+
+  it('renders the Area catalog before the Section catalog', async () => {
+    renderSettings('qa');
+    await screen.findByRole('heading', { name: 'Katalog Section Test Case' });
+    const headings = screen.getAllByRole('heading').map((heading) => heading.textContent);
+    expect(headings.indexOf('Katalog Area User Flow')).toBeGreaterThanOrEqual(0);
+    expect(headings.indexOf('Katalog Area User Flow')).toBeLessThan(headings.indexOf('Katalog Section Test Case'));
+  });
+
+  it('lets an authorized non-admin manage the selected project Area catalog', async () => {
+    const user = userEvent.setup();
+    projects.list.mockResolvedValue({ data: [{ id: 'p1', name: 'Project One', key: 'ONE' }] });
+    areas.list.mockResolvedValue({ data: [] });
+    areas.create.mockResolvedValue({ data: { id: 'a1', name: 'Payments', usageCount: 0 } });
+    renderSettings('qa');
+    await screen.findByRole('heading', { name: 'Katalog Area User Flow' });
+    await user.type(screen.getByPlaceholderText('Nama Area'), 'Payments');
+    await user.click(screen.getByRole('button', { name: 'Tambah Area' }));
+    await waitFor(() => expect(areas.create).toHaveBeenCalledWith('p1', { name: 'Payments' }));
+  });
+
+  it('shows Edit and Delete actions for an authorized Area row', async () => {
+    projects.list.mockResolvedValue({ data: [{ id: 'p1', name: 'Project One', key: 'ONE' }] });
+    areas.list.mockResolvedValue({ data: [{ id: 'a1', name: 'Payments', usageCount: 0 }] });
+    renderSettings('qa');
+    await screen.findByText('Payments');
+    expect((screen.getByRole('button', { name: 'Edit' }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole('button', { name: 'Delete' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('does not expose Area mutations to a viewer', async () => {
+    renderSettings('viewer');
+    await screen.findByRole('heading', { name: 'Katalog Area User Flow' });
+    expect(screen.queryByRole('button', { name: 'Tambah Area' })).toBeNull();
+    expect(screen.queryByPlaceholderText('Nama Area')).toBeNull();
   });
 
   it('keeps profile email and username disabled while allowing the new password to be shown', async () => {

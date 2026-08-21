@@ -5,8 +5,8 @@ import type { ApiResponse } from '@/src/types/api.ts';
 export interface UserFlowArea { id: string; name: string; usageCount: number; createdAt?: string; updatedAt?: string; }
 const key = '/v1/user-flow-areas';
 export const UserFlowAreasService = {
-  list: (options?: ReadOptions) => getCached(key, () => api.get(key) as Promise<ApiResponse<UserFlowArea[]>>, options),
-  create: async (payload: Pick<UserFlowArea, 'name'>) => { const response = await api.post(key, payload) as ApiResponse<UserFlowArea>; invalidateReadCache(key); return response; },
-  update: async (id: string, payload: Pick<UserFlowArea, 'name'>) => { const response = await api.patch(`${key}/${id}`, payload) as ApiResponse<UserFlowArea>; invalidateReadCache(key); return response; },
-  remove: async (id: string) => { const response = await api.delete(`${key}/${id}`) as ApiResponse<null>; invalidateReadCache(key); return response; },
+  list: (projectId: string, options?: ReadOptions) => getCached(`${key}?projectId=${encodeURIComponent(projectId)}`, () => api.get(key, { params: { projectId } }) as Promise<ApiResponse<UserFlowArea[]>>, options),
+  create: async (projectId: string, payload: Pick<UserFlowArea, 'name'>) => { const response = await api.post(key, payload, { params: { projectId } }) as ApiResponse<UserFlowArea>; invalidateReadCache(`${key}?projectId=${encodeURIComponent(projectId)}`); return response; },
+  update: async (projectId: string, id: string, payload: Pick<UserFlowArea, 'name'>) => { const response = await api.patch(`${key}/${id}`, payload, { params: { projectId } }) as ApiResponse<UserFlowArea>; invalidateReadCache(`${key}?projectId=${encodeURIComponent(projectId)}`); return response; },
+  remove: async (projectId: string, id: string) => { const response = await api.delete(`${key}/${id}`, { params: { projectId } }) as ApiResponse<null>; invalidateReadCache(`${key}?projectId=${encodeURIComponent(projectId)}`); return response; },
 };

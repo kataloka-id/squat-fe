@@ -83,6 +83,7 @@ export const UserFlowsService = {
   reorderSteps: (p: string, f: string, stepIds: string[]) => api.put(`${base(p)}/${f}/steps/reorder`, { stepIds }) as Promise<ApiResponse<UserFlowStep[]>>,
   linkTestCases: (p: string, f: string, testCaseIds: string[]) => api.post(`${base(p)}/${f}/test-cases`, { testCaseIds }) as Promise<ApiResponse<UserFlow>>,
   unlinkTestCase: (p: string, f: string, id: string) => api.delete(`${base(p)}/${f}/test-cases/${id}`) as Promise<ApiResponse<null>>,
+  unlinkTestCases: (p: string, f: string, testCaseIds: string[]) => api.delete(`${base(p)}/${f}/test-cases`, { data: { testCaseIds } }) as Promise<ApiResponse<{ unlinkedCount: number }>>,
   addDependency: (p: string, f: string, targetFlowId: string, relationshipType: DependencyRelationshipType = 'requires') => api.post(`${base(p)}/${f}/dependencies`, { targetFlowId, relationshipType }) as Promise<ApiResponse<UserFlow>>,
   removeDependency: (p: string, f: string, dependencyId: string) => api.delete(`${base(p)}/${f}/dependencies/${dependencyId}`) as Promise<ApiResponse<null>>,
   graph: async (p: string) => {

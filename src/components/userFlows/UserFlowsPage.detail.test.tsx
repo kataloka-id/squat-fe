@@ -11,6 +11,7 @@ const serviceMocks = vi.hoisted(() => ({
   update: vi.fn().mockResolvedValue({}),
   updateStep: vi.fn().mockResolvedValue({}),
   linkTestCases: vi.fn().mockResolvedValue({}),
+  unlinkTestCases: vi.fn().mockResolvedValue({ data: { unlinkedCount: 2 } }),
   addDependency: vi.fn().mockResolvedValue({}),
   removeDependency: vi.fn().mockResolvedValue({}),
   listSections: vi.fn().mockResolvedValue({ data: [{ id: 'section-checkout', projectId: 'p1', name: 'Checkout' }] }),
@@ -27,6 +28,7 @@ vi.mock('@/src/api/user-flows.service.ts', async () => {
       update: serviceMocks.update,
       updateStep: serviceMocks.updateStep,
       linkTestCases: serviceMocks.linkTestCases,
+      unlinkTestCases: serviceMocks.unlinkTestCases,
       addDependency: serviceMocks.addDependency,
       removeDependency: serviceMocks.removeDependency,
     },
@@ -38,7 +40,6 @@ vi.mock('@/src/api/projects.service.ts', async () => {
   );
   return { ...actual, ProjectsService: { ...actual.ProjectsService, listSections: serviceMocks.listSections } };
 });
-
 const flow = {
   id: 'flow-1',
   flowKey: 'UF-1',
@@ -220,6 +221,57 @@ describe('UserFlowDetail', () => {
       (screen.getByRole('checkbox', { name: 'Select all visible test cases' }) as HTMLInputElement)
         .checked,
     ).toBe(true);
+  });
+  it('bulk unlinks selected linked cases with one request and confirms relation-only wording', async () => {
+    const user = userEvent.setup();
+    const refresh = vi.fn();
+    serviceMocks.unlinkTestCases.mockClear();
+    render(
+      <UserFlowDetail
+        projectId="p1"
+        flow={{ ...flow, linkedTestCaseCount: 2, linkedTestCases: cases }}
+        availableTestCases={cases}
+        onClose={vi.fn()}
+        onRefresh={refresh}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: /Test Cases/ }));
+    const selectAll = screen.getByRole('checkbox', { name: 'Select all linked test cases' });
+    expect((selectAll as HTMLInputElement).indeterminate).toBe(false);
+    const linkedCheckboxes = screen.getAllByRole('checkbox', { name: 'Select linked test case' });
+    await user.click(linkedCheckboxes[0]);
+    expect((selectAll as HTMLInputElement).indeterminate).toBe(true);
+    await user.click(linkedCheckboxes[1]);
+    await user.click(screen.getByRole('button', { name: 'Unlink Selected (2)' }));
+    const confirmation = screen.getByRole('dialog', { name: 'Unlink selected test cases' });
+    expect(confirmation.textContent).toContain('Unlink 2 test cases from this User Flow?');
+    expect(confirmation.textContent).toContain('Test Cases will not be deleted');
+    await user.click(within(confirmation).getByRole('button', { name: 'Unlink Selected' }));
+    expect(serviceMocks.unlinkTestCases).toHaveBeenCalledTimes(1);
+    expect(serviceMocks.unlinkTestCases).toHaveBeenCalledWith('p1', 'flow-1', ['tc-1', 'tc-2']);
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+  it('keeps bulk selection after unlink failure', async () => {
+    const user = userEvent.setup();
+    const error = vi.fn();
+    serviceMocks.unlinkTestCases.mockRejectedValueOnce(new Error('Unable to unlink'));
+    render(
+      <UserFlowDetail
+        projectId="p1"
+        flow={{ ...flow, linkedTestCaseCount: 2, linkedTestCases: cases }}
+        availableTestCases={cases}
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+        onError={error}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: /Test Cases/ }));
+    await user.click(screen.getByRole('checkbox', { name: 'Select all linked test cases' }));
+    await user.click(screen.getByRole('button', { name: 'Unlink Selected (2)' }));
+    const confirmation = screen.getByRole('dialog', { name: 'Unlink selected test cases' });
+    await user.click(within(confirmation).getByRole('button', { name: 'Unlink Selected' }));
+    await waitFor(() => expect(error).toHaveBeenCalledWith('Unable to unlink'));
+    expect(screen.getByRole('button', { name: 'Unlink Selected (2)' })).toBeTruthy();
   });
   it('renders the test case picker in the document portal with a full-viewport backdrop', async () => {
     const user = userEvent.setup();
@@ -733,7 +785,7 @@ describe('UserFlowDetail', () => {
     expect(screen.getByRole('dialog', { name: 'Complete checkout detail' })).toBeTruthy();
     expect(screen.getByText('Full test case description')).toBeTruthy();
     expect(screen.getByText('Enter card details')).toBeTruthy();
-    expect(screen.getByText('Payments')).toBeTruthy();
+    expect(screen.getAllByTitle('Checkout').length).toBeGreaterThan(0);
   });
   it('combines picker filters without dropping selections outside the filtered list', async () => {
     const user = userEvent.setup();

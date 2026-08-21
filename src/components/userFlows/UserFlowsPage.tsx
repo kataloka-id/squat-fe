@@ -650,7 +650,6 @@ export const FlowDependencyManager = ({
     </div>
   );
 };
-
 export const UserFlowDetail = ({
   projectId,
   flow,
@@ -683,6 +682,9 @@ export const UserFlowDetail = ({
   const sectionCatalog = useSectionCatalog(projectId);
   const [tab, setTab] = useState<'overview' | 'cases' | 'dependencies'>('overview');
   const [selected, setSelected] = useState<string[]>([]);
+  const [selectedLinked, setSelectedLinked] = useState<string[]>([]);
+  const [unlinkConfirmationOpen, setUnlinkConfirmationOpen] = useState(false);
+  const [unlinkBusy, setUnlinkBusy] = useState(false);
   const [linkCasesTrigger, setLinkCasesTrigger] = useState<HTMLButtonElement | null>(null);
   const [isLinkModalOpen, setIsLinkModalOpen] = useState(false);
   const [caseQuery, setCaseQuery] = useState('');
@@ -708,18 +710,28 @@ export const UserFlowDetail = ({
   );
   const getSectionName = useCallback(
     (testCase: ProjectTestCaseRecord) =>
-      (testCase.sectionId && sectionNames.get(testCase.sectionId)) || testCase.section || 'Uncategorized',
+      (testCase.sectionId && sectionNames.get(testCase.sectionId)) ||
+      (testCase.section?.trim() && testCase.section) ||
+      'Uncategorized',
     [sectionNames],
   );
   const viewingTestCase = useMemo<TestCase | null>(() => {
     const linkedTestCase = linked.find((item) => item.id === viewingTestCaseId);
     if (!linkedTestCase) return null;
     const fullTestCase = availableTestCases.find((item) => item.id === viewingTestCaseId);
-    const testCase = fullTestCase ? { ...linkedTestCase, ...fullTestCase } : linkedTestCase;
+    const testCase = fullTestCase
+      ? {
+          ...linkedTestCase,
+          ...fullTestCase,
+          // The linked payload is the authoritative relationship snapshot;
+          // keep its Section id when the list/detail record is stale or sparse.
+          sectionId: linkedTestCase.sectionId ?? fullTestCase.sectionId,
+        }
+      : linkedTestCase;
     return {
       ...testCase,
       projectId: testCase.projectId ?? projectId,
-      section: testCase.section ?? 'Uncategorized',
+      section: getSectionName(testCase),
       priority: normalizePriority(testCase.priority),
       status: Object.values(Status).includes(testCase.status as Status)
         ? (testCase.status as Status)
@@ -749,7 +761,7 @@ export const UserFlowDetail = ({
       preconditions: testCase.preconditions ?? undefined,
       mainExpectedResult: testCase.mainExpectedResult ?? undefined,
     };
-  }, [availableTestCases, linked, projectId, viewingTestCaseId]);
+  }, [availableTestCases, getSectionName, linked, projectId, viewingTestCaseId]);
   const closeTestCaseDetail = () => {
     setViewingTestCaseId(null);
     requestAnimationFrame(() => testCaseDetailTrigger?.focus());
@@ -775,6 +787,9 @@ export const UserFlowDetail = ({
       return leftValue.localeCompare(rightValue) * direction;
     });
   }, [getSectionName, linked, linkedSort]);
+  const selectedLinkedVisibleCount = sortedLinked.filter((testCase) => selectedLinked.includes(testCase.id)).length;
+  const allLinkedVisibleSelected = sortedLinked.length > 0 && selectedLinkedVisibleCount === sortedLinked.length;
+  const someLinkedVisibleSelected = selectedLinkedVisibleCount > 0 && !allLinkedVisibleSelected;
   const sortLinked = (field: 'tcNumber' | 'title' | 'section' | 'priority' | 'automationReadiness') => {
     setLinkedSort((current) =>
       current?.field === field
@@ -793,17 +808,17 @@ export const UserFlowDetail = ({
   );
   const sectionOptions = useMemo(
     () =>
-      Array.from(new Set(candidates.map((testCase) => testCase.section).filter(Boolean)))
+      Array.from(new Set(candidates.map((testCase) => getSectionName(testCase)).filter(Boolean)))
         .sort()
         .map((section) => ({ label: section, value: section })),
-    [candidates],
+    [candidates, getSectionName],
   );
   const filteredCandidates = candidates.filter((testCase) => {
     const searchable =
-      `${testCase.projectKey || ''} ${testCase.tcNumber || ''} ${testCase.title} ${testCase.section || ''}`.toLowerCase();
+      `${testCase.projectKey || ''} ${testCase.tcNumber || ''} ${testCase.title} ${getSectionName(testCase)}`.toLowerCase();
     return (
       searchable.includes(caseQuery.toLowerCase()) &&
-      (!caseFilters.section.length || caseFilters.section.includes(testCase.section)) &&
+      (!caseFilters.section.length || caseFilters.section.includes(getSectionName(testCase))) &&
       (!caseFilters.priority.length || caseFilters.priority.includes(testCase.priority)) &&
       (!caseFilters.status.length || caseFilters.status.includes(testCase.status)) &&
       (!caseFilters.automationType.length ||
@@ -825,6 +840,25 @@ export const UserFlowDetail = ({
     filteredCandidates.length > 0 && selectedVisibleCount === filteredCandidates.length;
   const someVisibleSelected = selectedVisibleCount > 0 && !allVisibleSelected;
   const refresh = () => onRefresh();
+  const toggleLinkedTestCase = (id: string) =>
+    setSelectedLinked((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
+  const toggleAllLinkedTestCases = () =>
+    setSelectedLinked((current) => allLinkedVisibleSelected
+      ? current.filter((id) => !sortedLinked.some((testCase) => testCase.id === id))
+      : Array.from(new Set([...current, ...sortedLinked.map((testCase) => testCase.id)])));
+  const unlinkSelectedCases = async () => {
+    if (!selectedLinked.length || unlinkBusy) return;
+    setUnlinkBusy(true);
+    try {
+      await UserFlowsService.unlinkTestCases(projectId, flow.id, selectedLinked);
+      setSelectedLinked([]);
+      refresh();
+    } catch (error) {
+      onError?.((error as { message?: string }).message || 'Unable to unlink test cases.');
+    } finally {
+      setUnlinkBusy(false);
+    }
+  };
   const closeLinkModal = () => {
     setIsLinkModalOpen(false);
     setSelected([]);
@@ -1073,6 +1107,14 @@ export const UserFlowDetail = ({
                 </Button>
               )}
             </div>
+            {canManage && selectedLinked.length > 0 && (
+              <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-sm text-brand-900">
+                <span>{selectedLinked.length} test case{selectedLinked.length === 1 ? '' : 's'} selected</span>
+                <Button size="sm" variant="danger" onClick={() => setUnlinkConfirmationOpen(true)} disabled={unlinkBusy}>
+                  Unlink Selected ({selectedLinked.length})
+                </Button>
+              </div>
+            )}
             {linked.length === 0 ? (
               <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
                 <p className="font-medium text-slate-800">No linked test cases</p>
@@ -1084,6 +1126,7 @@ export const UserFlowDetail = ({
               <div className="overflow-x-auto rounded-lg border border-slate-200">
                 <table className="w-full min-w-[960px] table-fixed text-left text-sm">
                   <colgroup>
+                    <col className="w-12" />
                     <col className="w-[6.5rem]" />
                     <col />
                     <col className="w-40" />
@@ -1093,6 +1136,17 @@ export const UserFlowDetail = ({
                   </colgroup>
                   <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                     <tr>
+                      <th className="w-12 px-4 py-3 text-left font-semibold">
+                        <input
+                          aria-label="Select all linked test cases"
+                          className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                          type="checkbox"
+                          checked={allLinkedVisibleSelected}
+                          ref={(input) => { if (input) input.indeterminate = someLinkedVisibleSelected; }}
+                          onChange={toggleAllLinkedTestCases}
+                          disabled={!sortedLinked.length || !canManage}
+                        />
+                      </th>
                       {(
                         [
                           ['tcNumber', 'TC Number'],
@@ -1145,6 +1199,16 @@ export const UserFlowDetail = ({
                   <tbody className="divide-y divide-slate-200">
                     {sortedLinked.map((testCase) => (
                       <tr key={testCase.id}>
+                        <td className="px-4 py-3">
+                          <input
+                            aria-label="Select linked test case"
+                            className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
+                            type="checkbox"
+                            checked={selectedLinked.includes(testCase.id)}
+                            onChange={() => toggleLinkedTestCase(testCase.id)}
+                            disabled={!canManage}
+                          />
+                        </td>
                         <td className="whitespace-nowrap px-4 py-3 font-medium">
                           <button
                             className="font-mono text-xs text-brand-700 underline-offset-2 hover:text-brand-800 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
@@ -1349,7 +1413,7 @@ export const UserFlowDetail = ({
                               {testCase.title}
                             </span>
                             <span className="mt-1 block truncate text-xs text-slate-500">
-                              {testCase.section || 'Uncategorized'}
+                              {getSectionName(testCase)}
                             </span>
                             <span className="mt-2 flex flex-wrap gap-1.5">
                               <Badge value={testCase.priority} />
@@ -1391,6 +1455,15 @@ export const UserFlowDetail = ({
         onClose={closeTestCaseDetail}
         showAttachments={false}
         testCase={viewingTestCase}
+      />
+      <ConfirmationModal
+        isOpen={unlinkConfirmationOpen}
+        title="Unlink selected test cases"
+        message={`Unlink ${selectedLinked.length} test case${selectedLinked.length === 1 ? '' : 's'} from this User Flow? Test Cases will not be deleted; only their relationship with this User Flow will be removed.`}
+        variant="danger"
+        confirmLabel={unlinkBusy ? 'Unlinking…' : 'Unlink Selected'}
+        onClose={() => setUnlinkConfirmationOpen(false)}
+        onConfirm={() => void unlinkSelectedCases()}
       />
     </div>
   );
@@ -2257,7 +2330,7 @@ export const UserFlowsPage = ({
   /** Matches the existing User Flow edit permission surface; the API remains authoritative. */
   canManage?: boolean;
 }) => {
-  const areaCatalog = useUserFlowAreaCatalog();
+  const areaCatalog = useUserFlowAreaCatalog(projectId);
   const areas = areaCatalog.areas;
   const [flows, setFlows] = useState<UserFlow[]>([]);
   const [summary, setSummary] = useState({
