@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TestCaseImportDialog, validateTestCaseImport } from './TestCaseImportDialog.tsx';
 import { Project } from './types.ts';
+import { selectCustomOption } from '@/src/test/selectTestUtils.ts';
 
 const project: Project = { id: 'p1', name: 'Atlas', key: 'ATTE', description: '', lead: '', status: 'Active', dueDate: new Date(), updatedAt: new Date(), stats: { testCasesCount: 0, passRate: 0 }, members: [] };
 const valid = { version: '1.0', projectKey: 'ATTE', ignoredRoot: true, testCases: [{ title: 'Case', section: 'Uncategorized', priority: 'High', testingType: 'UI', automationReadiness: 'Candidate', status: 'Ready', description: '**raw**', steps: [{ action: 'Do this', expectedResult: 'It works', legacy: 'ignored' }], legacyReference: 'old' }] };
@@ -48,7 +49,7 @@ describe('TestCaseImportDialog', () => {
     fireEvent.drop(dropZone, { dataTransfer: { files: [file] } });
     expect((screen.getByRole('button', { name: 'Download JSON Template' }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByRole('button', { name: 'Validate' }) as HTMLButtonElement).disabled).toBe(true);
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Target project' }), 'p1');
+    await selectCustomOption(user, 'Target project', 'p1');
     expect((screen.getByRole('button', { name: 'Download JSON Template' }) as HTMLButtonElement).disabled).toBe(false);
     await user.click(screen.getByRole('button', { name: 'Validate' }));
     expect(await screen.findByText(/Validation preview: 1 total/)).not.toBeNull();
@@ -60,7 +61,7 @@ describe('TestCaseImportDialog', () => {
     const onImport = vi.fn().mockRejectedValue({ message: 'Validation failed', errors: [{ path: 'testCases[0].steps[0].expectedResult', code: 'REQUIRED', message: 'Expected result is required' }], warnings: [{ path: 'testCases[0].legacyReference', code: 'UNKNOWN_FIELD', message: 'Unknown field and will be ignored' }] });
     const { container } = render(<TestCaseImportDialog isOpen projects={[project]} sectionsByProject={{ p1: ['Uncategorized'] }} onClose={() => {}} onImport={onImport} />);
     fireEvent.change(container.querySelector('input[type="file"]') as HTMLInputElement, { target: { files: [new File([JSON.stringify(valid)], 'cases.json', { type: 'application/octet-stream' })] } });
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Target project' }), 'p1');
+    await selectCustomOption(user, 'Target project', 'p1');
     await user.click(screen.getByRole('button', { name: 'Validate' }));
     await user.click(screen.getByRole('button', { name: 'Import' }));
     expect((await screen.findAllByText('testCases[0].steps[0].expectedResult: Expected result is required')).length).toBe(2);

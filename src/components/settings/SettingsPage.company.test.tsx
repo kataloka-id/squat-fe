@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SessionContext } from '@/src/auth/SessionContext.tsx';
+import { selectCustomOption } from '@/src/test/selectTestUtils.ts';
 
 const company = { id: 'c1', name: 'Acme', hasLogo: false, logoVersion: null, profileColour: '#123456' };
 const companies = vi.hoisted(() => ({ getProfile: vi.fn(), updateProfile: vi.fn(), getLogoBlob: vi.fn(), uploadLogo: vi.fn(), removeLogo: vi.fn(), getDetails: vi.fn(), updateDetails: vi.fn(), listManaged: vi.fn(), createManaged: vi.fn(), updateManagedStatus: vi.fn(), getManaged: vi.fn(), deleteManaged: vi.fn(), listCategories: vi.fn(), listTypes: vi.fn(), updateType: vi.fn(), updateCategory: vi.fn() }));
@@ -121,7 +122,7 @@ describe('SettingsPage Company Profile', () => {
     renderSettings('qa');
     await screen.findByRole('heading', { name: 'Katalog Section Test Case' });
     expect(await screen.findByText('General')).not.toBeNull();
-    await user.selectOptions(screen.getByLabelText('Project katalog Section'), 'p2');
+    await selectCustomOption(user, 'Project katalog Section', 'p2');
     expect(await screen.findByText('Regression')).not.toBeNull();
     await user.type(screen.getByPlaceholderText('Nama Section'), 'Payments');
     await user.click(screen.getByRole('button', { name: 'Tambah Section' }));
@@ -132,14 +133,14 @@ describe('SettingsPage Company Profile', () => {
   it('shows the selected business type and category as read-only for a QA user', async () => {
     renderSettings('qa');
     await screen.findByRole('heading', { name: 'Business details' });
-    const businessType = screen.getByLabelText('Business type') as HTMLSelectElement;
-    const category = screen.getByLabelText('Category') as HTMLSelectElement;
+    const businessType = screen.getByLabelText('Business type') as HTMLButtonElement;
+    const category = screen.getByLabelText('Category') as HTMLButtonElement;
     expect(businessType.disabled).toBe(true);
     expect(category.disabled).toBe(true);
-    expect(businessType.value).toBe('1');
-    expect(category.value).toBe('1');
-    expect(screen.getByRole('option', { name: 'PT' })).not.toBeNull();
-    expect(screen.getByRole('option', { name: 'Micro' })).not.toBeNull();
+    expect(businessType.getAttribute('value')).toBe('1');
+    expect(category.getAttribute('value')).toBe('1');
+    expect(businessType.textContent).toContain('PT');
+    expect(category.textContent).toContain('Micro');
   });
 
   it('offers project assignments to a company admin', async () => {
@@ -189,9 +190,12 @@ describe('SettingsPage Company Profile', () => {
     expect(roles.assignable).toHaveBeenCalled();
     expect(roles.list).not.toHaveBeenCalled();
     expect(users.list).toHaveBeenCalledWith({ force: true }, { q: '' });
+    const userSection = screen.getByRole('heading', { name: 'Akun pengguna' }).closest('section')!;
+    const newRole = within(userSection).getByLabelText('Role');
+    await user.click(newRole);
     expect(screen.getByRole('option', { name: 'QA' })).not.toBeNull();
     expect(screen.queryByRole('option', { name: 'Admin' })).toBeNull();
-    const userSection = screen.getByRole('heading', { name: 'Akun pengguna' }).closest('section')!;
+    await user.keyboard('{Escape}');
     const roleHelp = screen.getByRole('tooltip', { name: 'Admin company hanya dapat membuat akun QA untuk company sendiri.' });
     expect(roleHelp.parentElement?.getAttribute('aria-describedby')).toBe('new-user-role-help');
     expect(roleHelp.parentElement?.getAttribute('tabindex')).toBe('0');
@@ -251,12 +255,15 @@ describe('SettingsPage Company Profile', () => {
     users.create.mockResolvedValue({ data: { ...me, id: 'u2', roleSlug: 'admin' } });
     renderSettings('kataloka_admin');
     const userSection = (await screen.findByRole('heading', { name: 'Akun pengguna' })).closest('section')!;
-    expect(within(userSection).getByRole('option', { name: 'Admin' })).not.toBeNull();
-    expect(within(userSection).getByRole('option', { name: 'QA' })).not.toBeNull();
-    expect(within(userSection).queryByRole('option', { name: 'Kataloka Admin' })).toBeNull();
-    expect(within(userSection).queryByRole('option', { name: 'Legacy' })).toBeNull();
-    await user.selectOptions(within(userSection).getByLabelText('Role'), 'admin');
-    await user.selectOptions(within(userSection).getByLabelText('Company untuk akun baru'), 'c1');
+    const newRole = within(userSection).getByLabelText('Role');
+    await user.click(newRole);
+    expect(screen.getByRole('option', { name: 'Admin' })).not.toBeNull();
+    expect(screen.getByRole('option', { name: 'QA' })).not.toBeNull();
+    expect(screen.queryByRole('option', { name: 'Kataloka Admin' })).toBeNull();
+    expect(screen.queryByRole('option', { name: 'Legacy' })).toBeNull();
+    await user.keyboard('{Escape}');
+    await selectCustomOption(user, 'Role', 'admin');
+    await selectCustomOption(user, 'Company untuk akun baru', 'c1');
     await user.type(within(userSection).getByLabelText('Email'), 'admin@example.test');
     await user.type(within(userSection).getByLabelText('Username'), 'admin-user');
     await user.type(within(userSection).getByLabelText('Kata sandi'), 'password123');
@@ -270,8 +277,8 @@ describe('SettingsPage Company Profile', () => {
     users.create.mockResolvedValue({ data: { ...me, id: 'u2', roleSlug: 'admin' } });
     renderSettings('kataloka_admin');
     const userSection = (await screen.findByRole('heading', { name: 'Akun pengguna' })).closest('section')!;
-    await waitFor(() => expect((within(userSection).getByLabelText('Role') as HTMLSelectElement).value).toBe('admin'));
-    await user.selectOptions(within(userSection).getByLabelText('Company untuk akun baru'), 'c1');
+    await waitFor(() => expect(within(userSection).getByLabelText('Role').getAttribute('value')).toBe('admin'));
+    await selectCustomOption(user, 'Company untuk akun baru', 'c1');
     await user.type(within(userSection).getByLabelText('Email'), 'new-admin@example.test');
     await user.type(within(userSection).getByLabelText('Username'), 'new-admin');
     await user.type(within(userSection).getByLabelText('Kata sandi'), 'password123');
@@ -306,10 +313,12 @@ describe('SettingsPage Company Profile', () => {
     const userRow = (await screen.findByText('admin@example.test')).closest('tr')!;
     await user.click(within(userRow).getByRole('button', { name: 'Ubah' }));
 
-    const roleSelect = within(userRow.nextElementSibling as HTMLTableRowElement).getByLabelText('Role') as HTMLSelectElement;
-    expect(roleSelect.value).toBe('kataloka_admin');
-    expect(within(roleSelect).getByRole('option', { name: 'Kataloka Administrator' }).getAttribute('value')).toBe('kataloka_admin');
-    expect(within(roleSelect).queryByRole('option', { name: 'Administrator' })?.getAttribute('value')).toBe('admin');
+    const roleSelect = within(userRow.nextElementSibling as HTMLTableRowElement).getByLabelText('Role') as HTMLButtonElement;
+    expect(roleSelect.getAttribute('value')).toBe('kataloka_admin');
+    await user.click(roleSelect);
+    expect(screen.getByRole('option', { name: 'Kataloka Administrator' }).getAttribute('data-value')).toBe('kataloka_admin');
+    expect(screen.getByRole('option', { name: 'Administrator' }).getAttribute('data-value')).toBe('admin');
+    await user.keyboard('{Escape}');
   });
 
   it('keeps self-delete disabled with an accessible hover and focus tooltip', async () => {
@@ -341,7 +350,6 @@ describe('SettingsPage Company Profile', () => {
 
   it('archives roles with inactive-user references, refreshes the list, and excludes them from assignment', async () => {
     const user = userEvent.setup();
-    vi.stubGlobal('confirm', vi.fn(() => true));
     roles.list.mockResolvedValue({ data: [{ slug: 'qa', name: 'QA', isActive: true }, { slug: 'legacy', name: 'Legacy', isActive: false }] });
     roles.remove.mockResolvedValue({ code: 'ROLES_ARCHIVE_SUCCESS', data: { slug: 'legacy', isActive: false, archived: true } });
     renderSettings('kataloka_admin');
@@ -350,6 +358,7 @@ describe('SettingsPage Company Profile', () => {
     expect(screen.queryByRole('option', { name: 'Legacy' })).toBeNull();
     const legacyRole = screen.getByText('Legacy').closest('li');
     await user.click(Array.from(legacyRole?.querySelectorAll('button') ?? []).find((button) => button.textContent?.includes('Hapus'))!);
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Hapus' }));
     await waitFor(() => expect(roles.remove).toHaveBeenCalledWith('legacy'));
     expect((await screen.findByRole('alert')).textContent).toContain('Role diarsipkan karena masih memiliki referensi pengguna nonaktif.');
     expect(roles.list).toHaveBeenCalledTimes(2);
@@ -357,13 +366,13 @@ describe('SettingsPage Company Profile', () => {
 
   it('reports physical role deletion when the lifecycle response confirms it', async () => {
     const user = userEvent.setup();
-    vi.stubGlobal('confirm', vi.fn(() => true));
     roles.list.mockResolvedValue({ data: [{ slug: 'temporary', name: 'Temporary', isActive: true }] });
     roles.remove.mockResolvedValue({ code: 'ROLES_DELETE_SUCCESS', data: null });
     renderSettings('kataloka_admin');
     await screen.findByRole('heading', { name: 'Role' });
     const temporaryRole = screen.getAllByText('Temporary').find((element) => element.closest('li'))?.closest('li');
     await user.click(Array.from(temporaryRole?.querySelectorAll('button') ?? []).find((button) => button.textContent?.includes('Hapus'))!);
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Hapus' }));
     await waitFor(() => expect(roles.remove).toHaveBeenCalledWith('temporary'));
     expect((await screen.findByRole('alert')).textContent).toContain('Role dihapus.');
     expect(roles.list).toHaveBeenCalledTimes(2);
@@ -405,8 +414,8 @@ describe('SettingsPage Company Profile', () => {
     await user.type(screen.getByLabelText(/Phone/), '0813');
     await user.type(screen.getByLabelText(/Business field/), 'Retail');
     await user.type(screen.getByLabelText(/Postal code/), '40100');
-    await user.selectOptions(screen.getByLabelText('Business type (wajib)'), '1');
-    await user.selectOptions(screen.getByLabelText('Category (wajib)'), '1');
+    await selectCustomOption(user, 'Business type (wajib)', '1');
+    await selectCustomOption(user, 'Category (wajib)', '1');
     await user.click(screen.getByRole('button', { name: 'Buat company' }));
     await waitFor(() => expect(companies.createManaged).toHaveBeenCalledWith(expect.objectContaining({ name: 'New Co', businessType: 1, category: 1, address: 'Bandung', phone: '0813', field: 'Retail', postalCode: '40100' })));
   });
@@ -435,8 +444,8 @@ describe('SettingsPage Company Profile', () => {
     await user.type(within(section).getByLabelText(/Phone/), '0813');
     await user.type(within(section).getByLabelText(/Business field/), 'Retail');
     await user.type(within(section).getByLabelText(/Postal code/), '40100');
-    await user.selectOptions(within(section).getByLabelText('Business type (wajib)'), '1');
-    await user.selectOptions(within(section).getByLabelText('Category (wajib)'), '1');
+    await selectCustomOption(user, 'Business type (wajib)', '1');
+    await selectCustomOption(user, 'Category (wajib)', '1');
     await user.click(within(section).getByRole('button', { name: 'Buat company' }));
 
     expect((await screen.findByRole('alert')).textContent).toContain('Nomor telepon perusahaan sudah digunakan.');
@@ -483,8 +492,7 @@ describe('SettingsPage Company Profile', () => {
     expect(screen.getByText('PT · Aktif')).not.toBeNull();
     expect(screen.getByText('CV · Nonaktif')).not.toBeNull();
     expect(screen.getByText('Legacy · Nonaktif')).not.toBeNull();
-    expect(screen.getByRole('option', { name: 'PT' })).not.toBeNull();
-    expect(screen.queryByRole('option', { name: 'CV' })).toBeNull();
+    expect(screen.getByText('PT · Aktif')).not.toBeNull();
     expect(screen.getByLabelText('Business type name').getAttribute('placeholder')).toBe('Contoh: Perseroan Terbatas');
     expect(screen.getByLabelText('Category code').getAttribute('placeholder')).toBe('Contoh: TECHNOLOGY');
   });
@@ -495,20 +503,20 @@ describe('SettingsPage Company Profile', () => {
     companies.listCategories.mockResolvedValue({ data: [{ id: 1, code: 'MICRO', name: 'Micro', isActive: true }, { id: 2, code: 'OLD', name: 'Legacy', isActive: false }] });
     renderSettings('admin');
     await screen.findByRole('heading', { name: 'Business details' });
-    expect(screen.getByRole('option', { name: 'CV (Nonaktif)' }).hasAttribute('disabled')).toBe(true);
-    expect(screen.getByRole('option', { name: 'Legacy (Nonaktif)' }).hasAttribute('disabled')).toBe(true);
+    expect(screen.getByLabelText('Business type').textContent).toContain('CV (Nonaktif)');
+    expect(screen.getByLabelText('Category').textContent).toContain('Legacy (Nonaktif)');
   });
 
   it('enables deletion only for archived companies and surfaces a linked-user conflict', async () => {
     const user = userEvent.setup();
     companies.listManaged.mockResolvedValue({ data: [{ ...company, isActive: false }] });
     companies.deleteManaged.mockRejectedValue({ message: 'Company masih memiliki user terkait.' });
-    vi.spyOn(window, 'confirm').mockReturnValue(true);
     renderSettings('kataloka_admin');
     await screen.findByRole('heading', { name: 'Company controls' });
     const deleteButton = screen.getAllByRole('button', { name: 'Hapus' })[0];
     expect(deleteButton.hasAttribute('disabled')).toBe(false);
     await user.click(deleteButton);
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Hapus' }));
     expect(await screen.findByRole('alert')).not.toBeNull();
     expect(screen.getByRole('alert').textContent).toContain('Company masih memiliki user terkait');
   });

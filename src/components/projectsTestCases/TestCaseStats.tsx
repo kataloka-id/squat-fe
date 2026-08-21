@@ -39,6 +39,7 @@ export const TestCaseStats: React.FC<TestCaseStatsProps> = ({ testCases }) => {
     };
     
     const priority = {
+        [Priority.NotDefined]: 0,
         [Priority.Critical]: 0,
         [Priority.High]: 0,
         [Priority.Medium]: 0,
@@ -106,6 +107,7 @@ export const TestCaseStats: React.FC<TestCaseStatsProps> = ({ testCases }) => {
              <AlertCircle size={12} /> Priority
           </p>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+             <StatItem color="bg-slate-400" count={stats.priority[Priority.NotDefined]} tooltip="Not Defined Priority" />
              <StatItem color="bg-red-500" count={stats.priority[Priority.Critical]} tooltip="Critical Priority" />
              <StatItem color="bg-orange-500" count={stats.priority[Priority.High]} tooltip="High Priority" />
              <StatItem color="bg-blue-500" count={stats.priority[Priority.Medium]} tooltip="Medium Priority" />

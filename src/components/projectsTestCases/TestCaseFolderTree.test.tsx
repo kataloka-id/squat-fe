@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import React from 'react';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { TestCaseFolderTree } from './TestCaseFolderTree.tsx';
@@ -28,16 +28,14 @@ describe('TestCaseFolderTree', () => {
     );
     fireEvent.click(container.querySelector('[aria-label="Login"]')!);
     expect(onSelect).toHaveBeenCalledWith({ folderId: 'root', includeSubfolders: false });
-    fireEvent.click(container.querySelector('[aria-label="Folder actions for Login"]')!);
-    const menu = container.querySelector('[role="menu"]')!;
-    fireEvent.click(Array.from(menu.querySelectorAll('button')).find((button) => button.textContent === 'New subfolder')!);
+    const actions = within(container.querySelector('[aria-label="Folder actions for Login"]')!);
+    fireEvent.click(actions.getByRole('button', { name: 'New subfolder' }));
     expect(onCreate).toHaveBeenCalledWith('root');
-    fireEvent.click(container.querySelector('[aria-label="Folder actions for Login"]')!);
-    fireEvent.click(Array.from(container.querySelector('[role="menu"]')!.querySelectorAll('button')).find((button) => button.textContent === 'Delete')!);
+    fireEvent.click(actions.getByRole('button', { name: 'Delete' }));
     expect(onDelete).toHaveBeenCalledWith(folders[0]);
   });
 
-  it('uses one keyboard-accessible folder actions menu and restores trigger focus on Escape', async () => {
+  it('exposes keyboard-accessible direct folder actions', async () => {
     const user = userEvent.setup();
     const onCreate = vi.fn();
     const onRename = vi.fn();
@@ -53,18 +51,7 @@ describe('TestCaseFolderTree', () => {
       />,
     );
 
-    const trigger = container.querySelector<HTMLButtonElement>('[aria-label="Folder actions for Login"]')!;
-    expect(container.querySelectorAll('[aria-label="Folder actions for Login"]')).toHaveLength(1);
-    trigger.focus();
-    await user.click(trigger);
-    const menu = container.querySelector('[role="menu"]')!;
-    expect(menu.textContent).toContain('New subfolder');
-    expect(menu.textContent).toContain('Rename');
-    expect(menu.textContent).toContain('Delete');
-    await user.keyboard('{Escape}');
-    expect(document.activeElement).toBe(trigger);
-    await user.click(trigger);
-    fireEvent.click(Array.from(container.querySelector('[role="menu"]')!.querySelectorAll('button')).find((button) => button.textContent === 'Rename')!);
+    await user.click(within(container.querySelector('[aria-label="Folder actions for Login"]')!).getByRole('button', { name: 'Rename' }));
     expect(onRename).toHaveBeenCalledWith(folders[0]);
   });
 
@@ -92,7 +79,7 @@ describe('TestCaseFolderTree', () => {
     expect(count).not.toBeNull();
     expect(folderName.parentElement?.className).toContain('items-center');
     expect(folderName.parentElement?.className).toContain('gap-1.5');
-    expect(actionTrigger.className).toContain('opacity-0');
+    expect(actionTrigger.className).toContain('inline-flex');
   });
 
   it('auto-expands an active folder parent and supports tree arrow navigation', async () => {

@@ -4,6 +4,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { TestCaseList } from './TestCaseList.tsx';
+import { selectCustomOption } from '@/src/test/selectTestUtils';
 
 const PaginationHarness = () => {
   const [currentPage, setCurrentPage] = useState(2);
@@ -15,9 +16,7 @@ describe('TestCaseList rows-per-page selector', () => {
   it('opens the portal menu and resets the current page when selection changes', async () => {
     const user = userEvent.setup();
     render(<PaginationHarness />);
-    await user.click(screen.getByRole('button', { name: '20' }));
-    expect(screen.getByRole('listbox')).not.toBeNull();
-    await user.click(screen.getByRole('option', { name: 'All' }));
+    await selectCustomOption(user, 'Rows per page', '-1');
     expect(screen.getByTestId('page-state').textContent).toBe('1/-1');
   });
 

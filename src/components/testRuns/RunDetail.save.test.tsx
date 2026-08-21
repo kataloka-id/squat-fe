@@ -13,6 +13,7 @@ vi.mock('@/src/api/test-runs.service.ts', () => ({
 }));
 
 import { RunDetail } from './TestRunsPage.tsx';
+import { selectCustomOption } from '@/src/test/selectTestUtils.ts';
 
 const untested = {
   id: 'execution-1', runId: 'run-1', sourceTestCaseId: 'case-1', result: 'Untested' as const,
@@ -52,7 +53,7 @@ describe('RunDetail execution save', () => {
     render(<RunDetail projectId="project-1" runId="run-1" onBack={vi.fn()} />);
 
     await screen.findByRole('heading', { name: 'First case' });
-    await user.selectOptions(screen.getByLabelText('Result'), 'Passed');
+    await selectCustomOption(user, 'Result', 'Passed');
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(serviceMocks.updateExecution).toHaveBeenCalledWith(

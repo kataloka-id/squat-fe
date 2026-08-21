@@ -7,6 +7,7 @@ import { TestRunsService } from '@/src/api/test-runs.service.ts';
 import { UserFlowsService } from '@/src/api/user-flows.service.ts';
 import { onExecutionDataChanged } from '@/src/api/execution-refresh.ts';
 import { Button } from '@/src/components/projectsTestCases/ui/Button.tsx';
+import { Select as CustomSelect } from '@/src/components/projectsTestCases/ui/Select.tsx';
 import type { Project } from '@/src/components/projectsTestCases/types.ts';
 import type { ProjectReportRecord } from '@/src/types/api.ts';
 import { resultLabel } from '@/src/components/testRuns/metrics.ts';
@@ -155,19 +156,15 @@ export const ReportsPage = ({
   }) => (
     <label className="flex flex-col gap-1 text-xs font-medium text-slate-600">
       <span>{name}</span>
-      <select
+      <CustomSelect
+        aria-label={name}
         disabled={!projectId}
         value={String(filters[field] || '')}
-        onChange={(event) => set(field, event.target.value)}
-        className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-      >
-        <option value="">Semua</option>
-        {options.map((item) => (
-          <option key={item.id} value={item.id}>
-            {item.name}
-          </option>
-        ))}
-      </select>
+        onChange={(value) => set(field, String(value))}
+        options={options.map((item) => ({ value: item.id, label: item.name }))}
+        placeholder="Semua"
+        size="md"
+      />
     </label>
   );
   return (
@@ -182,18 +179,14 @@ export const ReportsPage = ({
         <div className="flex flex-wrap items-end gap-2">
           <label className="flex min-w-52 flex-col gap-1 text-xs font-medium text-slate-600">
             <span>Project</span>
-            <select
+            <CustomSelect
+              aria-label="Project"
               value={projectId}
-              onChange={(event) => onProjectChange(event.target.value)}
-              className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-            >
-              <option value="">Pilih proyek</option>
-              {projects.map((project) => (
-                <option key={project.id} value={project.id}>
-                  {project.name}
-                </option>
-              ))}
-            </select>
+              onChange={(value) => onProjectChange(String(value))}
+              options={projects.map((project) => ({ value: project.id, label: project.name }))}
+              placeholder="Pilih proyek"
+              size="md"
+            />
           </label>
           {[
             ['Date from', 'dateFrom'],

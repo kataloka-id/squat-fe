@@ -5,10 +5,11 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { UserFlowsPage } from './UserFlowsPage.tsx';
+import { selectCustomOptionSync } from '@/src/test/selectTestUtils.ts';
 
-const serviceMocks = vi.hoisted(() => ({ list: vi.fn(), graph: vi.fn(), get: vi.fn(), update: vi.fn() }));
+const serviceMocks = vi.hoisted(() => ({ list: vi.fn(), graph: vi.fn(), get: vi.fn(), update: vi.fn(), FLOW_PRIORITIES: ['not_defined', 'critical', 'high', 'medium', 'low'], FLOW_STATUSES: ['draft', 'active', 'deprecated'] }));
 const projectMocks = vi.hoisted(() => ({ listTestCases: vi.fn() }));
-vi.mock('@/src/api/user-flows.service.ts', () => ({ UserFlowsService: serviceMocks }));
+vi.mock('@/src/api/user-flows.service.ts', () => ({ UserFlowsService: serviceMocks, FLOW_PRIORITIES: serviceMocks.FLOW_PRIORITIES, FLOW_STATUSES: serviceMocks.FLOW_STATUSES }));
 vi.mock('@/src/api/projects.service.ts', () => ({ ProjectsService: projectMocks }));
 
 type Deferred<T> = { promise: Promise<T>; resolve: (value: T) => void };
@@ -42,7 +43,7 @@ describe('UserFlowsPage project selection', () => {
     render(<Harness />);
     await waitFor(() => expect(serviceMocks.list).toHaveBeenCalledWith('p1'));
 
-    fireEvent.change(screen.getByLabelText('Project'), { target: { value: 'p2' } });
+    selectCustomOptionSync('Project', 'p2');
     await waitFor(() => expect(serviceMocks.list).toHaveBeenCalledWith('p2'));
     secondList.resolve(collection('Current project flow'));
     secondGraph.resolve(graph());
