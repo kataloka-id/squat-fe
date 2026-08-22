@@ -114,7 +114,7 @@ export const ProjectsService = {
   },
   permanentlyRemove: async (projectId: string) => {
     const response = (await api.delete(`/v1/projects/${projectId}/permanent`)) as ApiResponse<null>;
-    invalidateProjectResources(projectId, ['projects']);
+    invalidateProjectResources(projectId, ['projects', 'areas', 'flows']);
     return response;
   },
   listTestCases: (projectId: string, options?: ReadOptions) =>

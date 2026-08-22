@@ -33,3 +33,14 @@ DevOps trigger: None; automatic scheduler explicitly out of scope.
 Integration trigger: Frontend-backend lifecycle/API contract.
 Known blockers: None.
 Compaction eligibility: No.
+
+## Amendment: project-owned User Flow Area cleanup
+
+Issue observed: permanent project deletion removed the project's User Flows but left unused company-scoped Area catalog rows visible in the User Flow workflow.
+Fixed product decision: company-scoped Areas remain when referenced by any remaining User Flow in the company; an Area with no remaining references after permanent project deletion is project-owned in practice and is deleted in the same transaction.
+Additional acceptance criteria:
+- Permanent deletion removes every now-unused Area catalog row for the deleted project's company.
+- Permanent deletion preserves an Area still referenced by a User Flow belonging to another project in the same company.
+- Successful permanent deletion invalidates frontend project, flow, and Area reads for the deleted project.
+API or data contract: No endpoint shape/status change; permanent deletion's existing success contract now includes cleanup of unreferenced company-scoped Area rows.
+Contract status: Agreed, version 2.1.
