@@ -439,8 +439,8 @@ const RunsTable = ({
   onDelete: (run: TestRunRecord) => void;
   canManage: boolean;
 }) => (
-  <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-    <table className="w-full min-w-[920px] text-left text-sm">
+  <div className="table-scroll-container rounded-xl border border-slate-200 bg-white shadow-sm">
+    <table className="w-full min-w-[920px] table-auto text-left text-sm">
       <thead className="bg-slate-50 text-xs uppercase text-slate-500">
         <tr>
           {['Test Run', 'Status', 'Type', 'Progress', 'Result', 'Owner', 'Updated', 'Actions'].map(

@@ -15,6 +15,11 @@ const compareValues = (a: string | number, b: string | number): number => {
   return 0;
 };
 
+const userFlowSortValue = (testCase: TestCase): string => {
+  const first = testCase.linkedUserFlows?.[0];
+  return first ? `${first.flowKey} ${first.title}` : 'ZZZ Not Linked';
+};
+
 /**
  * Sorts table data using the same local calendar date rendered in the Updated column.
  * The original index is used as a tie breaker so equal values retain API/input order.
@@ -31,6 +36,8 @@ export const sortTestCases = (
       comparison = compareValues(a.testCase.tcNumber ?? 0, b.testCase.tcNumber ?? 0);
     } else if (field === 'updatedAt') {
       comparison = compareValues(calendarDateValue(a.testCase.updatedAt), calendarDateValue(b.testCase.updatedAt));
+    } else if (field === 'userFlow') {
+      comparison = userFlowSortValue(a.testCase).localeCompare(userFlowSortValue(b.testCase), undefined, { numeric: true, sensitivity: 'base' });
     } else {
       const aValue = a.testCase[field];
       const bValue = b.testCase[field];
@@ -63,6 +70,11 @@ export const getVisibleTestCases = (
   if (filters.automationType.length > 0) result = result.filter((testCase) => filters.automationType.includes(testCase.automationType));
   if (filters.automationReadiness.length > 0) {
     result = result.filter((testCase) => matchesAutomationReadinessFilter(testCase.automationReadiness, filters.automationReadiness));
+  }
+  if (filters.userFlowLinkage && filters.userFlowLinkage !== 'all') {
+    result = result.filter((testCase) => filters.userFlowLinkage === 'linked'
+      ? (testCase.linkedUserFlowCount ?? testCase.linkedUserFlows?.length ?? 0) > 0
+      : (testCase.linkedUserFlowCount ?? testCase.linkedUserFlows?.length ?? 0) === 0);
   }
 
   const sorted = sortTestCases(result, sortConfig);

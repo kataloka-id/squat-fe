@@ -70,6 +70,8 @@ export interface TestCase {
   /** Whether this case is eligible to be linked as a reusable precondition. */
   isReusable?: boolean;
   linkedPreconditions?: LinkedPrecondition[];
+  linkedUserFlows?: LinkedUserFlow[];
+  linkedUserFlowCount?: number;
   preconditions?: string;
   /** Optional context for the test case, stored as raw Markdown. */
   description?: string;
@@ -79,6 +81,12 @@ export interface TestCase {
   tags: string[];
   updatedAt: Date;
   createdBy: string;
+}
+
+export interface LinkedUserFlow {
+  id: string;
+  flowKey: string;
+  title: string;
 }
 
 export interface LinkedPrecondition {
@@ -114,7 +122,7 @@ export interface Project {
   createdBy?: string;
 }
 
-export type SortField = 'id' | 'title' | 'priority' | 'status' | 'updatedAt' | 'projectId' | 'section' | 'automationType' | 'automationReadiness';
+export type SortField = 'id' | 'title' | 'priority' | 'status' | 'updatedAt' | 'projectId' | 'section' | 'userFlow' | 'automationType' | 'automationReadiness';
 export type SortOrder = 'asc' | 'desc';
 
 export interface FilterState {
@@ -125,4 +133,5 @@ export interface FilterState {
   projectId: string[];
   automationType: AutomationType[];
   automationReadiness: AutomationReadiness[];
+  userFlowLinkage?: 'all' | 'linked' | 'not-linked';
 }

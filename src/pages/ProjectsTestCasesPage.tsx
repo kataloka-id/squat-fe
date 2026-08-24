@@ -75,6 +75,8 @@ const toTestCase = (testCase: ProjectTestCaseRecord, projectId: string): TestCas
     automationType: Object.values(AutomationType).includes(link.automationType as AutomationType) ? link.automationType as AutomationType : AutomationType.Manual,
     isDeprecated: link.isDeprecated,
   })),
+  linkedUserFlows: testCase.linkedUserFlows ?? [],
+  linkedUserFlowCount: testCase.linkedUserFlowCount ?? testCase.linkedUserFlows?.length ?? 0,
   steps: testCase.steps ?? [], tags: testCase.tags ?? [], updatedAt: testCase.updatedAt ? new Date(testCase.updatedAt) : new Date(), createdBy: testCase.createdBy ?? '—', description: testCase.description ?? undefined, preconditions: testCase.preconditions ?? undefined, mainExpectedResult: testCase.mainExpectedResult ?? undefined,
 });
 
@@ -251,6 +253,7 @@ export const App: React.FC = () => {
     projectId: [], // Default is empty, user must select
     automationType: [],
     automationReadiness: [],
+    userFlowLinkage: 'all',
   });
   const query = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const deepLinkedTestCaseId = query.get('testCaseId');
@@ -305,6 +308,11 @@ export const App: React.FC = () => {
     () => Object.values(AutomationReadiness).map((readiness) => ({ label: readiness, value: readiness })),
     [],
   );
+  const userFlowLinkageOptions = useMemo(() => [
+    { label: 'All', value: 'all' },
+    { label: 'Linked', value: 'linked' },
+    { label: 'Not Linked', value: 'not-linked' },
+  ], []);
 
   const clearFolderQuery = useCallback(() => {
     if (!deepLinkedFolderId && !deepLinkedUnfiled && !query.has('includeSubfolders')) return;
@@ -352,8 +360,6 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (currentView === 'projects') void refreshPendingDeletionProjects();
   }, [currentView, refreshPendingDeletionProjects]);
-  useEffect(() => onExecutionDataChanged(() => { void refreshProjects(); }), [refreshProjects]);
-
   // Only a successful scoped response is authoritative for this fallback. A
   // later refresh failure clears the visual list but must not discard a valid
   // selection based on that failure.
@@ -466,6 +472,15 @@ export const App: React.FC = () => {
   useEffect(() => {
     void refreshTestCases();
   }, [refreshTestCases]);
+  useEffect(() => onExecutionDataChanged((changedProjectId) => {
+    void refreshProjects();
+    if (filters.projectId.includes(changedProjectId)) void refreshTestCases();
+  }), [filters.projectId, refreshProjects, refreshTestCases]);
+  useEffect(() => {
+    if (!viewingCase) return;
+    const refreshed = testCases.find((testCase) => testCase.id === viewingCase.id);
+    if (refreshed && refreshed !== viewingCase) setViewingCase(refreshed);
+  }, [testCases, viewingCase]);
 
   const handleSort = (field: SortField) => {
     setSortConfig((prev) => ({
@@ -1060,6 +1075,12 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleOpenUserFlow = useCallback((projectId: string, userFlowId: string) => {
+    setSelectedUserFlowProjectId(projectId);
+    setCurrentView('user-flows');
+    updateWorkspaceQuery({ view: 'user-flows', projectId, userFlowId, runId: undefined, executionId: undefined });
+  }, [updateWorkspaceQuery]);
+
   const hasProjectSelected = filters.projectId.length > 0;
 
   const formProjects = projects;
@@ -1236,6 +1257,15 @@ export const App: React.FC = () => {
                     disabled={!hasProjectSelected}
                   />
 
+                  <Select
+                    aria-label="User Flow linkage filter"
+                    options={userFlowLinkageOptions}
+                    value={filters.userFlowLinkage}
+                    onChange={(value) => setFilters((prev) => ({ ...prev, userFlowLinkage: value as FilterState['userFlowLinkage'] }))}
+                    disabled={!hasProjectSelected}
+                    className="min-w-32"
+                  />
+
                   <MultiSelect
                     label="Priority"
                     options={priorityOptions}
@@ -1285,6 +1315,7 @@ export const App: React.FC = () => {
                     filters.status.length > 0 ||
                     filters.automationType.length > 0 ||
                     filters.automationReadiness.length > 0 ||
+                    filters.userFlowLinkage !== 'all' ||
                     filters.search) && (
                     <button
                       onClick={() =>
@@ -1296,6 +1327,7 @@ export const App: React.FC = () => {
                           status: [],
                           automationType: [],
                           automationReadiness: [],
+                          userFlowLinkage: 'all',
                         }))
                       }
                       className="text-brand-600 hover:text-brand-800 hover:bg-brand-50 ml-2 rounded px-2 py-1 text-xs font-medium transition-colors"
@@ -1454,6 +1486,7 @@ export const App: React.FC = () => {
                   loading={isLoading}
                   hasProjectSelected={hasProjectSelected}
                   canManage={canManageTestCases}
+                  onOpenUserFlow={handleOpenUserFlow}
                   pagination={{
                     currentPage,
                     totalPages:
@@ -1509,6 +1542,7 @@ export const App: React.FC = () => {
         onClose={() => setViewingCase(null)}
         onEdit={handleEdit}
         onNotify={showToast}
+        onOpenUserFlow={handleOpenUserFlow}
         project={projects.find((project) => project.id === viewingCase?.projectId)}
         testCase={viewingCase}
       />

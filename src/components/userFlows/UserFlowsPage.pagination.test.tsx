@@ -101,6 +101,12 @@ describe('UserFlowsPage pagination and compact columns', () => {
     await screen.findByText('Flow 1');
 
     const table = container.querySelector('table') as HTMLTableElement;
+    expect(table.className).toContain('table-fixed');
+    expect(table.className).toContain('min-w-[102rem]');
+    const columns = table.querySelectorAll('col');
+    expect(columns[0].className).toContain('w-[22rem]');
+    expect(columns[2].className).toContain('w-[8.5rem]');
+    expect(columns[3].className).toContain('w-[8.5rem]');
     for (const name of ['Priority', 'Health', 'Coverage', 'Test Cases', 'Automated', 'Status']) {
       expect(within(table).getByRole('columnheader', { name }).className).toContain('text-center');
     }
@@ -111,6 +117,8 @@ describe('UserFlowsPage pagination and compact columns', () => {
 
     const firstRow = container.querySelector('tbody tr');
     const cells = within(firstRow as HTMLElement).getAllByRole('cell');
+    expect(cells[2].className).toContain('whitespace-nowrap');
+    expect(cells[3].className).toContain('whitespace-nowrap');
     for (const index of [2, 3, 4, 5, 6, 9]) expect(cells[index].className).toContain('text-center');
     expect(cells[10].className).toContain('text-right');
     expect(cells[0].className).not.toContain('text-center');

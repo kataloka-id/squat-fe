@@ -21,7 +21,7 @@ afterEach(() => {
 });
 
 describe('TestCaseList column layout', () => {
-  it('keeps supporting columns at safe widths while leaving Title flexible', () => {
+  it('keeps explicit column widths so Title cannot collapse or overlap at breakpoints', () => {
     const { container } = render(
       <TestCaseList
         testCases={[testCase, shortTitleTestCase]}
@@ -41,35 +41,38 @@ describe('TestCaseList column layout', () => {
 
     const table = container.querySelector('table');
     expect(table?.className).toContain('table-fixed');
-    expect(table?.className).toContain('min-w-[94rem]');
+    expect(table?.className).toContain('min-w-[44rem]');
+    expect(table?.className).toContain('md:min-w-[68rem]');
 
     const columns = Array.from(container.querySelectorAll('col'));
-    expect(columns).toHaveLength(11);
-    expect(columns[3].className).toBe(''); // Title has no fixed width and receives remaining space.
+    expect(columns).toHaveLength(12);
+    expect(columns[3].className).toContain('w-[16rem]'); // Title has an explicit minimum width at narrow viewports.
+    expect(columns[3].className).toContain('md:w-[20rem]');
+    expect(columns[3].className).toContain('lg:w-[28rem]');
     expect(columns[1].className).toContain('w-32'); // TC Number includes its sort indicator.
-    expect(columns[5].className).toContain('w-28'); // Priority includes its sort indicator.
-    expect(columns[4].className).toContain('w-40'); // Section keeps enough room for a readable value without crowding Priority.
-    expect(columns[7].className).toContain('w-36'); // Testing Type includes its sort indicator.
-    expect(columns[8].className).toContain('w-52'); // Automation Readiness can show its badge, menu trigger, and sort indicator.
-    expect(columns[9].className).toContain('w-[6.75rem]'); // Dates remain untruncated.
-    expect(columns[10].className).toContain('w-32'); // Actions fit both icons and shared end padding.
+    expect(columns[5].className).toContain('w-64'); // User Flow keeps room for a chip and +N indicator.
+    expect(columns[6].className).toContain('w-28'); // Priority includes its sort indicator.
+    expect(columns[4].className).toContain('w-40'); // Section keeps enough room for a readable value without crowding User Flow.
+    expect(columns[8].className).toContain('w-36'); // Testing Type includes its sort indicator.
+    expect(columns[9].className).toContain('w-52'); // Automation Readiness can show its badge, menu trigger, and sort indicator.
+    expect(columns[10].className).toContain('w-[6.75rem]'); // Dates remain untruncated.
+    expect(columns[11].className).toContain('w-32'); // Actions fit both icons and shared end padding.
     expect(columns[2].className).toContain('hidden');
     expect(columns[2].className).toContain('sm:table-column');
     expect(columns[4].className).toContain('hidden');
     expect(columns[4].className).toContain('md:table-column');
+    expect(columns[10].className).toContain('hidden');
+    expect(columns[10].className).toContain('lg:table-column');
+    expect(columns[8].className).toContain('hidden');
     expect(columns[9].className).toContain('hidden');
-    expect(columns[9].className).toContain('lg:table-column');
     expect(screen.getByRole('columnheader', { name: 'Automation Readiness' }).className).toContain('whitespace-nowrap');
     expect(screen.getByText(testCase.title)).not.toBeNull();
     expect(screen.getByText(shortTitleTestCase.title)).not.toBeNull();
     expect(screen.getAllByRole('button', { name: 'Change Automation Readiness' })).toHaveLength(2);
 
-    // At the 94rem table minimum, fixed columns consume 77.25rem, leaving
-    // 16.75rem for Title—enough room for readable test case names.
-    const tableMinimumRem = 94;
-    const fixedColumnsRem = 77.25;
-    const sectionColumnRem = 10;
-    expect(tableMinimumRem - fixedColumnsRem).toBeGreaterThan(sectionColumnRem);
+    const headerCells = container.querySelectorAll('thead th').length;
+    const bodyCells = container.querySelector('tbody tr')?.querySelectorAll('td').length;
+    expect(bodyCells).toBe(headerCells);
   });
 
   it('truncates a long Section inside its column and exposes its full value on hover', () => {

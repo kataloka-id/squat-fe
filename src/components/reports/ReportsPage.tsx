@@ -477,7 +477,7 @@ const ReportContent = ({
             </>
           </div>
         </div>
-        <div className="mt-4 overflow-x-auto">
+        <div className="table-scroll-container mt-4">
           <table className="w-full min-w-[600px] text-left text-sm">
             <thead className="border-b text-xs uppercase text-slate-500">
               <tr>
@@ -511,7 +511,7 @@ const ReportContent = ({
       <section className="rounded-xl border bg-white p-5">
         <h2 className="font-semibold">User Flow Quality</h2>
         <p className="mt-1 text-sm text-slate-500">Kualitas berdasarkan hasil eksekusi Test Run pada scope aktif.</p>
-        <div className="mt-4 overflow-x-auto"><table className="w-full min-w-[740px] text-left text-sm"><thead className="border-b text-xs uppercase text-slate-500"><tr>{['User Flow', 'Executed', 'Passed', 'Failed', 'Blocked', 'Pass Rate', 'Progress'].map((heading) => <th key={heading} className="px-3 py-2">{heading}</th>)}</tr></thead><tbody>{(report.userFlowQuality || []).map((row) => <tr key={row.id || row.label} className="border-b"><td className="px-3 py-3 font-medium">{row.id ? <button onClick={() => onOpenUserFlow(row.id!, row.testRunIds || [])} className="text-left text-brand-700 hover:underline">{row.label}</button> : row.label}</td><td className="px-3 py-3">{metricValue(row.executed)}</td><td className="px-3 py-3">{metricValue(row.passed)}</td><td className="px-3 py-3">{metricValue(row.failed)}</td><td className="px-3 py-3">{metricValue(row.blocked)}</td><td className="px-3 py-3">{percentageValue(row.passRate)}</td><td className="px-3 py-3">{percentageValue(row.progress)}</td></tr>)}</tbody></table>{!(report.userFlowQuality || []).length && <p className="p-4 text-sm text-slate-500">Belum ada hasil Test Run untuk User Flow pada filter yang dipilih.</p>}</div>
+        <div className="table-scroll-container mt-4"><table className="w-full min-w-[740px] text-left text-sm"><thead className="border-b text-xs uppercase text-slate-500"><tr>{['User Flow', 'Executed', 'Passed', 'Failed', 'Blocked', 'Pass Rate', 'Progress'].map((heading) => <th key={heading} className="px-3 py-2">{heading}</th>)}</tr></thead><tbody>{(report.userFlowQuality || []).map((row) => <tr key={row.id || row.label} className="border-b"><td className="px-3 py-3 font-medium">{row.id ? <button onClick={() => onOpenUserFlow(row.id!, row.testRunIds || [])} className="text-left text-brand-700 hover:underline">{row.label}</button> : row.label}</td><td className="px-3 py-3">{metricValue(row.executed)}</td><td className="px-3 py-3">{metricValue(row.passed)}</td><td className="px-3 py-3">{metricValue(row.failed)}</td><td className="px-3 py-3">{metricValue(row.blocked)}</td><td className="px-3 py-3">{percentageValue(row.passRate)}</td><td className="px-3 py-3">{percentageValue(row.progress)}</td></tr>)}</tbody></table>{!(report.userFlowQuality || []).length && <p className="p-4 text-sm text-slate-500">Belum ada hasil Test Run untuk User Flow pada filter yang dipilih.</p>}</div>
       </section>
       <section className="rounded-xl border bg-white p-5">
         <h2 className="font-semibold">Perlu Perhatian</h2>
