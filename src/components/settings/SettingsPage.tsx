@@ -1707,8 +1707,8 @@ export const SettingsPage = () => {
                     </Button>
                   </div>
                 </form>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
+                <div className="table-scroll-container">
+                  <table className="w-full min-w-[44rem] table-auto text-left text-sm">
                     <thead className="border-b text-slate-500">
                       <tr>
                         <th className="p-3">Pengguna</th>

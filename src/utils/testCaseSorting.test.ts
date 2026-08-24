@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { AutomationType, Priority, Status, type FilterState, type TestCase } from '@/src/components/projectsTestCases/types.ts';
 import { getVisibleTestCases, sortTestCases } from './testCaseSorting.ts';
 
-const noFilters: FilterState = { search: '', section: [], priority: [], status: [], projectId: [], automationType: [], automationReadiness: [] };
+const noFilters: FilterState = { search: '', section: [], priority: [], status: [], projectId: [], automationType: [], automationReadiness: [], userFlowLinkage: 'all' };
 
 const testCase = (id: string, tcNumber: number, updatedAt: string, overrides: Partial<TestCase> = {}): TestCase => ({
   id,
@@ -60,5 +60,24 @@ describe('test-case table sorting', () => {
       testCase('two-3', 3, '2025-06-19', { projectId: 'project-two', title: 'Login smoke', section: 'Auth' }),
     ];
     expect(getVisibleTestCases(projectTwoCases, filters, { field: 'id', order: 'desc' }, 1, 20).map(({ id }) => id)).toEqual(['two-9', 'two-3']);
+  });
+
+  it('filters linked and not-linked user flows without row requests', () => {
+    const cases = [
+      testCase('linked', 1, '2025-06-20', { linkedUserFlowCount: 2, linkedUserFlows: [{ id: 'flow-1', flowKey: 'UF-1', title: 'Checkout' }] }),
+      testCase('unlinked', 2, '2025-06-19'),
+    ];
+    expect(getVisibleTestCases(cases, { ...noFilters, userFlowLinkage: 'linked' }, { field: 'id', order: 'asc' }, 1, 20).map(({ id }) => id)).toEqual(['linked']);
+    expect(getVisibleTestCases(cases, { ...noFilters, userFlowLinkage: 'not-linked' }, { field: 'id', order: 'asc' }, 1, 20).map(({ id }) => id)).toEqual(['unlinked']);
+  });
+
+  it('sorts User Flow by human-readable flow number and puts Not Linked last ascending', () => {
+    const cases = [
+      testCase('unlinked', 3, '2025-06-20'),
+      testCase('uf-10', 2, '2025-06-20', { linkedUserFlows: [{ id: 'f10', flowKey: 'UF-10', title: 'Ten' }] }),
+      testCase('uf-2', 1, '2025-06-20', { linkedUserFlows: [{ id: 'f2', flowKey: 'UF-2', title: 'Two' }] }),
+    ];
+    expect(sortTestCases(cases, { field: 'userFlow', order: 'asc' }).map(({ id }) => id)).toEqual(['uf-2', 'uf-10', 'unlinked']);
+    expect(sortTestCases(cases, { field: 'userFlow', order: 'desc' }).map(({ id }) => id)).toEqual(['unlinked', 'uf-10', 'uf-2']);
   });
 });

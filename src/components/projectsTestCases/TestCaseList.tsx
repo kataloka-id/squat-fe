@@ -17,6 +17,21 @@ import { InlineBadgeSelect } from './ui/InlineBadgeSelect.tsx';
 import { ROW_ACTIONS_CELL_CLASS, RowActions } from './ui/RowActions.tsx';
 import { TablePagination } from '../table/TablePagination';
 
+// eslint-disable-next-line no-unused-vars -- TypeScript callback parameters, not runtime bindings.
+const UserFlowCell = ({ testCase, onOpen }: { testCase: TestCase; onOpen?: (projectId: string, userFlowId: string) => void }) => {
+  const flows = testCase.linkedUserFlows ?? [];
+  if (flows.length === 0) return <span className="text-xs font-medium text-slate-400">Not Linked</span>;
+  const first = flows[0];
+  return (
+    <div className="flex min-w-0 items-center gap-1.5">
+      <button type="button" onClick={() => onOpen?.(testCase.projectId, first.id)} title={`${first.flowKey} · ${first.title}`} className="max-w-full truncate rounded-full border border-brand-100 bg-brand-50 px-2.5 py-1 text-left text-xs font-medium text-brand-700 hover:bg-brand-100 focus:outline-none focus:ring-2 focus:ring-brand-500/30">
+        <span className="font-mono">{first.flowKey}</span> · {first.title}
+      </button>
+      {flows.length > 1 && <span tabIndex={0} title={flows.map((flow) => `${flow.flowKey} · ${flow.title}`).join('\n')} className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600 focus:outline-none focus:ring-2 focus:ring-brand-500/30">+{flows.length - 1}</span>}
+    </div>
+  );
+};
+
 interface PaginationProps {
   currentPage: number;
   totalPages: number;
@@ -37,6 +52,8 @@ interface TestCaseListProps {
   onToggleSelectAll: () => void;
   // eslint-disable-next-line no-unused-vars -- TypeScript callback parameter, not a runtime binding.
   onView?: (tc: TestCase) => void;
+  // eslint-disable-next-line no-unused-vars -- TypeScript callback parameters, not runtime bindings.
+  onOpenUserFlow?: (projectId: string, userFlowId: string) => void;
   onEdit: (tc: TestCase) => void;
   onDelete: (id: string) => void;
   onUpdate: (id: string, updates: Partial<TestCase>) => void;
@@ -76,6 +93,7 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
   onToggleSelect,
   onToggleSelectAll,
   onView,
+  onOpenUserFlow,
   onEdit,
   onDelete,
   onUpdate,
@@ -141,18 +159,19 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-soft flex h-full min-h-[500px] min-h-0 flex-col overflow-hidden">
-      <div className="min-h-0 flex-1 overflow-x-auto overflow-y-auto">
-        <table className="min-w-[94rem] w-full table-fixed divide-y divide-slate-100">
+      <div className="table-scroll-container min-h-0 flex-1 overflow-x-auto overflow-y-auto">
+        <table className="w-full min-w-[44rem] table-fixed divide-y divide-slate-100 md:min-w-[68rem] lg:min-w-[94rem]">
           <colgroup>
             {canManage && <col className="w-14" />}
             <col className="w-32" />
             <col className="hidden w-[5.5rem] sm:table-column" />
-            <col />
+            <col className="w-[16rem] md:w-[20rem] lg:w-[28rem]" />
             <col className="hidden w-40 md:w-56 md:table-column" />
+            <col className="w-64" />
             <col className="w-28" />
             <col className="w-[6.5rem]" />
-            <col className="w-36" />
-            <col className="w-52" />
+            <col className="hidden w-36 lg:table-column" />
+            <col className="hidden w-52 lg:table-column" />
             <col className="hidden w-[6.75rem] lg:table-column" />
             {canManage && <col className="w-32" />}
           </colgroup>
@@ -172,10 +191,11 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
               <TableHead field="projectId" label="Project" className="hidden sm:table-cell" sortable={false} />
               <TableHead field="title" label="Title" className="min-w-0" />
               <TableHead field="section" label="Section" className="hidden min-w-40 md:table-cell" />
+              <TableHead field="userFlow" label="User Flow" className="w-64" />
               <TableHead field="priority" label="Priority" />
               <TableHead field="status" label="Status" />
-              <TableHead field="automationType" label="Testing Type" />
-              <TableHead field="automationReadiness" label="Automation Readiness" />
+              <TableHead field="automationType" label="Testing Type" className="hidden lg:table-cell" />
+              <TableHead field="automationReadiness" label="Automation Readiness" className="hidden lg:table-cell" />
               <TableHead field="updatedAt" label="Updated" className="hidden lg:table-cell" />
               {canManage && <th className={`px-4 py-4 ${ROW_ACTIONS_CELL_CLASS} text-right text-xs font-semibold text-slate-500 uppercase tracking-wider align-top bg-slate-50`}></th>}
             </tr>
@@ -187,7 +207,7 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
             ) : testCases.length === 0 ? (
               // Empty State (No results after filter)
               <tr>
-                <td colSpan={11} className="px-6 py-20 text-center text-slate-500">
+                <td colSpan={canManage ? 12 : 11} className="px-6 py-20 text-center text-slate-500">
                   <div className="flex flex-col items-center justify-center animate-in fade-in zoom-in-95 duration-200">
                     <div className="h-16 w-16 rounded-full bg-slate-50 flex items-center justify-center mb-4 border border-slate-100">
                       <Search className="h-8 w-8 text-slate-300" />
@@ -234,8 +254,8 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
                          </span>
                       </div>
                     </td>
-                    <td className="min-w-0 px-4 py-4 align-middle">
-                      <button className="line-clamp-1 text-left text-sm font-medium text-slate-900 transition-colors hover:text-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-500/20" onClick={() => onView?.(tc)} type="button">{markdownToPlainText(tc.title)}</button>
+                    <td className="min-w-[15rem] max-w-0 px-4 py-4 align-middle">
+                      <button className="block max-w-full truncate whitespace-nowrap text-left text-sm font-medium text-slate-900 transition-colors hover:text-brand-600 focus:outline-none focus:ring-2 focus:ring-brand-500/20" onClick={() => onView?.(tc)} type="button" title={markdownToPlainText(tc.title)}>{markdownToPlainText(tc.title)}</button>
                       {tc.folderPath?.length ? <p className="mt-0.5 truncate text-xs text-slate-400">{tc.folderPath.map((folder) => folder.name).join(' / ')}</p> : <p className="mt-0.5 text-xs text-slate-400">Unfiled</p>}
                       <div className="mt-1 line-clamp-1 text-xs text-slate-500 md:hidden" title={tc.section}>{tc.section}</div>
                     </td>
@@ -253,16 +273,19 @@ export const TestCaseList: React.FC<TestCaseListProps> = ({
                         /> : tc.section}
                       </span>
                     </td>
+                    <td className="min-w-0 px-4 py-4 align-middle">
+                      <UserFlowCell testCase={tc} onOpen={onOpenUserFlow} />
+                    </td>
                     <td className="px-4 py-4 whitespace-nowrap align-middle">
                       {canManage ? <InlineBadgeSelect type="priority" label="Priority" value={tc.priority} options={Object.values(Priority)} onChange={(val) => onUpdate(tc.id, { priority: val as Priority })} /> : <Badge type="priority" value={tc.priority} />}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap align-middle">
                        {canManage ? <InlineBadgeSelect type="status" label="Status" value={tc.status} options={Object.values(Status)} onChange={(val) => onUpdate(tc.id, { status: val as Status })} /> : <Badge type="status" value={tc.status} />}
                     </td>
-                    <td className="px-4 py-4 whitespace-nowrap align-middle">
+                    <td className="hidden px-4 py-4 whitespace-nowrap align-middle lg:table-cell">
                        {canManage ? <InlineBadgeSelect type="automation" label="Testing Type" value={tc.automationType} options={Object.values(AutomationType)} onChange={(val) => onUpdate(tc.id, { automationType: val as AutomationType })} /> : <Badge type="automation" value={tc.automationType} />}
                     </td>
-                    <td className="px-4 py-4 whitespace-nowrap align-middle">
+                    <td className="hidden px-4 py-4 whitespace-nowrap align-middle lg:table-cell">
                        {canManage ? <InlineBadgeSelect type="automationReadiness" label="Automation Readiness" value={normalizeAutomationReadiness(tc.automationReadiness)} options={Object.values(AutomationReadiness)} onChange={(val) => onUpdate(tc.id, { automationReadiness: val as AutomationReadiness })} /> : <Badge type="automationReadiness" value={normalizeAutomationReadiness(tc.automationReadiness)} />}
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap text-sm text-slate-500 font-mono hidden lg:table-cell align-middle">

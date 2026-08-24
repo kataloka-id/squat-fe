@@ -24,6 +24,7 @@ const StatItem = ({ color, count, label, tooltip }: { color: string, count: numb
 export const TestCaseStats: React.FC<TestCaseStatsProps> = ({ testCases }) => {
   const stats = useMemo(() => {
     const total = testCases.length;
+    const linked = testCases.filter((tc) => (tc.linkedUserFlowCount ?? tc.linkedUserFlows?.length ?? 0) > 0).length;
     
     const status = {
       [Status.Ready]: 0,
@@ -52,13 +53,13 @@ export const TestCaseStats: React.FC<TestCaseStatsProps> = ({ testCases }) => {
       if (priority[tc.priority] !== undefined) priority[tc.priority]++;
     });
 
-    return { total, status, automation, priority };
+    return { total, linked, notLinked: total - linked, status, automation, priority };
   }, [testCases]);
 
   if (testCases.length === 0) return null;
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
        {/* Total Card */}
        <div className="group relative bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between cursor-default">
           <div>
@@ -73,6 +74,14 @@ export const TestCaseStats: React.FC<TestCaseStatsProps> = ({ testCases }) => {
           <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block px-2 py-1 bg-slate-900 text-white text-xs font-medium rounded shadow-lg whitespace-nowrap z-50 animate-in fade-in zoom-in-95 duration-150 pointer-events-none">
              Total test cases in current view
              <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-0.5 border-4 border-transparent border-t-slate-900"></div>
+          </div>
+       </div>
+
+       <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col justify-center">
+          <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-3">User Flow Coverage</p>
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+            <StatItem color="bg-brand-500" count={stats.linked} label="Linked" tooltip="Test cases linked to at least one User Flow" />
+            <StatItem color="bg-slate-300" count={stats.notLinked} label="Not Linked" tooltip="Test cases without a User Flow" />
           </div>
        </div>
 

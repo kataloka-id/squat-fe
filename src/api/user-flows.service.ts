@@ -1,6 +1,7 @@
 import api from './axios';
 import { getCached } from './read-cache';
 import { invalidateProjectResources } from './cache-invalidation.ts';
+import { notifyExecutionDataChanged } from './execution-refresh.ts';
 import { queryKeys } from './query-keys.ts';
 import type {
   ApiResponse,
@@ -115,14 +116,14 @@ export type UserFlowPayload = Pick<
 
 const base = (projectId: string) => `/v1/projects/${projectId}/user-flows`;
 const invalidate = (projectId: string) =>
-  invalidateProjectResources(projectId, [
+  (invalidateProjectResources(projectId, [
     'areas',
     'flows',
     'testCases',
     'runs',
     'reports',
     'projects',
-  ]);
+  ]), notifyExecutionDataChanged(projectId));
 
 export const normalizeUserFlow = (
   value: UserFlow & {

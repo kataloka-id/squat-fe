@@ -1123,12 +1123,12 @@ export const UserFlowDetail = ({
                 </p>
               </div>
             ) : (
-              <div className="overflow-x-auto rounded-lg border border-slate-200">
+              <div className="table-scroll-container rounded-lg border border-slate-200">
                 <table className="w-full min-w-[960px] table-fixed text-left text-sm">
                   <colgroup>
                     <col className="w-12" />
                     <col className="w-[6.5rem]" />
-                    <col />
+                    <col className="w-[20rem]" />
                     <col className="w-40" />
                     <col className="w-32" />
                     <col className="w-48" />
@@ -1224,7 +1224,7 @@ export const UserFlowDetail = ({
                         </td>
                         <td className="min-w-0 px-4 py-3">
                           <button
-                            className="overflow-hidden text-left font-medium leading-5 text-slate-900 transition-colors [-webkit-box-orient:vertical] [-webkit-line-clamp:2] [display:-webkit-box] hover:text-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
+                            className="block max-w-full truncate text-left font-medium leading-5 text-slate-900 transition-colors hover:text-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500"
                             onClick={(event) => {
                               setTestCaseDetailTrigger(event.currentTarget);
                               setViewingTestCaseId(testCase.id);
@@ -2666,13 +2666,13 @@ export const UserFlowsPage = ({
             </div>
             {view === 'list' ? (
               <div className="rounded-xl border border-slate-200 bg-white">
-                <div className="overflow-x-auto rounded-t-xl">
-                  <table className="w-full min-w-[94rem] table-fixed text-sm">
+                <div className="table-scroll-container rounded-t-xl">
+                  <table className="w-full min-w-[102rem] table-fixed text-sm">
                     <colgroup>
-                      <col className="w-[20rem]" />
+                      <col className="w-[22rem]" />
                       <col className="w-36" />
-                      <col className="w-[6.5rem]" />
-                      <col className="w-[6.5rem]" />
+                      <col className="w-[8.5rem]" />
+                      <col className="w-[8.5rem]" />
                       <col className="w-[6.5rem]" />
                       <col className="w-28" />
                       <col className="w-28" />
@@ -2744,10 +2744,10 @@ export const UserFlowsPage = ({
                             <td className="truncate px-4 py-4 align-middle" title={flow.area || undefined}>
                               {flow.area || '—'}
                             </td>
-                            <td className="px-4 py-4 text-center align-middle">
+                            <td className="whitespace-nowrap px-4 py-4 text-center align-middle">
                               {canManage ? <InlineBadgeSelect type="priority" label="Priority" value={flow.priority} options={FLOW_PRIORITIES} optionLabel={title} disabled={inlineUpdating !== null} onChange={(value) => updateInlineField(flow, 'priority', value)} /> : <Badge value={flow.priority} />}
                             </td>
-                            <td className="px-4 py-4 text-center align-middle">
+                            <td className="whitespace-nowrap px-4 py-4 text-center align-middle">
                               <Badge value={flow.health} />
                             </td>
                             <td className="whitespace-nowrap px-4 py-4 text-center align-middle">

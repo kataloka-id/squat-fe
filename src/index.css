@@ -104,6 +104,15 @@ body {
 }
 
 @layer utilities {
+  /* Keep horizontal overflow inside the table surface instead of squeezing
+     columns when a parent becomes narrow (including reduced DevTools width). */
+  .table-scroll-container {
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: visible;
+  }
+
   /* Custom Scrollbar - Minimalist and Clean */
   ::-webkit-scrollbar {
     width: 6px;

@@ -19,6 +19,8 @@ type TestCaseDetailProps = {
   showAttachments?: boolean;
   // eslint-disable-next-line no-unused-vars -- TypeScript callback parameter, not a runtime binding.
   onNotify?: (message: string, type: 'success' | 'error') => void;
+  // eslint-disable-next-line no-unused-vars -- TypeScript callback parameter, not a runtime binding.
+  onOpenUserFlow?: (projectId: string, userFlowId: string) => void;
 };
 
 const MarkdownSection = ({ title, value, emptyText }: { title: string; value?: string; emptyText: string }) => (
@@ -63,7 +65,7 @@ const LinkedPreconditions = ({ links, projectId }: { links: LinkedPrecondition[]
 );
 
 /** Read-only test case detail that renders stored Markdown as safe React nodes. */
-export const TestCaseDetail = ({ testCase, project, onClose, onEdit, onNotify = () => {}, showAttachments = true }: TestCaseDetailProps) => {
+export const TestCaseDetail = ({ testCase, project, onClose, onEdit, onNotify = () => {}, onOpenUserFlow, showAttachments = true }: TestCaseDetailProps) => {
   useEffect(() => {
     if (!testCase) return undefined;
     const closeOnEscape = (event: KeyboardEvent) => {
@@ -75,6 +77,7 @@ export const TestCaseDetail = ({ testCase, project, onClose, onEdit, onNotify = 
   if (!testCase) return null;
   const linkedPreconditions = [...(testCase.linkedPreconditions ?? [])].sort((a, b) => a.sortOrder - b.sortOrder);
   const hasLinkedPreconditions = linkedPreconditions.length > 0;
+  const linkedUserFlows = testCase.linkedUserFlows ?? [];
 
   return createPortal(
     <div className="fixed inset-0 z-[60] flex justify-end bg-slate-900/40 backdrop-blur-sm" onClick={onClose} role="presentation">
@@ -96,6 +99,10 @@ export const TestCaseDetail = ({ testCase, project, onClose, onEdit, onNotify = 
             <Badge label="Section" type="section" value={testCase.section} />
           </div>
           <MarkdownSection emptyText="No description provided." title="Description" value={testCase.description} />
+          <section aria-label="Linked User Flows" className="border-b border-slate-100 py-5">
+            <h3 className="text-sm font-semibold text-slate-900">Linked User Flows</h3>
+            {linkedUserFlows.length === 0 ? <p className="mt-2 text-sm text-slate-400">Not linked to any User Flow.</p> : <ul className="mt-3 space-y-2">{linkedUserFlows.map((flow) => <li key={flow.id}><button type="button" onClick={() => onOpenUserFlow?.(testCase.projectId, flow.id)} className="flex w-full items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-left hover:border-brand-200 hover:bg-brand-50 focus:outline-none focus:ring-2 focus:ring-brand-500/30"><span className="rounded-full bg-brand-50 px-2 py-1 font-mono text-xs font-semibold text-brand-700">{flow.flowKey}</span><span className="truncate text-sm text-slate-700">{flow.title}</span></button></li>)}</ul>}
+          </section>
           <section aria-label="Preconditions" className="border-b border-slate-100 py-5">
             <h3 className="text-sm font-semibold text-slate-900">Preconditions</h3>
             {testCase.preconditions

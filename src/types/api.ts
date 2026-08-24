@@ -205,6 +205,8 @@ export interface ProjectTestCaseRecord {
   automationReadiness?: string;
   isReusable?: boolean;
   linkedPreconditions?: LinkedPreconditionRecord[];
+  linkedUserFlows?: LinkedUserFlowRecord[];
+  linkedUserFlowCount?: number;
   description?: string | null;
   preconditions?: string | null;
   mainExpectedResult?: string | null;
@@ -212,6 +214,12 @@ export interface ProjectTestCaseRecord {
   tags: string[];
   createdBy?: string;
   updatedAt?: string;
+}
+
+export interface LinkedUserFlowRecord {
+  id: string;
+  flowKey: string;
+  title: string;
 }
 
 export type TestRunStatus = 'Draft' | 'In Progress' | 'Completed' | 'Blocked';
