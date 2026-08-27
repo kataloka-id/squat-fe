@@ -16,11 +16,25 @@ type Props = {
 
 const ROOT = '__root__';
 
+/** Normalize the nested folder catalog used by the Test Cases page. */
+export const flattenTestCaseFolders = (
+  nodes: TestCaseFolderRecord[],
+  parentId?: string | null,
+  seen = new Set<string>(),
+): TestCaseFolderRecord[] => nodes.flatMap(({ children, ...folder }) => {
+  if (seen.has(folder.id)) return [];
+  seen.add(folder.id);
+  const normalized = {
+    ...folder,
+    ...(parentId !== undefined && folder.parentId == null ? { parentId } : {}),
+  };
+  return [normalized, ...flattenTestCaseFolders(children ?? [], normalized.id, seen)];
+});
+
+// folderId is the canonical relation used by the Test Cases catalog. A
+// display-only folderPath can be stale after a case is moved.
 const caseBelongsToFolder = (testCase: ProjectTestCaseRecord, folderIds: Set<string>) =>
-  Boolean(
-    testCase.folderPath?.some((folder) => folderIds.has(folder.id)) ||
-      (testCase.folderId && folderIds.has(testCase.folderId)),
-  );
+  Boolean(testCase.folderId && folderIds.has(testCase.folderId));
 
 const IndeterminateCheckbox = ({
   checked,
@@ -44,13 +58,30 @@ export const TestRunCaseTree = ({
   onToggleFolder,
 }: Props) => {
   const selectedIds = useMemo(() => new Set(selected), [selected]);
+  const normalizedFolders = useMemo(() => flattenTestCaseFolders(folders), [folders]);
+  const folderPathById = useMemo(() => {
+    const byId = new Map(normalizedFolders.map((folder) => [folder.id, folder]));
+    const paths = new Map<string, string>();
+    normalizedFolders.forEach((folder) => {
+      const names: string[] = [];
+      const visited = new Set<string>();
+      let current: TestCaseFolderRecord | undefined = folder;
+      while (current && !visited.has(current.id)) {
+        visited.add(current.id);
+        names.unshift(current.name);
+        current = current.parentId ? byId.get(current.parentId) : undefined;
+      }
+      paths.set(folder.id, names.join(' / '));
+    });
+    return paths;
+  }, [normalizedFolders]);
   const children = useMemo(
     () =>
-      folders.reduce<Record<string, TestCaseFolderRecord[]>>((result, folder) => {
+      normalizedFolders.reduce<Record<string, TestCaseFolderRecord[]>>((result, folder) => {
         (result[folder.parentId || ROOT] ??= []).push(folder);
         return result;
       }, {}),
-    [folders],
+    [normalizedFolders],
   );
   const subtreeIds = useMemo(() => {
     const result = new Map<string, Set<string>>();
@@ -62,17 +93,17 @@ export const TestRunCaseTree = ({
       result.set(id, ids);
       return ids;
     };
-    folders.forEach((folder) => collect(folder.id));
+    normalizedFolders.forEach((folder) => collect(folder.id));
     return result;
-  }, [children, folders]);
+  }, [children, normalizedFolders]);
   const casesByFolder = useMemo(() => {
     const result = new Map<string, ProjectTestCaseRecord[]>();
-    folders.forEach((folder) => {
+    normalizedFolders.forEach((folder) => {
       const ids = subtreeIds.get(folder.id) || new Set([folder.id]);
       result.set(folder.id, cases.filter((testCase) => caseBelongsToFolder(testCase, ids)));
     });
     return result;
-  }, [cases, folders, subtreeIds]);
+  }, [cases, normalizedFolders, subtreeIds]);
   const renderCase = (testCase: ProjectTestCaseRecord): ReactNode => {
     const checked = selectedIds.has(testCase.id);
     const disabled = !selectable(testCase);
@@ -90,7 +121,7 @@ export const TestRunCaseTree = ({
         <span className="min-w-0 break-words">
           <strong>{formatTestCaseDisplayId(testCase)} · {testCase.title}</strong>
           <small className="mt-1 block text-slate-500">
-            {testCase.folderPath?.map((folder) => folder.name).join(' / ') || 'Uncategorized'} · {testCase.section} · {testCase.priority} · {testCase.status}
+            {testCase.folderId ? folderPathById.get(testCase.folderId) || 'Uncategorized' : 'Uncategorized'} · {testCase.section} · {testCase.priority} · {testCase.status}
           </small>
         </span>
       </label>
@@ -126,7 +157,7 @@ export const TestRunCaseTree = ({
       </details>
     );
   };
-  const knownFolderIds = new Set(folders.map((folder) => folder.id));
+  const knownFolderIds = new Set(normalizedFolders.map((folder) => folder.id));
   const uncategorized = visibleCases.filter((testCase) => !testCase.folderId || !knownFolderIds.has(testCase.folderId));
   const allUncategorized = cases.filter((testCase) => !testCase.folderId || !knownFolderIds.has(testCase.folderId));
   const rootFolders = children[ROOT] || [];
@@ -150,11 +181,12 @@ export const TestRunCaseTree = ({
 };
 
 export const getFolderSelectionIds = (cases: ProjectTestCaseRecord[], folders: TestCaseFolderRecord[], folderId: string) => {
+  const normalizedFolders = flattenTestCaseFolders(folders);
   const descendants = new Set<string>([folderId]);
   let changed = true;
   while (changed) {
     changed = false;
-    folders.forEach((folder) => {
+    normalizedFolders.forEach((folder) => {
       if (folder.parentId && descendants.has(folder.parentId) && !descendants.has(folder.id)) {
         descendants.add(folder.id);
         changed = true;
