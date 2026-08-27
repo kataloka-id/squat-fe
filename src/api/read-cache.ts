@@ -9,7 +9,8 @@
  */
 export type ReadOptions = {
   force?: boolean;
-  cacheTtlMs?: number;
+  // eslint-disable-next-line no-unused-vars -- resolver consumes the completed response.
+  cacheTtlMs?: number | ((value: unknown) => number);
 };
 
 type CacheEntry<T> = {
@@ -77,7 +78,7 @@ export const getCached = <T>(
   request: () => Promise<T>,
   options: ReadOptions = {},
 ): Promise<T> => {
-  const ttlMs = options.cacheTtlMs ?? DEFAULT_TTL_MS;
+  const ttlFor = options.cacheTtlMs ?? DEFAULT_TTL_MS;
   // A user-requested refresh must win over an older in-flight request too.
   if (options.force) bumpKeyVersion(key);
   const session = sessionGeneration;
@@ -108,6 +109,7 @@ export const getCached = <T>(
   void promise.then(
     (value) => {
       if (pending.get(key) === entry) pending.delete(key);
+      const ttlMs = typeof ttlFor === 'function' ? ttlFor(value) : ttlFor;
       remember(key, value, ttlMs, session, version, generation);
     },
     () => {

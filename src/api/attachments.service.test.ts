@@ -52,6 +52,91 @@ describe('AttachmentsService', () => {
     expect(api.get).toHaveBeenCalledWith('/v1/attachments/attachment-1/url');
   });
 
+  it('reuses a successful view URL for the same canonical attachment ID', async () => {
+    const response = { data: { url: 'https://signed.example', expiresIn: 600 } };
+    api.get.mockResolvedValue(response);
+
+    await AttachmentsService.getViewUrl(' attachment-1 ');
+    await AttachmentsService.getViewUrl('attachment-1');
+
+    expect(api.get).toHaveBeenCalledTimes(1);
+    expect(api.get).toHaveBeenCalledWith('/v1/attachments/attachment-1/url');
+  });
+
+  it('deduplicates concurrent view URL requests without mixing attachment IDs', async () => {
+    // eslint-disable-next-line no-unused-vars -- deferred resolver signature.
+    let resolveA!: (value: unknown) => void;
+    // eslint-disable-next-line no-unused-vars -- deferred resolver signature.
+    let resolveB!: (value: unknown) => void;
+    api.get.mockImplementation((path: string) => new Promise((resolve) => {
+      if (path.includes('attachment-a')) resolveA = resolve;
+      else resolveB = resolve;
+    }));
+
+    const firstA = AttachmentsService.getViewUrl('attachment-a');
+    const secondA = AttachmentsService.getViewUrl('attachment-a');
+    const firstB = AttachmentsService.getViewUrl('attachment-b');
+    resolveA({ data: { url: 'https://signed/a', expiresIn: 600 } });
+    resolveB({ data: { url: 'https://signed/b', expiresIn: 600 } });
+
+    await expect(Promise.all([firstA, secondA, firstB])).resolves.toEqual([
+      { data: { url: 'https://signed/a', expiresIn: 600 } },
+      { data: { url: 'https://signed/a', expiresIn: 600 } },
+      { data: { url: 'https://signed/b', expiresIn: 600 } },
+    ]);
+    expect(api.get).toHaveBeenCalledTimes(2);
+    expect(api.get).toHaveBeenCalledWith('/v1/attachments/attachment-a/url');
+    expect(api.get).toHaveBeenCalledWith('/v1/attachments/attachment-b/url');
+  });
+
+  it('does not cache failures and retries the next request', async () => {
+    api.get.mockRejectedValueOnce(new Error('temporary failure'))
+      .mockResolvedValueOnce({ data: { url: 'https://signed/retry', expiresIn: 600 } });
+
+    await expect(AttachmentsService.getViewUrl('attachment-1')).rejects.toThrow('temporary failure');
+    await expect(AttachmentsService.getViewUrl('attachment-1')).resolves.toEqual({
+      data: { url: 'https://signed/retry', expiresIn: 600 },
+    });
+    expect(api.get).toHaveBeenCalledTimes(2);
+  });
+
+  it('refetches an expired signed URL and replaces the cached value', async () => {
+    vi.useFakeTimers();
+    api.get.mockResolvedValueOnce({ data: { url: 'https://signed/old', expiresIn: 1 } })
+      .mockResolvedValueOnce({ data: { url: 'https://signed/new', expiresIn: 600 } });
+
+    await expect(AttachmentsService.getViewUrl('attachment-1')).resolves.toEqual({
+      data: { url: 'https://signed/old', expiresIn: 1 },
+    });
+    vi.advanceTimersByTime(1_000);
+    await expect(AttachmentsService.getViewUrl('attachment-1')).resolves.toEqual({
+      data: { url: 'https://signed/new', expiresIn: 600 },
+    });
+    expect(api.get).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
+  it('invalidates the view URL after a successful delete', async () => {
+    api.get.mockResolvedValue({ data: { url: 'https://signed/example', expiresIn: 600 } });
+    api.delete.mockResolvedValue({ data: null });
+
+    await AttachmentsService.getViewUrl('attachment-1');
+    await AttachmentsService.remove('attachment-1', 'project-1', 'case-1');
+    await AttachmentsService.getViewUrl('attachment-1');
+
+    expect(api.get).toHaveBeenCalledTimes(2);
+  });
+
+  it('clears view URL cache for a new in-memory session', async () => {
+    api.get.mockResolvedValue({ data: { url: 'https://signed/example', expiresIn: 600 } });
+
+    await AttachmentsService.getViewUrl('attachment-1');
+    invalidateReadCache();
+    await AttachmentsService.getViewUrl('attachment-1');
+
+    expect(api.get).toHaveBeenCalledTimes(2);
+  });
+
   it('shares and deduplicates attachment config reads until the default cache TTL expires', async () => {
     vi.useFakeTimers();
     const response = { data: { maxFileSizeBytes: 20 * 1024 * 1024 } };
