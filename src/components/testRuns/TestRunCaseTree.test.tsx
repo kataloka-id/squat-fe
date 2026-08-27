@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { ProjectTestCaseRecord } from '@/src/types/api.ts';
-import { TestRunCaseTree, getFolderSelectionIds } from './TestRunCaseTree.tsx';
+import { TestRunCaseTree, flattenTestCaseFolders, getFolderSelectionIds } from './TestRunCaseTree.tsx';
 
 const makeCase = (id: string, folderId?: string, folderPath?: Array<{ id: string; name: string }>) => ({
   id,
@@ -85,5 +85,38 @@ describe('TestRunCaseTree', () => {
     );
     expect(screen.getByText('Empty')).toBeTruthy();
     expect(screen.getByText('0 / 0 selected')).toBeTruthy();
+  });
+
+  it('normalizes nested API folders and uses folderId instead of a stale folderPath', () => {
+    const nestedFolders = [{
+      id: 'checkout', projectId: 'p1', name: 'Checkout', children: [
+        { id: 'payments', projectId: 'p1', name: 'Payments', children: [
+          { id: 'cards', projectId: 'p1', name: 'Cards' },
+        ] },
+      ],
+    }];
+    expect(flattenTestCaseFolders(nestedFolders)).toEqual([
+      expect.objectContaining({ id: 'checkout' }),
+      expect.objectContaining({ id: 'payments', parentId: 'checkout' }),
+      expect.objectContaining({ id: 'cards', parentId: 'payments' }),
+    ]);
+    const canonicalCase = makeCase('canonical', 'cards', [
+      { id: 'wrong', name: 'Stale path' },
+    ]);
+    expect(getFolderSelectionIds([canonicalCase], nestedFolders, 'checkout')).toEqual(['canonical']);
+    expect(getFolderSelectionIds([canonicalCase], nestedFolders, 'payments')).toEqual(['canonical']);
+    render(
+      <TestRunCaseTree
+        cases={[canonicalCase]}
+        visibleCases={[canonicalCase]}
+        folders={nestedFolders}
+        selected={[]}
+        selectable={() => true}
+        onToggleCase={() => {}}
+        onToggleFolder={() => {}}
+      />,
+    );
+    expect(screen.getByText(/Checkout \/ Payments \/ Cards/)).toBeTruthy();
+    expect(screen.queryByText(/Stale path/)).toBeNull();
   });
 });
