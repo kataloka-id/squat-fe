@@ -42,6 +42,7 @@ import { Badge as TestCaseBadge } from '@/src/components/projectsTestCases/ui/Ba
 import { Button } from '@/src/components/projectsTestCases/ui/Button.tsx';
 import { ConfirmationModal } from '@/src/components/projectsTestCases/ui/ConfirmationModal.tsx';
 import { TestCaseDetail } from '@/src/components/projectsTestCases/TestCaseDetail.tsx';
+import { TestRunCaseTree } from '@/src/components/testRuns/TestRunCaseTree.tsx';
 import { Select } from '@/src/components/projectsTestCases/ui/Select.tsx';
 import { MultiSelect } from '@/src/components/projectsTestCases/ui/MultiSelect.tsx';
 import { InlineBadgeSelect } from '@/src/components/projectsTestCases/ui/InlineBadgeSelect.tsx';
@@ -72,7 +73,7 @@ import {
   type Project,
   type TestCase,
 } from '@/src/components/projectsTestCases/types.ts';
-import type { ProjectTestCaseRecord } from '@/src/types/api.ts';
+import type { ProjectTestCaseRecord, TestCaseFolderRecord } from '@/src/types/api.ts';
 import { formatPercentage, percentageNumber } from '@/src/utils/percentage.ts';
 import { ROW_ACTIONS_CELL_CLASS } from '@/src/components/projectsTestCases/ui/RowActions.tsx';
 import { FlowActions } from './FlowActions.tsx';
@@ -656,6 +657,7 @@ export const UserFlowDetail = ({
   flow,
   flows = [],
   availableTestCases,
+  folders = [],
   onClose,
   onEdit,
   onRefresh,
@@ -670,6 +672,7 @@ export const UserFlowDetail = ({
   flow: UserFlow;
   flows?: UserFlow[];
   availableTestCases: ProjectTestCaseRecord[];
+  folders?: TestCaseFolderRecord[];
   onClose: () => void;
   onEdit?: () => void;
   onRefresh: () => void;
@@ -798,23 +801,23 @@ export const UserFlowDetail = ({
         : { field, order: 'asc' },
     );
   };
-  const candidates = useMemo(
-    () =>
-      availableTestCases.filter(
-        (testCase) =>
-          (!testCase.projectId || testCase.projectId === projectId) &&
-          !linked.some((linkedCase) => linkedCase.id === testCase.id),
-      ),
-    [availableTestCases, linked, projectId],
-  );
+  const allTestCases = useMemo(() => {
+    const seen = new Set<string>();
+    return availableTestCases.filter((testCase) => {
+      if ((testCase.projectId && testCase.projectId !== projectId) || seen.has(testCase.id)) return false;
+      seen.add(testCase.id);
+      return true;
+    });
+  }, [availableTestCases, projectId]);
+  const linkedIds = useMemo(() => new Set(linked.map((testCase) => testCase.id)), [linked]);
   const sectionOptions = useMemo(
     () =>
-      Array.from(new Set(candidates.map((testCase) => getSectionName(testCase)).filter(Boolean)))
+      Array.from(new Set(allTestCases.map((testCase) => getSectionName(testCase)).filter(Boolean)))
         .sort()
         .map((section) => ({ label: section, value: section })),
-    [candidates, getSectionName],
+    [allTestCases, getSectionName],
   );
-  const filteredCandidates = candidates.filter((testCase) => {
+  const filteredCandidates = allTestCases.filter((testCase) => {
     const searchable =
       `${testCase.projectKey || ''} ${testCase.tcNumber || ''} ${testCase.title} ${getSectionName(testCase)}`.toLowerCase();
     return (
@@ -831,9 +834,9 @@ export const UserFlowDetail = ({
     );
   });
   const validSelected = useMemo(() => {
-    const candidateIds = new Set(candidates.map((testCase) => testCase.id));
+    const candidateIds = new Set(allTestCases.map((testCase) => testCase.id));
     return selected.filter((id) => candidateIds.has(id));
-  }, [candidates, selected]);
+  }, [allTestCases, selected]);
   const selectedVisibleCount = filteredCandidates.filter((testCase) =>
     validSelected.includes(testCase.id),
   ).length;
@@ -894,9 +897,10 @@ export const UserFlowDetail = ({
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [isLinkModalOpen, linkCasesTrigger]);
   const linkSelectedCases = async () => {
-    if (!validSelected.length) return;
+    const newSelected = validSelected.filter((id) => !linkedIds.has(id));
+    if (!newSelected.length) return;
     try {
-      await UserFlowsService.linkTestCases(projectId, flow.id, validSelected);
+      await UserFlowsService.linkTestCases(projectId, flow.id, newSelected);
       closeLinkModal();
       refresh();
     } catch (error) {
@@ -905,7 +909,7 @@ export const UserFlowDetail = ({
   };
   const toggleTestCase = (id: string) =>
     setSelected((current) => {
-      const candidateIds = new Set(candidates.map((testCase) => testCase.id));
+      const candidateIds = new Set(allTestCases.map((testCase) => testCase.id));
       const currentValid = Array.from(new Set(current.filter((selectedId) => candidateIds.has(selectedId))));
       return currentValid.includes(id)
         ? currentValid.filter((selectedId) => selectedId !== id)
@@ -913,7 +917,7 @@ export const UserFlowDetail = ({
     });
   const toggleVisibleTestCases = () => {
     setSelected((current) => {
-      const candidateIds = new Set(candidates.map((testCase) => testCase.id));
+      const candidateIds = new Set(allTestCases.map((testCase) => testCase.id));
       const currentValid = current.filter((id) => candidateIds.has(id));
       if (allVisibleSelected) {
         const visibleIds = new Set(filteredCandidates.map((testCase) => testCase.id));
@@ -1101,6 +1105,7 @@ export const UserFlowDetail = ({
                   icon={<Plus size={16} />}
                   onClick={(event) => {
                     setLinkCasesTrigger(event.currentTarget);
+                    setSelected(Array.from(linkedIds));
                     setIsLinkModalOpen(true);
                   }}
                 >
@@ -1389,47 +1394,27 @@ export const UserFlowDetail = ({
                         />
                         Select All
                     </label>
-                    {filteredCandidates.length ? (
-                      filteredCandidates.map((testCase) => (
-                        <label
-                          key={testCase.id}
-                          className="flex cursor-pointer items-start gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0 hover:bg-slate-50"
-                        >
-                          <input
-                            aria-label={`${testCase.projectKey ? `${testCase.projectKey}-` : ''}${testCase.tcNumber ?? '—'}`}
-                            className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
-                            type="checkbox"
-                            checked={validSelected.includes(testCase.id)}
-                            onChange={() => toggleTestCase(testCase.id)}
-                          />
-                          <span className="min-w-0 flex-1">
-                            <span className="font-medium text-slate-700">
-                              {testCase.projectKey ? `${testCase.projectKey}-` : ''}
-                              {testCase.tcNumber ?? '—'}
-                            </span>
-                            <span
-                              className="mt-0.5 block text-sm text-slate-900 [-webkit-box-orient:vertical] [-webkit-line-clamp:2] [display:-webkit-box]"
-                              title={testCase.title}
-                            >
-                              {testCase.title}
-                            </span>
-                            <span className="mt-1 block truncate text-xs text-slate-500">
-                              {getSectionName(testCase)}
-                            </span>
-                            <span className="mt-2 flex flex-wrap gap-1.5">
-                              <Badge value={testCase.priority} />
-                              <Badge value={testCase.status} />
-                              <Badge value={testCase.automationType} />
-                              <Badge
-                                value={normalizeAutomationReadiness(testCase.automationReadiness)}
-                              />
-                            </span>
-                          </span>
-                        </label>
-                      ))
+                    {allTestCases.length ? (
+                      <TestRunCaseTree
+                        cases={allTestCases}
+                        visibleCases={filteredCandidates}
+                        folders={folders}
+                        selected={validSelected}
+                        selectable={() => true}
+                        onToggleCase={toggleTestCase}
+                        onToggleFolder={(_folderId, caseIds) => {
+                          setSelected((current) => {
+                            const currentIds = new Set(current);
+                            const ids = Array.from(new Set(caseIds));
+                            const shouldSelect = ids.some((id) => !currentIds.has(id));
+                            ids.forEach((id) => shouldSelect ? currentIds.add(id) : currentIds.delete(id));
+                            return Array.from(currentIds);
+                          });
+                        }}
+                      />
                     ) : (
                       <p className="p-6 text-center text-sm text-slate-500">
-                      {candidates.length
+                      {allTestCases.length
                         ? 'No test cases match your search or filters.'
                         : 'All available test cases are already linked.'}
                       </p>
@@ -1443,8 +1428,8 @@ export const UserFlowDetail = ({
                   <Button variant="secondary" onClick={closeLinkModal}>
                     Cancel
                   </Button>
-                  <Button disabled={!validSelected.length} onClick={() => void linkSelectedCases()}>
-                    Link Selected ({validSelected.length})
+                  <Button disabled={!validSelected.some((id) => !linkedIds.has(id))} onClick={() => void linkSelectedCases()}>
+                    Link Selected ({validSelected.filter((id) => !linkedIds.has(id)).length})
                   </Button>
                 </div>
               </div>
@@ -2354,6 +2339,7 @@ export const UserFlowsPage = ({
   const [detailError, setDetailError] = useState<{ message: string; notFound: boolean } | null>(null);
   const [detailRequest, setDetailRequest] = useState<UserFlow | null>(null);
   const [testCases, setTestCases] = useState<ProjectTestCaseRecord[]>([]);
+  const [testCaseFolders, setTestCaseFolders] = useState<TestCaseFolderRecord[]>([]);
   const [query, setQuery] = useState('');
   const [areaFilter, setAreaFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
@@ -2440,12 +2426,16 @@ export const UserFlowsPage = ({
     setDetailLoading(true);
     setDetailError(null);
     try {
-      const [data, cases] = await Promise.all([
+      const [data, cases, folderResponse] = await Promise.all([
         UserFlowsService.get(projectId, flow.id),
         ProjectsService.listTestCases(projectId),
+        ProjectsService.listTestCaseFolders
+          ? ProjectsService.listTestCaseFolders(projectId)
+          : Promise.resolve({ data: { folders: [] } }),
       ]);
       setDetail(data.data);
       setTestCases(cases.data);
+      setTestCaseFolders(folderResponse.data.folders ?? []);
     } catch (cause) {
       const status = typeof cause === 'object' && cause && 'status' in cause ? Number(cause.status) : undefined;
       setDetail(null);
@@ -2533,6 +2523,7 @@ export const UserFlowsPage = ({
           flow={detail}
           flows={flows}
           availableTestCases={testCases}
+          folders={testCaseFolders}
           onClose={closeDetail}
           onBack={detailHistory.length ? backToPreviousFlow : undefined}
           onViewFlow={openRelatedFlow}

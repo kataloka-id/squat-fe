@@ -128,11 +128,22 @@ export const TestRunCaseTree = ({
   };
   const knownFolderIds = new Set(folders.map((folder) => folder.id));
   const uncategorized = visibleCases.filter((testCase) => !testCase.folderId || !knownFolderIds.has(testCase.folderId));
+  const allUncategorized = cases.filter((testCase) => !testCase.folderId || !knownFolderIds.has(testCase.folderId));
   const rootFolders = children[ROOT] || [];
   return (
     <div className="overflow-hidden rounded-lg border" role="tree" aria-label="Test case folders and test cases">
       {rootFolders.map((folder) => renderFolder(folder, 0))}
-      {uncategorized.map(renderCase)}
+      {allUncategorized.length > 0 && (
+        <div className="border-t bg-slate-50">
+          <div className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-slate-800">
+            <span className="min-w-0 flex-1">Uncategorized</span>
+            <span className="shrink-0 text-xs font-normal text-slate-500">
+              {allUncategorized.filter((testCase) => selectedIds.has(testCase.id)).length} / {allUncategorized.length} selected
+            </span>
+          </div>
+          {uncategorized.map(renderCase)}
+        </div>
+      )}
       {!rootFolders.length && !uncategorized.length && <p className="p-4 text-sm text-slate-500">No test cases match your search or filters.</p>}
     </div>
   );
