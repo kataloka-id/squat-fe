@@ -10,7 +10,7 @@ const company = { id: 'c1', name: 'Acme', hasLogo: false, logoVersion: null, pro
 const companies = vi.hoisted(() => ({ getProfile: vi.fn(), updateProfile: vi.fn(), getLogoBlob: vi.fn(), uploadLogo: vi.fn(), removeLogo: vi.fn(), getDetails: vi.fn(), updateDetails: vi.fn(), listManaged: vi.fn(), createManaged: vi.fn(), updateManagedStatus: vi.fn(), getManaged: vi.fn(), deleteManaged: vi.fn(), listCategories: vi.fn(), listTypes: vi.fn(), updateType: vi.fn(), updateCategory: vi.fn() }));
 const users = vi.hoisted(() => ({ getMe: vi.fn(), updateMe: vi.fn(), list: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), getProjectAssignments: vi.fn(), updateProjectAssignments: vi.fn() }));
 const roles = vi.hoisted(() => ({ list: vi.fn(), assignable: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn() }));
-const projects = vi.hoisted(() => ({ list: vi.fn() }));
+const projects = vi.hoisted(() => ({ list: vi.fn(), listSections: vi.fn() }));
 const sections = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn() }));
 const areas = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn() }));
 vi.mock('@/src/api/companies.service.ts', () => ({ CompaniesService: companies }));
@@ -40,7 +40,7 @@ describe('SettingsPage Company Profile', () => {
     companies.listCategories.mockResolvedValue({ data: [{ id: 1, code: 'MICRO', name: 'Micro', isActive: true }] });
     companies.listTypes.mockResolvedValue({ data: [{ id: 1, businessType: 'PT', isActive: true }] });
     companies.getManaged.mockResolvedValue({ data: { ...company, isActive: false } });
-    roles.list.mockResolvedValue({ data: [] }); roles.assignable.mockResolvedValue({ data: [] }); users.list.mockResolvedValue({ data: [] }); projects.list.mockResolvedValue({ data: [] }); sections.list.mockResolvedValue({ data: [] }); areas.list.mockResolvedValue({ data: [] });
+    roles.list.mockResolvedValue({ data: [] }); roles.assignable.mockResolvedValue({ data: [] }); users.list.mockResolvedValue({ data: [] }); projects.list.mockResolvedValue({ data: [] }); projects.listSections.mockResolvedValue({ data: [] }); sections.list.mockResolvedValue({ data: [] }); areas.list.mockResolvedValue({ data: [] });
   });
 
   it('renders the Area catalog before the Section catalog', async () => {
@@ -70,6 +70,22 @@ describe('SettingsPage Company Profile', () => {
     await screen.findByText('Payments');
     expect((screen.getByRole('button', { name: 'Edit' }) as HTMLButtonElement).disabled).toBe(false);
     expect((screen.getByRole('button', { name: 'Delete' }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('shows Section usage counters and protects a Section used by Test Cases', async () => {
+    projects.list.mockResolvedValue({ data: [{ id: 'p1', name: 'Project One', key: 'ONE' }] });
+    projects.listSections.mockResolvedValue({ data: [
+      { id: 's1', name: 'General', projectId: 'p1', usageCount: 12 },
+      { id: 's2', name: 'Empty', projectId: 'p1', usageCount: 0 },
+    ] });
+    renderSettings();
+    await screen.findByText('General');
+    expect(screen.getByText('12 Test Cases')).not.toBeNull();
+    expect(screen.getByText('0 Test Cases')).not.toBeNull();
+    const generalRow = screen.getByText('General').closest('li')!;
+    expect((within(generalRow).getByRole('button', { name: 'Delete' }) as HTMLButtonElement).disabled).toBe(true);
+    const emptyRow = screen.getByText('Empty').closest('li')!;
+    expect((within(emptyRow).getByRole('button', { name: 'Delete' }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it('does not expose Area mutations to a viewer', async () => {
@@ -158,7 +174,7 @@ describe('SettingsPage Company Profile', () => {
   it('lets a non-admin project member manage only the selected project section catalog', async () => {
     const user = userEvent.setup();
     projects.list.mockResolvedValue({ data: [{ id: 'p1', name: 'Project One', key: 'ONE' }, { id: 'p2', name: 'Project Two', key: 'TWO' }] });
-    sections.list.mockImplementation((projectId: string) => Promise.resolve({ data: projectId === 'p1' ? [{ id: 's1', name: 'General', projectId: 'p1' }] : [{ id: 's2', name: 'Regression', projectId: 'p2' }] }));
+    projects.listSections.mockImplementation((projectId: string) => Promise.resolve({ data: projectId === 'p1' ? [{ id: 's1', name: 'General', projectId: 'p1' }] : [{ id: 's2', name: 'Regression', projectId: 'p2' }] }));
     sections.create.mockResolvedValue({ data: { id: 's3', name: 'Payments', projectId: 'p2' } });
     renderSettings('qa');
     await screen.findByRole('heading', { name: 'Katalog Section Test Case' });
@@ -168,7 +184,7 @@ describe('SettingsPage Company Profile', () => {
     await user.type(screen.getByPlaceholderText('Nama Section'), 'Payments');
     await user.click(screen.getByRole('button', { name: 'Tambah Section' }));
     await waitFor(() => expect(sections.create).toHaveBeenCalledWith('p2', { name: 'Payments' }));
-    expect(sections.list).toHaveBeenCalledWith('p2', expect.anything());
+    expect(projects.listSections).toHaveBeenCalledWith('p2', expect.anything());
   });
 
   it('shows the selected business type and category as read-only for a QA user', async () => {

@@ -14,6 +14,20 @@
 | Expected behavior | As specified in the Product Manifest. |
 | Fixed product decisions | Test Run creation is centralized in Test Runs; Test Case execution metrics remain centralized; health is unchanged; report data is derived from execution data. |
 
+### Product clarification — User Flow Health
+
+Health remains derived from the latest associated Test Run; it is not a new or editable rule in
+this task. The current classification is:
+
+- `Healthy`: all cases in the latest run finished `Passed`.
+- `At Risk`: no case `Failed`, but at least one case is `Blocked`, `Skipped`, incomplete, or
+  untested.
+- `Broken`: at least one case is `Failed`.
+- `Unknown`: there is no latest run or the latest run contains no cases.
+
+`Critical` is a Priority value, not a Health value. `N/A` is used for unavailable coverage, not
+for Health. The User Flow Health helper must explain these existing rules without changing them.
+
 ## Orchestration Manifest
 
 | Field | Value |

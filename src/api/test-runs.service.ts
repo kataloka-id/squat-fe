@@ -166,6 +166,18 @@ export const TestRunsService = {
     invalidate(projectId);
     return response;
   },
+  updateCases: async (
+    projectId: string,
+    runId: string,
+    payload: { testCaseIds: string[]; allowDraftTestCases?: boolean },
+  ) => {
+    const response = (await api.patch(
+      `${base(projectId)}/${runId}/cases`,
+      payload,
+    )) as ApiResponse<TestRunRecord>;
+    invalidate(projectId);
+    return response;
+  },
   delete: async (projectId: string, runId: string) => {
     const response = await api.delete(`${base(projectId)}/${runId}`);
     invalidate(projectId);

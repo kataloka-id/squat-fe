@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TestRunExecutionRecord } from '@/src/types/api.ts';
+import { AttachmentsService } from '@/src/api/attachments.service.ts';
 import { ExecutionDetail } from './TestRunsPage.tsx';
 import { selectCustomOption } from '@/src/test/selectTestUtils.ts';
 
@@ -14,7 +15,7 @@ const execution = (result: TestRunExecutionRecord['result'] = 'Untested'): TestR
 
 const executionWithMetadata = (): TestRunExecutionRecord => ({
   ...execution(),
-  snapshot: { tcNumber: 2, title: 'Can sign in', automationType: 'UI', priority: 'Critical', steps: [] },
+  snapshot: { projectKey: 'PAY', tcNumber: 2, title: 'Can sign in', automationType: 'UI', priority: 'Critical', steps: [] },
 });
 
 const executionWithStep = (): TestRunExecutionRecord => ({
@@ -39,7 +40,39 @@ const executionWithUserFlow = (): TestRunExecutionRecord => ({
 describe('Test Run execution Save & Next', () => {
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
     vi.useRealTimers();
+  });
+
+  it('resolves master attachment markdown inside execution context', async () => {
+    vi.spyOn(AttachmentsService, 'getViewUrl').mockResolvedValue({
+      success: true,
+      code: 'ATTACHMENT_URL_SUCCESS',
+      message: '',
+      data: { url: 'https://cdn.example/master-image.png', expiresIn: 300 },
+    });
+    render(
+      <ExecutionDetail
+        execution={{
+          ...execution(),
+          snapshot: {
+            ...execution().snapshot,
+            preconditions:
+              '![image.png](attachment://11111111-1111-4111-8111-111111111111)',
+            steps: [],
+          },
+        }}
+        onSave={vi.fn()}
+        onPrevious={vi.fn()}
+        onNext={vi.fn()}
+      />,
+    );
+
+    const image = await screen.findByAltText('image.png');
+    expect(image.getAttribute('src')).toBe('https://cdn.example/master-image.png');
+    expect(AttachmentsService.getViewUrl).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+    );
   });
 
   it('does not show Saved before a mutation, then clears it after the transient confirmation', async () => {
@@ -104,11 +137,11 @@ describe('Test Run execution Save & Next', () => {
     render(<ExecutionDetail execution={executionWithMetadata()} onSave={vi.fn()} onPrevious={vi.fn()} onNext={vi.fn()} />);
 
     const metadata = screen.getByLabelText('Test case metadata');
-    expect(metadata.textContent).toContain('TC-2');
+    expect(metadata.textContent).toContain('PAY-2');
     expect(metadata.textContent).toContain('UI');
     expect(metadata.textContent).toContain('Critical');
     expect(metadata.children).toHaveLength(3);
-    expect(screen.queryByText('TC-2 · UI · Critical')).toBeNull();
+    expect(screen.queryByText('PAY-2 · UI · Critical')).toBeNull();
   });
 
   it('keeps the action footer outside the scrollable content without overlay positioning', () => {

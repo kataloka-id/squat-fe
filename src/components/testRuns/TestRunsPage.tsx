@@ -72,6 +72,9 @@ import {
 import { InfoPopover } from '@/src/components/projectsTestCases/ui/InfoPopover.tsx';
 import { useSessionUser } from '@/src/auth/SessionContext.tsx';
 import { canManageTestRuns, testRunActions } from './test-run-actions.ts';
+import { formatTestCaseDisplayId } from '@/src/utils/testCaseDisplayId.ts';
+import { Attachments } from '@/src/components/projectsTestCases/Attachments.tsx';
+import { getFolderSelectionIds, TestRunCaseTree } from './TestRunCaseTree.tsx';
 
 type Props = {
   projects: Project[];
@@ -86,6 +89,12 @@ type Props = {
 };
 const label = (user?: { username?: string | null; email?: string | null } | null) =>
   user?.username || user?.email || '—';
+const selectableCaseRecord = (testCase: ProjectTestCaseRecord, allowDraft: boolean) =>
+  testCase.status !== 'Deprecated' && (testCase.status !== 'Draft' || allowDraft);
+const selectableCase = (cases: ProjectTestCaseRecord[], id: string, allowDraft: boolean) => {
+  const testCase = cases.find((item) => item.id === id);
+  return Boolean(testCase && selectableCaseRecord(testCase, allowDraft));
+};
 const StatusIcon = ({ value }: { value: string }) => {
   const props = { className: 'h-3 w-3', 'aria-hidden': true as const };
   if (value === 'Completed' || value === 'Passed') return <CheckCircle2 {...props} />;
@@ -761,6 +770,163 @@ const TestRunEditor = ({
   );
 };
 
+const EditRunCases = ({
+  projectId,
+  run,
+  onClose,
+  onSaved,
+}: {
+  projectId: string;
+  run: TestRunDetailRecord;
+  onClose: () => void;
+  onSaved: () => void;
+}) => {
+  const [cases, setCases] = useState<ProjectTestCaseRecord[]>([]);
+  const [folders, setFolders] = useState<Awaited<ReturnType<typeof ProjectsService.listTestCaseFolders>>['data']['folders']>([]);
+  const [selected, setSelected] = useState<string[]>(
+    run.executions.map((item) => item.sourceTestCaseId).filter(Boolean) as string[],
+  );
+  const [query, setQuery] = useState('');
+  const [allowDraft, setAllowDraft] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [confirmRemoval, setConfirmRemoval] = useState(false);
+  useEffect(() => {
+    void ProjectsService.listTestCases(projectId)
+      .then((response) => setCases(response.data))
+      .catch((cause) =>
+        setError((cause as { message?: string }).message || 'Test case tidak dapat dimuat.'),
+      );
+  }, [projectId]);
+  useEffect(() => {
+    const listFolders = ProjectsService.listTestCaseFolders;
+    if (!listFolders) return;
+    void listFolders(projectId)
+      .then((response) => setFolders(response.data.folders || []))
+      .catch(() => setFolders([]));
+  }, [projectId]);
+  const visible = useMemo(
+    () =>
+      cases.filter((item) =>
+        `${item.tcNumber || ''} ${item.title}`.toLowerCase().includes(query.toLowerCase()),
+      ),
+    [cases, query],
+  );
+  const removed = run.executions.filter(
+    (item) => item.sourceTestCaseId && !selected.includes(item.sourceTestCaseId),
+  );
+  const toggleFolder = (folderId: string) => {
+      const ids = getFolderSelectionIds(cases, folders, folderId);
+      setSelected((current) => {
+        const selectedIds = new Set(current);
+        const selectableIds = ids.filter((id) => selectableCase(cases, id, allowDraft));
+        const shouldSelect = selectableIds.some((id) => !selectedIds.has(id));
+        return shouldSelect
+          ? [...new Set([...current, ...selectableIds])]
+          : current.filter((id) => !ids.includes(id));
+      });
+  };
+  const submit = async () => {
+    if (removed.length && !confirmRemoval) {
+      setConfirmRemoval(true);
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await TestRunsService.updateCases(projectId, run.id, {
+        testCaseIds: selected,
+        allowDraftTestCases: allowDraft,
+      });
+      onSaved();
+    } catch (cause) {
+      setError(
+        (cause as { message?: string }).message || 'Test Case pada Test Run tidak dapat disimpan.',
+      );
+    } finally {
+      setSaving(false);
+      setConfirmRemoval(false);
+    }
+  };
+  return (
+    <div
+      className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="edit-test-run-cases-title"
+    >
+      <section className="flex max-h-[calc(100dvh-2rem)] w-full max-w-3xl flex-col rounded-xl border border-slate-200 bg-white shadow-2xl">
+        <header className="border-b border-slate-100 px-6 py-4">
+          <h2 id="edit-test-run-cases-title" className="text-lg font-bold text-slate-900">
+            Edit Test Cases
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            Pilih Test Case yang menjadi anggota Test Run ini. Selected: {selected.length}
+          </p>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          <label className="block text-sm font-medium text-slate-700">
+            Cari test case
+            <input
+              aria-label="Cari test case"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Cari test case…"
+              className="mt-1 w-full rounded-lg border p-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
+            />
+          </label>
+          <label className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            <input
+              type="checkbox"
+              checked={allowDraft}
+              onChange={(event) => setAllowDraft(event.target.checked)}
+            />
+            <span>
+              <strong>Izinkan Draft test cases</strong>
+              <small className="mt-1 block">Draft hanya dapat ditambahkan setelah diizinkan.</small>
+            </span>
+          </label>
+          <TestRunCaseTree
+            cases={cases}
+            visibleCases={visible}
+            folders={folders}
+            selected={selected}
+            selectable={(testCase) => selectableCaseRecord(testCase, allowDraft)}
+            onToggleCase={(id) => setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])}
+            onToggleFolder={(folderId) => toggleFolder(folderId)}
+          />
+          {confirmRemoval && (
+            <p
+              role="alert"
+              className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
+            >
+              {removed.length} Test Case akan dikeluarkan dari Test Run. Execution result, evidence,
+              dan attachment milik entry tersebut akan dihapus dari Test Run. Master Test Case tidak
+              dihapus. Klik Simpan lagi untuk melanjutkan.
+            </p>
+          )}
+          {error && (
+            <p
+              role="alert"
+              className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+            >
+              {error}
+            </p>
+          )}
+        </div>
+        <footer className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50/50 px-6 py-4">
+          <Button variant="secondary" onClick={onClose} disabled={saving}>
+            Batal
+          </Button>
+          <Button onClick={() => void submit()} disabled={saving}>
+            {saving ? 'Saving…' : confirmRemoval ? 'Confirm removal & save' : 'Save changes'}
+          </Button>
+        </footer>
+      </section>
+    </div>
+  );
+};
+
 const FlowSelector = ({
   flows,
   query,
@@ -914,6 +1080,7 @@ export const CreateRun = ({
   const [ownerId, setOwnerId] = useState('');
   const [cases, setCases] = useState<ProjectTestCaseRecord[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
+  const [caseFolders, setCaseFolders] = useState<Awaited<ReturnType<typeof ProjectsService.listTestCaseFolders>>['data']['folders']>([]);
   const [query, setQuery] = useState('');
   const [caseSection, setCaseSection] = useState('');
   const [caseFolder, setCaseFolder] = useState('');
@@ -941,6 +1108,13 @@ export const CreateRun = ({
       .catch((cause) =>
         setError((cause as { message?: string }).message || 'Test case tidak dapat dimuat.'),
       );
+  }, [projectId]);
+  useEffect(() => {
+    const listFolders = ProjectsService.listTestCaseFolders;
+    if (!listFolders) return;
+    void listFolders(projectId)
+      .then((response) => setCaseFolders(response.data.folders || []))
+      .catch(() => setCaseFolders([]));
   }, [projectId]);
   useEffect(() => {
     let active = true;
@@ -984,7 +1158,7 @@ export const CreateRun = ({
   }, [projectId, mode, selectedFlowIds, allowDraft]);
   const values = (field: 'section' | 'priority' | 'automationType' | 'status') =>
     [...new Set(cases.map((testCase) => testCase[field]).filter(Boolean))].sort();
-  const folders = useMemo(
+  const folderOptions = useMemo(
     () => [
       ...new Map(
         cases.map((testCase) => [
@@ -1226,7 +1400,7 @@ export const CreateRun = ({
                     label="Folder"
                     value={caseFolder}
                     setValue={setCaseFolder}
-                    options={folders}
+                    options={folderOptions}
                   />
                   <Filter
                     label="Tag"
@@ -1253,45 +1427,25 @@ export const CreateRun = ({
                     options={values('status').map((item) => [item, item])}
                   />
                 </div>
-                <div className="mt-3 max-h-[min(36rem,42vh)] overflow-y-auto rounded-lg border">
-                  {visible.map((testCase) => {
-                    const disabled = !selectable(testCase);
-                    const helper =
-                      testCase.status === 'Deprecated'
-                        ? 'Test case ini sudah deprecated dan tidak dapat ditambahkan ke Test Run baru.'
-                        : testCase.status === 'Draft'
-                          ? 'Belum siap untuk eksekusi. Aktifkan pilihan Draft untuk menambahkannya.'
-                          : '';
-                    return (
-                      <label
-                        key={testCase.id}
-                        className={`flex gap-3 border-b p-3 text-sm ${disabled ? 'cursor-not-allowed bg-slate-50 text-slate-500' : 'cursor-pointer hover:bg-slate-50'}`}
-                      >
-                        <input
-                          disabled={disabled}
-                          type="checkbox"
-                          checked={selected.includes(testCase.id)}
-                          onChange={() =>
-                            setSelected((current) =>
-                              current.includes(testCase.id)
-                                ? current.filter((id) => id !== testCase.id)
-                                : [...current, testCase.id],
-                            )
-                          }
-                        />
-                        <span className="min-w-0 break-words">
-                          <strong>
-                            {testCase.tcNumber ? `TC-${testCase.tcNumber}` : 'TC'} ·{' '}
-                            {testCase.title}
-                          </strong>
-                          <small className="mt-1 block text-slate-500">
-                            {testCase.section} · {testCase.priority} · {testCase.status}
-                          </small>
-                          {helper && <small className="mt-1 block text-amber-800">{helper}</small>}
-                        </span>
-                      </label>
-                    );
-                  })}
+                <div className="mt-3 max-h-[min(36rem,42vh)] overflow-y-auto">
+                  <TestRunCaseTree
+                    cases={cases}
+                    visibleCases={visible}
+                    folders={caseFolders}
+                    selected={selected}
+                    selectable={selectable}
+                    onToggleCase={(id) => setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id])}
+                    onToggleFolder={(folderId) => {
+                      const ids = getFolderSelectionIds(cases, caseFolders, folderId);
+                      setSelected((current) => {
+                        const selectableIds = ids.filter((id) => selectableCase(cases, id, allowDraft));
+                        const shouldSelect = selectableIds.some((id) => !current.includes(id));
+                        return shouldSelect
+                          ? [...new Set([...current, ...selectableIds])]
+                          : current.filter((id) => !ids.includes(id));
+                      });
+                    }}
+                  />
                 </div>
                 <div className="mt-2 flex gap-2">
                   <button
@@ -1366,6 +1520,7 @@ export const RunDetail = ({
   const [error, setError] = useState<string | null>(null);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [editingCases, setEditingCases] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -1553,6 +1708,17 @@ export const RunDetail = ({
                       <Pencil className="h-4 w-4 text-slate-500" /> Edit Run
                     </button>
                   )}
+                  {detailActions.includes('edit') && (
+                    <button
+                      onClick={() => {
+                        setActionsOpen(false);
+                        setEditingCases(true);
+                      }}
+                      className="flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    >
+                      <ClipboardList className="h-4 w-4 text-slate-500" /> Edit Test Cases
+                    </button>
+                  )}
                   {detailActions.includes('delete') && (
                     <button
                       onClick={() => {
@@ -1603,6 +1769,17 @@ export const RunDetail = ({
           onClose={() => setEditing(false)}
           onSaved={() => {
             setEditing(false);
+            void load();
+          }}
+        />
+      )}
+      {detailActions.includes('edit') && editingCases && (
+        <EditRunCases
+          projectId={projectId}
+          run={run}
+          onClose={() => setEditingCases(false)}
+          onSaved={() => {
+            setEditingCases(false);
             void load();
           }}
         />
@@ -1697,7 +1874,8 @@ export const RunDetail = ({
                 <ResultIcon result={execution.result} />
                 <span className="min-w-0">
                   <span className="block text-xs text-slate-500">
-                    TC-{execution.snapshot.tcNumber ?? '—'} · {execution.snapshot.priority || '—'}
+                    {formatTestCaseDisplayId(execution.snapshot)} ·{' '}
+                    {execution.snapshot.priority || '—'}
                   </span>
                   <strong className="block truncate">{execution.snapshot.title}</strong>
                   <span className="mt-1 block">
@@ -1940,7 +2118,7 @@ export const ExecutionDetail = ({
                   className="flex flex-wrap items-center gap-1.5"
                   aria-label="Test case metadata"
                 >
-                  <Chip type="generic" value={`TC-${execution.snapshot.tcNumber ?? '—'}`} />
+                  <Chip type="generic" value={formatTestCaseDisplayId(execution.snapshot)} />
                   <Chip type="automation" value={execution.snapshot.automationType || '—'} />
                   <Chip type="priority" value={execution.snapshot.priority || '—'} />
                   {execution.userFlows?.map((flow) => (
@@ -2006,17 +2184,27 @@ export const ExecutionDetail = ({
               <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Preconditions
               </h3>
-              <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">
-                {execution.snapshot.preconditions || '—'}
-              </p>
+              {execution.snapshot.preconditions ? (
+                <MarkdownContent
+                  value={execution.snapshot.preconditions}
+                  className="mt-1 text-sm text-slate-600"
+                />
+              ) : (
+                <p className="mt-1 text-sm text-slate-600">—</p>
+              )}
             </div>
             <div>
               <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Expected Result
               </h3>
-              <p className="mt-1 whitespace-pre-wrap text-sm text-slate-600">
-                {execution.snapshot.expectedResult || '—'}
-              </p>
+              {execution.snapshot.expectedResult ? (
+                <MarkdownContent
+                  value={execution.snapshot.expectedResult}
+                  className="mt-1 text-sm text-slate-600"
+                />
+              ) : (
+                <p className="mt-1 text-sm text-slate-600">—</p>
+              )}
             </div>
           </section>
           <section>
@@ -2028,9 +2216,12 @@ export const ExecutionDetail = ({
                   return (
                     <li key={step.id || index} className="rounded-lg border p-3 text-sm">
                       <strong>
-                        {index + 1}. {step.action}
+                        {index + 1}. <MarkdownContent value={step.action} />
                       </strong>
-                      <p className="mt-1 text-slate-500">Expected: {step.expectedResult}</p>
+                      <div className="mt-1 text-slate-500">
+                        <span className="font-medium">Expected: </span>
+                        <MarkdownContent value={step.expectedResult} />
+                      </div>
                     </li>
                   );
                 return (
@@ -2046,11 +2237,25 @@ export const ExecutionDetail = ({
                         <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                           Action
                         </p>
-                        <p className="font-semibold text-slate-900">{draft.action || '—'}</p>
+                        {draft.action ? (
+                          <MarkdownContent
+                            value={draft.action}
+                            className="font-semibold text-slate-900"
+                          />
+                        ) : (
+                          <p className="font-semibold text-slate-900">—</p>
+                        )}
                         <p className="mt-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
                           Expected Result
                         </p>
-                        <p className="text-slate-600">{draft.expectedResult || '—'}</p>
+                        {draft.expectedResult ? (
+                          <MarkdownContent
+                            value={draft.expectedResult}
+                            className="text-slate-600"
+                          />
+                        ) : (
+                          <p className="text-slate-600">—</p>
+                        )}
                       </div>
                     </div>
                     <label className="block text-sm font-semibold">
@@ -2076,9 +2281,7 @@ export const ExecutionDetail = ({
                         label={`Step ${index + 1} Notes`}
                         value={draft.notes || ''}
                         attachmentContext={
-                          projectId
-                            ? { projectId, testCaseId: execution.sourceTestCaseId }
-                            : undefined
+                          projectId ? { projectId, testRunCaseId: execution.id } : undefined
                         }
                         onChange={(value) => {
                           setGlobalApplyPending(false);
@@ -2132,12 +2335,22 @@ export const ExecutionDetail = ({
               value={notes}
               disabled={readOnly}
               onChange={setNotes}
-              attachmentContext={
-                projectId ? { projectId, testCaseId: execution.sourceTestCaseId } : undefined
-              }
+              attachmentContext={projectId ? { projectId, testRunCaseId: execution.id } : undefined}
               rows={4}
             />
           </section>
+          {projectId && (
+            <Attachments
+              canDelete={!readOnly}
+              canUpload={!readOnly}
+              onNotify={(message, type) => {
+                if (type === 'error') setSaveError(message);
+                else showSaved();
+              }}
+              projectId={projectId}
+              testRunCaseId={execution.id}
+            />
+          )}
           {saveError && (
             <p
               role="alert"

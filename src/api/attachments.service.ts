@@ -4,6 +4,8 @@ import type { ApiResponse, AttachmentRecord, AttachmentUploadRequest, Attachment
 
 const testCaseAttachmentPath = (projectId: string, testCaseId: string) =>
   `/v1/projects/${projectId}/test-cases/${testCaseId}/attachments`;
+const testRunCaseAttachmentPath = (projectId: string, testRunCaseId: string) =>
+  `/v1/projects/${projectId}/test-run-cases/${testRunCaseId}/attachments`;
 const attachmentConfigPath = '/v1/attachments/config';
 
 export const AttachmentsService = {
@@ -13,6 +15,10 @@ export const AttachmentsService = {
     api.post(`/v1/attachments/${attachmentId}/complete`) as Promise<ApiResponse<AttachmentRecord>>,
   listForTestCase: (projectId: string, testCaseId: string, options?: ReadOptions) => {
     const path = testCaseAttachmentPath(projectId, testCaseId);
+    return getCached(path, () => api.get(path) as Promise<ApiResponse<AttachmentRecord[]>>, options);
+  },
+  listForTestRunCase: (projectId: string, testRunCaseId: string, options?: ReadOptions) => {
+    const path = testRunCaseAttachmentPath(projectId, testRunCaseId);
     return getCached(path, () => api.get(path) as Promise<ApiResponse<AttachmentRecord[]>>, options);
   },
   getViewUrl: (attachmentId: string) =>
@@ -25,6 +31,13 @@ export const AttachmentsService = {
   remove: async (attachmentId: string, projectId: string, testCaseId: string) => {
     const response = await api.delete(`/v1/attachments/${attachmentId}`) as ApiResponse<null>;
     invalidateReadCache(testCaseAttachmentPath(projectId, testCaseId));
+    return response;
+  },
+  removeForTestRunCase: async (attachmentId: string, projectId: string, testRunCaseId: string) => {
+    const response = await api.delete(
+      `${testRunCaseAttachmentPath(projectId, testRunCaseId)}/${attachmentId}`,
+    ) as ApiResponse<null>;
+    invalidateReadCache(testRunCaseAttachmentPath(projectId, testRunCaseId));
     return response;
   },
   invalidateTestCase: (projectId: string, testCaseId: string) =>

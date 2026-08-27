@@ -38,6 +38,14 @@ describe('AttachmentsService', () => {
     expect(api.get).toHaveBeenCalledTimes(2);
   });
 
+  it('scopes execution attachment reads to the run-case owner', async () => {
+    api.get.mockResolvedValue({ data: [] });
+    await AttachmentsService.listForTestRunCase('project-1', 'run-case-1', { force: true });
+    expect(api.get).toHaveBeenCalledWith(
+      '/v1/projects/project-1/test-run-cases/run-case-1/attachments',
+    );
+  });
+
   it('requests a short-lived private view URL from the attachment endpoint', async () => {
     api.get.mockResolvedValue({ data: { url: 'https://signed.example', expiresIn: 600 } });
     await AttachmentsService.getViewUrl('attachment-1');

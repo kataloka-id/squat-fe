@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const service = vi.hoisted(() => ({ createUploadUrl: vi.fn(), complete: vi.fn(), listForTestCase: vi.fn(), getViewUrl: vi.fn(), getConfig: vi.fn(), remove: vi.fn() }));
+const service = vi.hoisted(() => ({ createUploadUrl: vi.fn(), complete: vi.fn(), listForTestCase: vi.fn(), listForTestRunCase: vi.fn(), getViewUrl: vi.fn(), getConfig: vi.fn(), remove: vi.fn(), removeForTestRunCase: vi.fn() }));
 vi.mock('@/src/api/attachments.service.ts', () => ({ AttachmentsService: service }));
 
 import { Attachments } from './Attachments.tsx';
@@ -14,6 +14,7 @@ describe('Attachments', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     service.listForTestCase.mockResolvedValue({ data: [] });
+    service.listForTestRunCase.mockResolvedValue({ data: [] });
     service.getConfig.mockResolvedValue({ data: { maxFileSizeBytes: 10 * 1024 * 1024 } });
   });
   afterEach(cleanup);
@@ -102,6 +103,54 @@ describe('Attachments', () => {
     expect(notify).toHaveBeenCalledWith('Attachment deleted.', 'success');
   });
 
+  it('uses the Test Run execution owner for listing and deletion', async () => {
+    const attachment = { id: 'run-attachment-1', projectId: 'project-1', testCaseId: null, testRunCaseId: 'run-case-1', originalFileName: 'run.png', mimeType: 'image/png', fileSize: 1234, status: 'READY', createdAt: '2026-01-01T00:00:00.000Z' };
+    service.listForTestRunCase.mockResolvedValue({ data: [attachment] });
+    service.removeForTestRunCase.mockResolvedValue({ data: null });
+    render(<Attachments onNotify={notify} projectId="project-1" testRunCaseId="run-case-1" />);
+
+    await screen.findByText('run.png');
+    expect(service.listForTestRunCase).toHaveBeenCalledWith('project-1', 'run-case-1', expect.anything());
+    fireEvent.click(screen.getByRole('button', { name: 'Delete run.png' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete image' }));
+    await waitFor(() => expect(service.removeForTestRunCase).toHaveBeenCalledWith('run-attachment-1', 'project-1', 'run-case-1'));
+  });
+
+  it('shows master references in a Test Run without exposing master deletion', async () => {
+    const master = { id: 'master-1', projectId: 'project-1', testCaseId: 'case-1', testRunCaseId: null, ownership: 'TEST_CASE', originalFileName: 'reference.png', mimeType: 'image/png', fileSize: 1234, status: 'READY', createdAt: '2026-01-01T00:00:00.000Z' };
+    const evidence = { id: 'run-1', projectId: 'project-1', testCaseId: null, testRunCaseId: 'run-case-1', ownership: 'TEST_RUN', originalFileName: 'evidence.png', mimeType: 'image/png', fileSize: 1234, status: 'READY', createdAt: '2026-01-01T00:00:00.000Z' };
+    service.listForTestRunCase.mockResolvedValue({ data: [master, evidence] });
+    render(<Attachments onNotify={notify} projectId="project-1" testRunCaseId="run-case-1" />);
+    await screen.findByText('reference.png');
+    expect(screen.queryByRole('button', { name: 'Delete reference.png' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Delete evidence.png' })).toBeTruthy();
+    expect(screen.getByText(/Read-only reference/)).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Master Test Case references' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Test Run evidence' })).toBeTruthy();
+  });
+
+  it('renders a retryable error state when the attachment list cannot load', async () => {
+    service.listForTestCase.mockRejectedValue(new Error('Attachment service unavailable'));
+    renderAttachments();
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Attachment service unavailable'));
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
+  });
+
+  it('refreshes an expired preview URL once, then reports a deleted attachment', async () => {
+    const attachment = { id: 'attachment-1', projectId: 'project-1', testCaseId: 'case-1', originalFileName: 'reference.png', mimeType: 'image/png', fileSize: 1234, status: 'READY', createdAt: '2026-01-01T00:00:00.000Z' };
+    service.listForTestCase.mockResolvedValue({ data: [attachment] });
+    service.getViewUrl.mockResolvedValueOnce({ data: { url: 'https://signed/expired', expiresIn: 1 } }).mockResolvedValueOnce({ data: { url: 'https://signed/fresh', expiresIn: 600 } });
+    renderAttachments();
+    await screen.findByText('reference.png');
+    fireEvent.click(screen.getByRole('button', { name: 'Preview reference.png' }));
+    await waitFor(() => expect(screen.getByRole('img', { name: 'reference.png' }).getAttribute('src')).toBe('https://signed/expired'));
+    fireEvent.error(screen.getByRole('img', { name: 'reference.png' }));
+    await waitFor(() => expect(screen.getByRole('img', { name: 'reference.png' }).getAttribute('src')).toBe('https://signed/fresh'));
+    expect(service.getViewUrl).toHaveBeenCalledTimes(2);
+    fireEvent.error(screen.getByRole('img', { name: 'reference.png' }));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith('Image preview expired or is no longer available.', 'error'));
+  });
+
   it('notifies its edit-form owner only after attachment deletion succeeds', async () => {
     const attachment = { id: 'attachment-1', projectId: 'project-1', testCaseId: 'case-1', originalFileName: 'failure.png', mimeType: 'image/png', fileSize: 1234, status: 'READY', createdAt: '2026-01-01T00:00:00.000Z' };
     const onDeleted = vi.fn();
@@ -135,5 +184,12 @@ describe('Attachments', () => {
     render(<Attachments canDelete={false} onNotify={notify} projectId="project-1" testCaseId="case-1" />);
     await screen.findByText('failure.png');
     expect(screen.queryByRole('button', { name: 'Delete failure.png' })).toBeNull();
+  });
+
+  it('does not expose upload controls in a read-only execution panel', async () => {
+    render(<Attachments canDelete={false} canUpload={false} onNotify={notify} projectId="project-1" testRunCaseId="run-case-1" />);
+    await waitFor(() => expect(screen.getAllByText('No images attached.').length).toBe(2));
+    expect(screen.queryByRole('button', { name: 'Attach image' })).toBeNull();
+    expect(screen.queryByLabelText('Select image attachment')).toBeNull();
   });
 });
