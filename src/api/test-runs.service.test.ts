@@ -23,19 +23,6 @@ import { TestRunsService } from './test-runs.service.ts';
 describe('TestRunsService.updateExecution', () => {
   it('PATCHes the execution resource with the execution payload, never the Test Run metadata resource', async () => {
     mocks.patch.mockResolvedValueOnce({ success: true, data: { id: 'execution-7' } });
-    mocks.get.mockResolvedValueOnce({
-      success: true,
-      data: [
-        {
-          id: 'execution-7',
-          result: 'Passed',
-          testCaseSnapshot: { title: 'Can sign in' },
-          lastSaved: '2026-08-17T00:00:00.000Z',
-          userFlows: [],
-        },
-      ],
-    });
-
     await TestRunsService.updateExecution('project-1', 'run-3', 'execution-7', {
       result: 'Passed',
       notes: 'Verified',
@@ -47,6 +34,7 @@ describe('TestRunsService.updateExecution', () => {
       '/v1/projects/project-1/test-runs/run-3/executions/execution-7',
       { result: 'Passed', notes: 'Verified', assigneeId: 'user-2', durationSeconds: 45 },
     );
+    expect(mocks.get).not.toHaveBeenCalled();
   });
 });
 
@@ -66,18 +54,60 @@ describe('TestRunsService.resolveUserFlows', () => {
 
 describe('TestRunsService.get', () => {
   it('retains persisted run User Flows when no eligible execution exists', async () => {
+    mocks.get.mockClear();
     mocks.get.mockResolvedValueOnce({
       data: {
         id: 'run-1',
         summary: {},
         userFlows: [{ id: 'flow-1', snapshot: { flowKey: 'UF-1', title: 'Checkout' } }],
+        executions: [],
       },
     });
-    mocks.get.mockResolvedValueOnce({ data: [] });
     const response = await TestRunsService.get('project-1', 'run-1', { force: true });
+    expect(mocks.get).toHaveBeenCalledTimes(1);
     expect(response.data.userFlows).toEqual([
       { id: 'flow-1', snapshot: { flowKey: 'UF-1', title: 'Checkout' } },
     ]);
+  });
+
+  it('loads the full execution aggregate with one primary request', async () => {
+    mocks.get.mockClear();
+    mocks.get.mockResolvedValueOnce({
+      data: {
+        id: 'run-1',
+        summary: { total: 2, progress: 50 },
+        userFlows: [],
+        executions: [
+          {
+            id: 'execution-1',
+            testCaseSnapshot: { title: 'First case', steps: [] },
+            result: 'Passed',
+            lastSaved: '2026-08-17T00:00:00.000Z',
+            steps: [],
+            userFlows: [],
+            attachments: [{ id: 'attachment-1', ownership: 'TEST_CASE' }],
+          },
+          {
+            id: 'execution-2',
+            testCaseSnapshot: { title: 'Second case', steps: [] },
+            result: null,
+            lastSaved: '2026-08-17T00:00:00.000Z',
+            steps: [],
+            userFlows: [],
+            attachments: [],
+          },
+        ],
+      },
+    });
+
+    const response = await TestRunsService.get('project-1', 'run-1', { force: true });
+
+    expect(mocks.get).toHaveBeenCalledTimes(1);
+    expect(response.data.executions).toHaveLength(2);
+    expect(response.data.executions[0].attachments).toEqual([
+      { id: 'attachment-1', ownership: 'TEST_CASE' },
+    ]);
+    expect(response.data.executions[1].result).toBe('Untested');
   });
 });
 

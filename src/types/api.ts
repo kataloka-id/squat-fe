@@ -307,6 +307,7 @@ export interface TestRunExecutionRecord {
   steps?: TestRunExecutionStepRecord[];
   executedAt?: string | null;
   updatedAt: string;
+  attachments?: AttachmentRecord[];
   snapshot: {
     projectKey?: string | null;
     tcNumber?: number | null;
@@ -373,6 +374,8 @@ export interface ProjectReportRecord {
     runId: string;
     executionId: string;
     runName: string;
+    sourceTestCaseId?: string | null;
+    projectKey?: string | null;
     tcNumber?: number | null;
     title: string;
     result: 'FAILED' | 'BLOCKED';

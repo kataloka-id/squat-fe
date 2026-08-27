@@ -1583,20 +1583,35 @@ export const RunDetail = ({
   }
   const save = async (
     executionId: string,
-    payload: { result?: TestRunResult | null; notes?: string; assigneeId?: string },
+    payload: {
+      result?: TestRunResult | null;
+      notes?: string;
+      assigneeId?: string;
+      steps?: Array<{ id: string; result?: TestRunResult | null; notes?: string | null }>;
+    },
   ) => {
     const response = await TestRunsService.updateExecution(projectId, runId, executionId, payload);
     if (!response.superseded)
       setRun((current) => {
         if (!current) return current;
+        const { testRun: responseRun, ...updatedExecution } = response.data;
+        const testRun = responseRun as
+          | (TestRunRecord & { summary?: { progress?: number } & Record<string, number> })
+          | undefined;
         const executions = current.executions.map((execution) =>
-          execution.id === executionId ? response.data : execution,
+          execution.id === executionId
+            ? { ...execution, ...updatedExecution, attachments: updatedExecution.attachments ?? execution.attachments }
+            : execution,
         );
-        return { ...current, executions, progress: progressFromExecutions(executions) };
+        return {
+          ...current,
+          ...testRun,
+          executions,
+          progress: testRun?.summary
+            ? { ...current.progress, ...testRun.summary, percentage: testRun.summary.progress ?? 0 }
+            : progressFromExecutions(executions),
+        };
       });
-    // The mutation response contains one execution only. Refetch the run so
-    // status and all summary KPIs always come from the server's central helper.
-    if (!response.superseded) await load();
   };
   const saveStep = async (
     executionId: string,
@@ -1613,12 +1628,24 @@ export const RunDetail = ({
     if (!response.superseded)
       setRun((current) => {
         if (!current) return current;
+        const { testRun: responseRun, ...updatedExecution } = response.data;
+        const testRun = responseRun as
+          | (TestRunRecord & { summary?: { progress?: number } & Record<string, number> })
+          | undefined;
         const executions = current.executions.map((item) =>
-          item.id === executionId ? response.data : item,
+          item.id === executionId
+            ? { ...item, ...updatedExecution, attachments: updatedExecution.attachments ?? item.attachments }
+            : item,
         );
-        return { ...current, executions, progress: progressFromExecutions(executions) };
+        return {
+          ...current,
+          ...testRun,
+          executions,
+          progress: testRun?.summary
+            ? { ...current.progress, ...testRun.summary, percentage: testRun.summary.progress ?? 0 }
+            : progressFromExecutions(executions),
+        };
       });
-    if (!response.superseded) await load();
   };
   const detailActions = testRunActions(run, { canManage });
   const deleteRun = async () => {
@@ -1966,7 +1993,12 @@ export const ExecutionDetail = ({
   assignees?: Array<{ value: string; label: string }>;
   onSave: (
     executionId: string,
-    payload: { result?: TestRunResult | null; notes?: string; assigneeId?: string },
+    payload: {
+      result?: TestRunResult | null;
+      notes?: string;
+      assigneeId?: string;
+      steps?: Array<{ id: string; result?: TestRunResult | null; notes?: string | null }>;
+    },
   ) => Promise<void>;
   onStepSave?: (
     executionId: string,
@@ -2050,14 +2082,10 @@ export const ExecutionDetail = ({
         assigneeId !== (execution.assignee?.id || '') ||
         changedSteps.length > 0;
       if (globalChanged || !changedSteps.length) await onSave(execution.id, payload);
-      if (!globalChanged)
-        for (const step of changedSteps) {
-          if (onStepSave)
-            await onStepSave(execution.id, step.id, {
-              result: step.result,
-              notes: step.notes,
-            });
-        }
+      else
+        await onSave(execution.id, {
+          steps: changedSteps.map((step) => ({ id: step.id, result: step.result, notes: step.notes })),
+        });
       if (next === true) onNext();
       if (hasChanges) showSaved();
     } catch (cause) {
@@ -2349,6 +2377,7 @@ export const ExecutionDetail = ({
               }}
               projectId={projectId}
               testRunCaseId={execution.id}
+              initialAttachments={execution.attachments || []}
             />
           )}
           {saveError && (
