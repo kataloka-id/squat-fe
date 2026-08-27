@@ -78,6 +78,7 @@ import { ROW_ACTIONS_CELL_CLASS } from '@/src/components/projectsTestCases/ui/Ro
 import { FlowActions } from './FlowActions.tsx';
 import { formatUserFlowDate } from './utils.ts';
 import { TablePagination } from '@/src/components/table/TablePagination.tsx';
+import { UserFlowHealthHelp } from './UserFlowHealthHelp.tsx';
 
 const title = (value: unknown) => userFlowLabel(typeof value === 'string' ? value : undefined);
 const flowChipType = (value: unknown) => value === 'healthy' || value === 'at_risk' || value === 'broken' || value === 'unknown' ? 'health' as const : value === 'critical' || value === 'high' || value === 'medium' || value === 'low' || value === 'not_defined' ? 'priority' as const : 'status' as const;
@@ -1011,7 +1012,7 @@ export const UserFlowDetail = ({
                   </dd>
                 </div>
                 <div>
-                  <dt className="text-slate-500">Health</dt>
+                  <dt className="flex items-center gap-1 text-slate-500">Health <UserFlowHealthHelp /></dt>
                   <dd>
                     <Badge value={flow.health} />
                   </dd>
@@ -2689,7 +2690,7 @@ export const UserFlowsPage = ({
                           Priority
                         </th>
                         <th className="px-4 py-4 text-center font-semibold uppercase tracking-wider">
-                          Health
+                          <span className="inline-flex items-center justify-center gap-1">Health <UserFlowHealthHelp /></span>
                         </th>
                         <th className="px-4 py-4 text-center font-semibold uppercase tracking-wider">
                           Coverage

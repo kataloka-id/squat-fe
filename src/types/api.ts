@@ -110,6 +110,8 @@ export interface SectionRecord {
   id: string;
   name: string;
   projectId: string;
+  /** Additive field supplied by the Section catalog API. */
+  usageCount?: number;
 }
 
 export interface ApiResponse<T> {
@@ -125,6 +127,8 @@ export interface AttachmentRecord {
   id: string;
   projectId: string;
   testCaseId: string | null;
+  testRunCaseId?: string | null;
+  ownership?: 'TEST_CASE' | 'TEST_RUN';
   originalFileName: string;
   mimeType: string;
   fileSize: number;
@@ -136,6 +140,8 @@ export interface AttachmentUploadRequest {
   projectId: string;
   /** Omit for a project-level attachment while a new test case is still unsaved. */
   testCaseId?: string;
+  /** Set when uploading from a Test Run execution; mutually exclusive with testCaseId. */
+  testRunCaseId?: string;
   fileName: string;
   mimeType: string;
   fileSize: number;
@@ -293,6 +299,7 @@ export interface TestRunExecutionRecord {
   runId: string;
   sourceTestCaseId: string;
   result: TestRunResult;
+  hasExecutionData?: boolean;
   assignee?: TestRunOwnerRecord | null;
   assigneeId?: string | null;
   durationSeconds?: number | null;
@@ -301,6 +308,7 @@ export interface TestRunExecutionRecord {
   executedAt?: string | null;
   updatedAt: string;
   snapshot: {
+    projectKey?: string | null;
     tcNumber?: number | null;
     title: string;
     section?: string | null;

@@ -207,6 +207,7 @@ export const ProjectsService = {
     )) as ApiResponse<ProjectTestCaseRecord[]>;
     invalidateProjectResources(projectId, [
       'testCases',
+      'sections',
       'folders',
       'projects',
       'flows',
@@ -225,6 +226,7 @@ export const ProjectsService = {
     )) as ApiResponse<{ updatedCount: number; failedCount: number; skippedCount: number }>;
     invalidateProjectResources(projectId, [
       'testCases',
+      'sections',
       'folders',
       'projects',
       'flows',
@@ -266,6 +268,7 @@ export const ProjectsService = {
     )) as ApiResponse<ProjectTestCaseRecord>;
     invalidateProjectResources(projectId, [
       'testCases',
+      'sections',
       'folders',
       'projects',
       'flows',
@@ -281,6 +284,7 @@ export const ProjectsService = {
     )) as ApiResponse<TestCaseImportResult>;
     invalidateProjectResources(projectId, [
       'testCases',
+      'sections',
       'folders',
       'projects',
       'flows',
@@ -296,6 +300,7 @@ export const ProjectsService = {
     )) as ApiResponse<ProjectTestCaseRecord>;
     invalidateProjectResources(projectId, [
       'testCases',
+      'sections',
       'folders',
       'projects',
       'flows',
@@ -310,6 +315,7 @@ export const ProjectsService = {
     )) as ApiResponse<null>;
     invalidateProjectResources(projectId, [
       'testCases',
+      'sections',
       'folders',
       'projects',
       'flows',

@@ -914,14 +914,23 @@ export const SettingsPage = () => {
 
   const deleteSection = async (section: SectionRecord) => {
     if (!selectedSectionProjectId) return;
-    askConfirmation('Hapus Section', `Hapus Section ${section.name}?`, () => {
+    const usageCount = section.usageCount ?? 0;
+    const usageLabel = `${usageCount} Test Case${usageCount === 1 ? '' : 's'}`;
+    askConfirmation(
+      'Hapus Section',
+      usageCount > 0
+        ? `Section ${section.name} masih digunakan oleh ${usageLabel}. Pindahkan atau lepas Test Case terlebih dahulu.`
+        : `Hapus Section ${section.name}? Section kosong dan tidak ada Test Case yang akan dihapus.`,
+      () => {
+        if (usageCount > 0) return;
       setConfirmation(null);
       setSaving(true);
       void sectionCatalogStore.mutate(selectedSectionProjectId, () => SectionsService.remove(selectedSectionProjectId, section.id))
         .then(() => setNotice({ type: 'success', message: 'Section dihapus.' }))
         .catch((error) => setNotice({ type: 'error', message: errorMessage(error) }))
         .finally(() => setSaving(false));
-    });
+      },
+    );
   };
 
   const createArea = async (event: FormEvent) => { event.preventDefault(); if (!newAreaName.trim() || !selectedSectionProjectId) return; setSaving(true); try { await userFlowAreaCatalogStore.mutate(() => UserFlowAreasService.create(selectedSectionProjectId, { name: newAreaName.trim() })); setNewAreaName(''); setNotice({ type: 'success', message: 'Area ditambahkan.' }); } catch (error) { setNotice({ type: 'error', message: errorMessage(error) }); } finally { setSaving(false); } };
@@ -1980,9 +1989,9 @@ export const SettingsPage = () => {
                   ) : (
                     sections.map((section) => (
                       <li key={section.id} className="group flex items-center justify-between gap-4 p-3">
-                        <span className="text-sm font-medium text-slate-800">{section.name}</span>
+                        <span className="text-sm font-medium text-slate-800">{section.name}<span className="ml-2 text-xs font-normal text-slate-500">{section.usageCount ?? 0} Test Case{section.usageCount === 1 ? '' : 's'}</span></span>
                         <div className="flex gap-2">
-                          <RowActions aria-label={`Actions for ${section.name}`} actions={[{ label: 'Edit', icon: <Pencil size={15} />, onClick: () => void editSection(section), disabled: saving }, { label: 'Delete', icon: <Trash2 size={15} />, onClick: () => void deleteSection(section), tone: 'danger', disabled: saving }]} />
+                          <RowActions aria-label={`Actions for ${section.name}`} actions={[{ label: 'Edit', icon: <Pencil size={15} />, onClick: () => void editSection(section), disabled: saving }, { label: 'Delete', icon: <Trash2 size={15} />, onClick: () => void deleteSection(section), tone: 'danger', disabled: saving || (section.usageCount ?? 0) > 0 }]} />
                         </div>
                       </li>
                     ))

@@ -16,7 +16,7 @@ const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp', 'i
 const ATTACHMENT_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-type AttachmentContext = { projectId: string; testCaseId?: string | null };
+type AttachmentContext = { projectId: string; testCaseId?: string | null; testRunCaseId?: string | null };
 type MarkdownEditorProps = {
   id: string;
   label: string;
@@ -365,6 +365,7 @@ export const MarkdownEditor = ({
       const response = await AttachmentsService.createUploadUrl({
         projectId: attachmentContext.projectId,
         ...(attachmentContext.testCaseId ? { testCaseId: attachmentContext.testCaseId } : {}),
+        ...(attachmentContext.testRunCaseId ? { testRunCaseId: attachmentContext.testRunCaseId } : {}),
         fileName: file.name || 'image',
         mimeType: file.type,
         fileSize: file.size,
