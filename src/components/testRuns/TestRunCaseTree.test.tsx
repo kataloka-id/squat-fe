@@ -67,7 +67,7 @@ describe('TestRunCaseTree', () => {
     };
     render(<Harness />);
     expect((screen.getByRole('checkbox', { name: 'Select folder Checkout' }) as HTMLInputElement).indeterminate).toBe(true);
-    expect(screen.getByText(/Uncategorized/)).toBeTruthy();
+    expect(screen.getAllByText(/Uncategorized/).length).toBeGreaterThan(0);
     expect(screen.getByText('1 / 2 selected')).toBeTruthy();
   });
 

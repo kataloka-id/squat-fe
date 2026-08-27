@@ -208,7 +208,7 @@ describe('UserFlowDetail', () => {
     expect(screen.getByText('Selected: 2')).toBeTruthy();
     expect((selectAll as HTMLInputElement).checked).toBe(true);
 
-    await user.click(screen.getByRole('checkbox', { name: 'SHOP-1' }));
+    await user.click(screen.getByRole('checkbox', { name: /SHOP-1/ }));
     expect(screen.getByText('Selected: 1')).toBeTruthy();
     expect((selectAll as HTMLInputElement).checked).toBe(false);
     expect((selectAll as HTMLInputElement).indeterminate).toBe(true);
@@ -216,11 +216,37 @@ describe('UserFlowDetail', () => {
     await user.clear(screen.getByPlaceholderText('Search test cases...'));
     await user.type(screen.getByPlaceholderText('Search test cases...'), 'cash');
     expect(screen.getByText('Selected: 1')).toBeTruthy();
-    expect((screen.getByRole('checkbox', { name: 'SHOP-2' }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole('checkbox', { name: /SHOP-2/ }) as HTMLInputElement).checked).toBe(true);
     expect(
       (screen.getByRole('checkbox', { name: 'Select all visible test cases' }) as HTMLInputElement)
         .checked,
     ).toBe(true);
+  });
+  it('selects a nested folder subtree while keeping individual IDs as the link payload', async () => {
+    const user = userEvent.setup();
+    const folderCases = cases.map((testCase, index) => ({
+      ...testCase,
+      folderId: index === 0 ? 'folder-root' : 'folder-child',
+    }));
+    render(
+      <UserFlowDetail
+        projectId="p1"
+        flow={flow}
+        availableTestCases={folderCases}
+        folders={[
+          { id: 'folder-root', projectId: 'p1', name: 'Checkout' },
+          { id: 'folder-child', projectId: 'p1', name: 'Payments', parentId: 'folder-root' },
+        ]}
+        onClose={vi.fn()}
+        onRefresh={vi.fn()}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: /Test Cases/ }));
+    await user.click(screen.getByRole('button', { name: 'Link Test Cases' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Select folder Checkout' }));
+    expect(screen.getByText('Selected: 2')).toBeTruthy();
+    await user.click(screen.getByRole('button', { name: 'Link Selected (2)' }));
+    expect(serviceMocks.linkTestCases).toHaveBeenLastCalledWith('p1', 'flow-1', ['tc-1', 'tc-2']);
   });
   it('bulk unlinks selected linked cases with one request and confirms relation-only wording', async () => {
     const user = userEvent.setup();
@@ -621,7 +647,7 @@ describe('UserFlowDetail', () => {
     expect(screen.getAllByText('Unknown').length).toBeGreaterThan(0);
     expect(screen.getAllByText('—').length).toBeGreaterThan(0);
   });
-  it('keeps a single link CTA and does not offer linked cases as picker candidates', async () => {
+  it('keeps a single link CTA and preselects existing linked cases without duplicating them', async () => {
     const user = userEvent.setup();
     render(
       <UserFlowDetail
@@ -636,8 +662,11 @@ describe('UserFlowDetail', () => {
     await user.click(screen.getByRole('button', { name: 'Test Cases (0)' }));
     expect(screen.getAllByRole('button', { name: 'Link Test Cases' })).toHaveLength(1);
     await user.click(screen.getByRole('button', { name: 'Link Test Cases' }));
-    expect(screen.queryByRole('checkbox', { name: /SHOP-1/ })).toBeNull();
-    expect(screen.getByRole('checkbox', { name: /SHOP-2/ })).toBeTruthy();
+    expect((screen.getByRole('checkbox', { name: /SHOP-1/ }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole('checkbox', { name: /SHOP-2/ }) as HTMLInputElement).checked).toBe(false);
+    await user.click(screen.getByRole('checkbox', { name: /SHOP-2/ }));
+    await user.click(screen.getByRole('button', { name: 'Link Selected (1)' }));
+    expect(serviceMocks.linkTestCases).toHaveBeenLastCalledWith('p1', 'flow-1', ['tc-2']);
   });
   it('opens linked test cases in the existing detail drawer and preserves the Test Cases tab', async () => {
     const user = userEvent.setup();
