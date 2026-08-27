@@ -150,7 +150,7 @@ export const Attachments = ({
       return;
     }
     try {
-      const response = await AttachmentsService.getViewUrl(preview.id);
+      const response = await AttachmentsService.getViewUrl(preview.id, { force: true });
       setPreview((current) => current ? { ...current, url: response.data.url, refreshed: true } : current);
     } catch (error) {
       setPreview(null);
