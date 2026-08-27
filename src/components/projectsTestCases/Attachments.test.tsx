@@ -103,6 +103,15 @@ describe('Attachments', () => {
     expect(notify).toHaveBeenCalledWith('Attachment deleted.', 'success');
   });
 
+  it('uses aggregated Test Run attachment metadata without listing per execution', async () => {
+    const attachment = { id: 'attachment-1', projectId: 'project-1', testCaseId: 'case-1', originalFileName: 'reference.png', mimeType: 'image/png', fileSize: 1234, status: 'READY' as const, createdAt: '2026-01-01T00:00:00.000Z', ownership: 'TEST_CASE' as const };
+    render(<Attachments onNotify={notify} projectId="project-1" testRunCaseId="run-case-1" initialAttachments={[attachment]} />);
+
+    await screen.findByText('reference.png');
+    expect(service.listForTestRunCase).not.toHaveBeenCalled();
+    expect(service.getConfig).not.toHaveBeenCalled();
+  });
+
   it('uses the Test Run execution owner for listing and deletion', async () => {
     const attachment = { id: 'run-attachment-1', projectId: 'project-1', testCaseId: null, testRunCaseId: 'run-case-1', originalFileName: 'run.png', mimeType: 'image/png', fileSize: 1234, status: 'READY', createdAt: '2026-01-01T00:00:00.000Z' };
     service.listForTestRunCase.mockResolvedValue({ data: [attachment] });

@@ -223,32 +223,16 @@ describe('RunDetail execution save', () => {
         executions: [untested, second],
       },
     });
-    serviceMocks.get.mockResolvedValueOnce({
-      data: {
-        id: 'run-1',
-        projectId: 'project-1',
-        name: 'Regression',
-        status: 'Completed',
-        createdAt: '2026-08-17T00:00:00.000Z',
-        updatedAt: '2026-08-17T00:01:00.000Z',
-        summary: {
-          total: 2,
-          executed: 2,
-          passed: 1,
-          failed: 0,
-          blocked: 0,
-          skipped: 1,
-          untested: 0,
-          progress: 100,
-        },
-        executions: [
-          { ...untested, result: 'Passed' },
-          { ...second, result: 'Skipped' },
-        ],
-      },
-    });
     serviceMocks.updateExecution.mockResolvedValue({
-      data: { ...untested, result: 'Passed', executedAt: '2026-08-17T00:01:00.000Z' },
+      data: {
+        ...untested,
+        result: 'Passed',
+        executedAt: '2026-08-17T00:01:00.000Z',
+        testRun: {
+          status: 'Completed',
+          summary: { total: 2, executed: 2, passed: 1, skipped: 1, untested: 0, progress: 100 },
+        },
+      },
     });
     const user = userEvent.setup();
     render(<RunDetail projectId="project-1" runId="run-1" onBack={vi.fn()} />);
@@ -267,7 +251,7 @@ describe('RunDetail execution save', () => {
     );
     await screen.findByText('Completed');
     await screen.findByText('2 / 2 executed');
-    expect(serviceMocks.get).toHaveBeenCalledTimes(2);
+    expect(serviceMocks.get).toHaveBeenCalledTimes(1);
   });
 
   it('keeps Save & Next available for a middle case even when the sidebar is filtered', async () => {
@@ -280,6 +264,18 @@ describe('RunDetail execution save', () => {
     await screen.findByRole('heading', { name: 'Second case' });
     await user.type(screen.getByLabelText('Cari test case dalam run'), 'Second');
     expect(screen.getByRole('button', { name: 'Save & Next' })).toBeTruthy();
+  });
+
+  it('changes execution selection from the aggregate without refetching', async () => {
+    serviceMocks.get.mockResolvedValue(runResponse([untested, second, third]));
+    const user = userEvent.setup();
+    render(<RunDetail projectId="project-1" runId="run-1" onBack={vi.fn()} />);
+
+    await screen.findByRole('heading', { name: 'First case' });
+    expect(serviceMocks.get).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole('button', { name: /Second case/ }));
+    await screen.findByRole('heading', { name: 'Second case' });
+    expect(serviceMocks.get).toHaveBeenCalledTimes(1);
   });
 
   it('shows the completed state automatically for a fully executed case', async () => {

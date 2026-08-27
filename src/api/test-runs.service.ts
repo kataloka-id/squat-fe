@@ -110,11 +110,8 @@ export const TestRunsService = {
     getCached(
       queryKeys.projectRuns(projectId) + `/${runId}`,
       async () => {
-        const [response, executionResponse] = await Promise.all([
-          api.get(`${base(projectId)}/${runId}`) as Promise<ApiResponse<any>>,
-          api.get(`${base(projectId)}/${runId}/executions`) as Promise<ApiResponse<any[]>>,
-        ]);
-        const executions = executionResponse.data.map((execution) => ({
+        const response = (await api.get(`${base(projectId)}/${runId}`)) as ApiResponse<any>;
+        const executions = (response.data.executions || []).map((execution: any) => ({
           ...execution,
           result: execution.result || 'Untested',
           steps: (execution.steps || []).map((step: any) => ({
@@ -234,32 +231,20 @@ export const TestRunsService = {
       notes?: string;
       assigneeId?: string;
       durationSeconds?: number | null;
+      steps?: Array<{ id: string; result?: TestRunResult | null; notes?: string | null }>;
     },
   ) => {
     const mutationKey = executionMutationKey(projectId, runId, executionId);
     const mutationEpoch = nextExecutionEpoch(mutationKey);
-    await api.patch(`${base(projectId)}/${runId}/executions/${executionId}`, payload);
-    invalidate(projectId);
-    try {
-      let executions = await TestRunsService.listExecutions(projectId, runId, {}, { force: true });
-      const superseded = executionMutationEpochs.get(mutationKey) !== mutationEpoch;
-      const execution = executions.data.find((item) => item.id === executionId);
-      if (!execution) throw new Error('TEST_RUN_EXECUTION_NOT_FOUND');
-      return {
-        success: true,
-        code: 'TEST_RUN_EXECUTION_UPDATE_SUCCESS',
-        message: '',
-        data: execution,
-        superseded,
-      } as ApiResponse<TestRunExecutionRecord>;
-    } catch (cause) {
-      if ((cause as Error).message === 'TEST_RUN_EXECUTION_NOT_FOUND') throw cause;
-      throw {
-        executionSaved: true,
-        message:
-          'Hasil eksekusi sudah tersimpan, tetapi data terbaru tidak dapat dimuat. Muat ulang halaman untuk melihat pembaruan.',
-      };
-    }
+    const response = (await api.patch(
+      `${base(projectId)}/${runId}/executions/${executionId}`,
+      payload,
+    )) as ApiResponse<TestRunExecutionRecord & { testRun?: TestRunRecord }>;
+    return {
+      ...response,
+      data: response.data,
+      superseded: executionMutationEpochs.get(mutationKey) !== mutationEpoch,
+    };
   },
   updateExecutionStep: async (
     projectId: string,
@@ -270,21 +255,10 @@ export const TestRunsService = {
   ) => {
     const mutationKey = executionMutationKey(projectId, runId, executionId);
     const mutationEpoch = nextExecutionEpoch(mutationKey);
-    await api.patch(
+    const response = (await api.patch(
       `${base(projectId)}/${runId}/executions/${executionId}/steps/${stepId}`,
       payload,
-    );
-    invalidate(projectId);
-    let executions = await TestRunsService.listExecutions(projectId, runId, {}, { force: true });
-    const superseded = executionMutationEpochs.get(mutationKey) !== mutationEpoch;
-    const execution = executions.data.find((item) => item.id === executionId);
-    if (!execution) throw new Error('TEST_RUN_EXECUTION_NOT_FOUND');
-    return {
-      success: true,
-      code: 'TEST_RUN_EXECUTION_STEP_UPDATE_SUCCESS',
-      message: '',
-      data: execution,
-      superseded,
-    } as ApiResponse<TestRunExecutionRecord>;
+    )) as ApiResponse<TestRunExecutionRecord & { testRun?: TestRunRecord }>;
+    return { ...response, superseded: executionMutationEpochs.get(mutationKey) !== mutationEpoch };
   },
 };

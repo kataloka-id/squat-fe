@@ -84,6 +84,8 @@ export const ReportsService = {
               runId: item.testRunId,
               executionId: item.executionId,
               runName: item.testRunName,
+              sourceTestCaseId: item.sourceTestCaseId,
+              projectKey: item.projectKey || null,
               tcNumber: item.tcNumber ? Number(item.tcNumber) : null,
               title: item.title,
               result: item.result,

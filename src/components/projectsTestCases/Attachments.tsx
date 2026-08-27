@@ -20,6 +20,7 @@ type AttachmentsProps = {
   /** Detail view is read-only so deletions always update the edit form state. */
   canDelete?: boolean;
   canUpload?: boolean;
+  initialAttachments?: AttachmentRecord[];
 };
 
 const formatFileSize = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(bytes >= 1024 * 1024 ? 1 : 2)} MB`;
@@ -34,8 +35,9 @@ export const Attachments = ({
   onDeleted,
   canDelete = true,
   canUpload = true,
+  initialAttachments,
 }: AttachmentsProps) => {
-  const [attachments, setAttachments] = useState<AttachmentRecord[]>([]);
+  const [attachments, setAttachments] = useState<AttachmentRecord[]>(initialAttachments || []);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -63,8 +65,19 @@ export const Attachments = ({
     }
   }, [onNotify, projectId, testCaseId, testRunCaseId]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
   useEffect(() => {
+    if (initialAttachments) {
+      setAttachments(initialAttachments);
+      setIsLoading(false);
+      return;
+    }
+    void refresh();
+  }, [initialAttachments, refresh, testRunCaseId]);
+  useEffect(() => {
+    if (testRunCaseId) {
+      setHasLoadedConfig(true);
+      return;
+    }
     let active = true;
     void AttachmentsService.getConfig()
       .then((response) => {
@@ -77,7 +90,7 @@ export const Attachments = ({
         // Upload creation is still server-authoritative; retain the default as guidance if configuration cannot load.
       });
     return () => { active = false; };
-  }, []);
+  }, [testRunCaseId]);
 
   const upload = async (file: File) => {
     if (!ALLOWED_MIME_TYPES.has(file.type)) {
