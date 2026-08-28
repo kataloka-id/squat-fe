@@ -7,10 +7,16 @@ import type { ProjectReportRecord } from '@/src/types/api.ts';
 
 const serviceMocks = vi.hoisted(() => ({
   listExecutions: vi.fn(),
+  getViewUrl: vi.fn(),
 }));
 vi.mock('@/src/api/test-runs.service.ts', () => ({
   TestRunsService: {
     listExecutions: serviceMocks.listExecutions,
+  },
+}));
+vi.mock('@/src/api/attachments.service.ts', () => ({
+  AttachmentsService: {
+    getViewUrl: serviceMocks.getViewUrl,
   },
 }));
 
@@ -116,16 +122,17 @@ describe('Reports dashboard interactions', () => {
   });
 
   it('shows execution and step notes in the Perlu Perhatian detail', async () => {
+    serviceMocks.getViewUrl.mockResolvedValue({ data: { url: 'https://cdn.example.com/error.png' } });
     serviceMocks.listExecutions.mockResolvedValue({
       data: [{
         id: 'execution-1',
         runId: 'run-1',
         sourceTestCaseId: 'case-1',
         result: 'Failed',
-        notes: 'Investigate the [checkout docs](https://example.com).',
+        notes: 'Investigate the [checkout docs](https://example.com). ![Failure screenshot](attachment://123e4567-e89b-12d3-a456-426614174000)',
         updatedAt: '2026-08-26T10:00:00.000Z',
         snapshot: { projectKey: 'KAT', tcNumber: 42, title: 'Checkout succeeds', expectedResult: 'Order is created' },
-        steps: [{ id: 'step-1', position: 1, action: 'Submit the order', expectedResult: 'Order is created', result: 'Failed', notes: 'API returned 500. ![Error screenshot](https://example.com/error.png)' }],
+        steps: [{ id: 'step-1', position: 1, action: 'Submit the [order form](https://example.com/order). ![Action screenshot](attachment://123e4567-e89b-12d3-a456-426614174000)', expectedResult: 'Order is created; see [confirmation](https://example.com/confirmation). ![Expected screenshot](attachment://123e4567-e89b-12d3-a456-426614174001)', result: 'Failed', notes: 'API returned 500. ![Error screenshot](https://example.com/error.png)' }],
       }],
     });
     const user = userEvent.setup();
@@ -136,6 +143,43 @@ describe('Reports dashboard interactions', () => {
     expect(await screen.findByRole('link', { name: 'checkout docs' })).toBeTruthy();
     expect(screen.getByText(/API returned 500\./)).toBeTruthy();
     expect(screen.getByRole('img', { name: 'Error screenshot' }).getAttribute('src')).toBe('https://example.com/error.png');
+    expect((await screen.findByRole('img', { name: 'Failure screenshot' })).getAttribute('src')).toBe('https://cdn.example.com/error.png');
+    expect(screen.getByRole('link', { name: 'order form' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'confirmation' })).toBeTruthy();
+    expect(screen.getByRole('img', { name: 'Action screenshot' })).toBeTruthy();
+    expect(screen.getByRole('img', { name: 'Expected screenshot' })).toBeTruthy();
     expect(serviceMocks.listExecutions).toHaveBeenCalledWith('project-1', 'run-1');
+  });
+
+  it('handles a missing attachment without replacing the surrounding note', async () => {
+    serviceMocks.getViewUrl.mockRejectedValue(new Error('not found'));
+    serviceMocks.listExecutions.mockResolvedValue({
+      data: [{
+        id: 'execution-1', runId: 'run-1', sourceTestCaseId: 'case-1', result: 'Failed',
+        notes: 'Keep this context. ![Deleted evidence](attachment://123e4567-e89b-12d3-a456-426614174000)',
+        updatedAt: '2026-08-26T10:00:00.000Z', snapshot: { title: 'Checkout succeeds' }, steps: [],
+      }],
+    });
+    const user = userEvent.setup();
+    render(<ReportContent report={{ ...report, attention: [{ id: 'execution-1', runId: 'run-1', executionId: 'execution-1', runName: 'Regression', projectKey: 'KAT', tcNumber: 42, title: 'Checkout succeeds', result: 'FAILED', updatedAt: null }] }} projectId="project-1" scopeLabel="Demo" tab="section" setTab={vi.fn()} onResultFilter={vi.fn()} onOpenUserFlow={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Lihat detail hasil Checkout succeeds' }));
+
+    expect(screen.getByText('Keep this context.')).toBeTruthy();
+    expect((await screen.findByRole('alert')).textContent).toContain('Unable to load image preview.');
+  });
+
+  it('opens the exact source Test Run and execution from result detail', async () => {
+    const onOpenTestRun = vi.fn();
+    serviceMocks.listExecutions.mockResolvedValue({
+      data: [{ id: 'execution-1', runId: 'run-1', sourceTestCaseId: 'case-1', result: 'Failed', updatedAt: '2026-08-26T10:00:00.000Z', snapshot: { title: 'Checkout succeeds' }, steps: [] }],
+    });
+    const user = userEvent.setup();
+    render(<ReportContent report={{ ...report, attention: [{ id: 'execution-1', runId: 'run-1', executionId: 'execution-1', runName: 'Regression', projectKey: 'KAT', tcNumber: 42, title: 'Checkout succeeds', result: 'FAILED', updatedAt: null }] }} projectId="project-1" scopeLabel="Demo" tab="section" setTab={vi.fn()} onResultFilter={vi.fn()} onOpenUserFlow={vi.fn()} onOpenTestRun={onOpenTestRun} />);
+
+    await user.click(screen.getByRole('button', { name: 'Lihat detail hasil Checkout succeeds' }));
+    await user.click(await screen.findByRole('button', { name: 'View Test Run' }));
+
+    expect(onOpenTestRun).toHaveBeenCalledWith('run-1', 'execution-1');
   });
 });

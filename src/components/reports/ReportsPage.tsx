@@ -23,6 +23,7 @@ type Props = {
   filters: ReportFilters;
   onProjectChange: (id: string) => void;
   onFiltersChange: (filters: ReportFilters) => void;
+  onOpenTestRun: (runId: string, executionId: string) => void;
 };
 const resultColours: Record<string, string> = {
   Passed: 'bg-emerald-500',
@@ -61,6 +62,7 @@ export const ReportsPage = ({
   filters,
   onProjectChange,
   onFiltersChange,
+  onOpenTestRun,
 }: Props) => {
   const [report, setReport] = useState<ProjectReportRecord | null>(null);
   const [loading, setLoading] = useState(false);
@@ -266,6 +268,7 @@ export const ReportsPage = ({
           setTab={setTab}
           onResultFilter={(result) => set('result', result)}
           onOpenUserFlow={(id) => onFiltersChange({ ...filters, userFlowId: id })}
+          onOpenTestRun={onOpenTestRun}
         />
       )}
     </div>
@@ -395,12 +398,14 @@ const ReportExecutionModal = ({
   loading,
   error,
   onClose,
+  onOpenTestRun,
 }: {
   item: ProjectReportRecord['attention'][number];
   execution: TestRunExecutionRecord | null;
   loading: boolean;
   error: string | null;
   onClose: () => void;
+  onOpenTestRun: (runId: string, executionId: string) => void;
 }) => (
   <Modal
     isOpen
@@ -416,9 +421,14 @@ const ReportExecutionModal = ({
           <div><p className="text-sm text-slate-500">Result</p><p className="mt-1 font-semibold text-slate-900">{resultLabel(execution.result)}</p></div>
           <div><p className="text-sm text-slate-500">Last updated</p><p className="mt-1 text-slate-700">{execution.updatedAt ? new Date(execution.updatedAt).toLocaleString() : '—'}</p></div>
         </div>
+        <div className="flex justify-end border-y border-slate-100 py-3">
+          <Button size="sm" variant="secondary" icon={<ArrowUpRight aria-hidden="true" />} onClick={() => onOpenTestRun(item.runId, item.executionId)}>
+            View Test Run
+          </Button>
+        </div>
         <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Test Case</p><h3 className="mt-1 text-base font-semibold leading-6 text-slate-900">{execution.snapshot.title}</h3>{execution.snapshot.expectedResult && <p className="mt-2 text-sm leading-6 text-slate-600"><span className="font-medium text-slate-800">Expected result:</span> {execution.snapshot.expectedResult}</p>}</div>
         {execution.notes && <div className="rounded-lg bg-slate-50 p-4"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Execution notes</p><MarkdownContent className="mt-2 text-sm leading-6 text-slate-700" value={execution.notes} /></div>}
-        <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Step results</p><div className="mt-2 space-y-3">{execution.steps?.length ? execution.steps.map((step, index) => <div key={step.id} className="rounded-lg border border-slate-200 p-4"><div className="flex items-start justify-between gap-4"><span className="text-sm font-medium leading-6 text-slate-800">{index + 1}. {step.action}</span><span className="shrink-0 text-xs font-semibold text-slate-600">{resultLabel(step.result)}</span></div><p className="mt-2 text-xs leading-5 text-slate-500">Expected: {step.expectedResult}</p>{step.notes && <div className="mt-2 text-sm leading-6 text-slate-700"><span className="font-medium">Note:</span><MarkdownContent className="mt-1 text-sm leading-6" value={step.notes} /></div>}</div>) : <p className="text-slate-500">Tidak ada detail langkah.</p>}</div></div>
+        <div><p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Step results</p><div className="mt-2 space-y-3">{execution.steps?.length ? execution.steps.map((step, index) => <div key={step.id} className="rounded-lg border border-slate-200 p-4"><div className="flex items-start justify-between gap-4"><div className="flex min-w-0 items-start text-sm font-medium leading-6 text-slate-800"><span className="mr-1 shrink-0">{index + 1}.</span><MarkdownContent className="min-w-0" value={step.action} /></div><span className="shrink-0 text-xs font-semibold text-slate-600">{resultLabel(step.result)}</span></div><div className="mt-2 flex items-start text-xs leading-5 text-slate-500"><span className="mr-1 shrink-0">Expected:</span><MarkdownContent className="min-w-0" value={step.expectedResult} /></div>{step.notes && <div className="mt-2 text-sm leading-6 text-slate-700"><span className="font-medium">Note:</span><MarkdownContent className="mt-1 text-sm leading-6" value={step.notes} /></div>}</div>) : <p className="text-slate-500">Tidak ada detail langkah.</p>}</div></div>
       </div> : <p className="text-sm text-slate-500">Detail hasil tidak ditemukan.</p>}
     </div>
   </Modal>
@@ -432,6 +442,7 @@ export const ReportContent = ({
   setTab,
   onResultFilter,
   onOpenUserFlow,
+  onOpenTestRun,
 }: {
   report: ProjectReportRecord;
   projectId: string;
@@ -440,6 +451,7 @@ export const ReportContent = ({
   setTab: (tab: 'section' | 'folder' | 'userFlow' | 'priority' | 'automationType') => void;
   onResultFilter: (result: string) => void;
   onOpenUserFlow: (id: string) => void;
+  onOpenTestRun?: (runId: string, executionId: string) => void;
 }) => {
   const [selectedAttention, setSelectedAttention] = useState<ProjectReportRecord['attention'][number] | null>(null);
   const [selectedExecution, setSelectedExecution] = useState<TestRunExecutionRecord | null>(null);
@@ -490,7 +502,7 @@ export const ReportContent = ({
         <div className="grid gap-4 xl:grid-cols-[.78fr_1.22fr]">
           <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold">Overall health</h3><p className="mt-1 text-sm text-slate-500">Gabungan kualitas eksekusi dan coverage.</p></div><InfoPopover label="Explain Overall Health"><div className="space-y-2 text-xs leading-relaxed"><p className="font-semibold text-slate-900">Cara membaca Overall Health</p><p>Health dirangkum dari Pass Rate, Failed, Blocked, dan Coverage pada scope aktif.</p><ul className="space-y-1"><li><strong>Sehat:</strong> pass rate minimal 80% dan tidak ada failed atau blocked.</li><li><strong>Perlu perhatian:</strong> ada failed/blocked atau pass rate di bawah 80%.</li><li><strong>Belum dimulai:</strong> belum ada hasil eksekusi.</li></ul><p className="border-t border-slate-100 pt-2 text-slate-500">Coverage adalah Executed ÷ seluruh test case dalam scope.</p></div></InfoPopover></div>
-            <div className="mt-5 flex items-center gap-5"><div className="relative grid h-28 w-28 shrink-0 place-items-center rounded-full" style={{ background: `conic-gradient(${health.tone === 'emerald' ? '#10b981' : health.tone === 'amber' ? '#f59e0b' : '#cbd5e1'} ${(report.summary.passRate || 0) * 3.6}deg, #e2e8f0 0)` }}><div className="flex h-20 w-20 flex-col items-center justify-center rounded-full bg-white text-center"><strong className="text-xl leading-none text-slate-900">{percentage(report.summary.passRate)}</strong><span className="mt-1 text-[10px] leading-none text-slate-500">pass rate</span></div></div><p className="text-sm leading-6 text-slate-600">{health.detail}<br /><span className="font-medium text-slate-800">{formatCount(report.summary.untested)} belum dites</span> dari {formatCount(total)} test case.</p></div>
+            <div className="mt-5 flex items-center gap-5"><div className="relative grid h-28 w-28 shrink-0 place-items-center rounded-full sm:h-32 sm:w-32" style={{ background: `conic-gradient(${health.tone === 'emerald' ? '#10b981' : health.tone === 'amber' ? '#f59e0b' : '#cbd5e1'} ${(report.summary.passRate || 0) * 3.6}deg, #e2e8f0 0)` }}><div className="flex h-20 w-20 flex-col items-center justify-center rounded-full bg-white text-center sm:h-24 sm:w-24"><strong className="text-xl leading-none text-slate-900">{percentage(report.summary.passRate)}</strong><span className="mt-1 text-[10px] leading-none text-slate-500">pass rate</span></div></div><p className="min-w-0 text-sm leading-6 text-slate-600">{health.detail}<br /><span className="font-medium text-slate-800">{formatCount(report.summary.untested)} belum dites</span> dari {formatCount(total)} test case.</p></div>
           </article>
           <article className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold">Execution distribution</h3><p className="mt-1 text-sm text-slate-500">Klik status untuk memfilter report.</p></div><Target className="h-4 w-4 text-brand-600" /></div>
@@ -614,7 +626,7 @@ export const ReportContent = ({
           )}
         </div>
       </section>
-      {selectedAttention && <ReportExecutionModal item={selectedAttention} execution={selectedExecution} loading={executionLoading} error={executionError} onClose={() => setSelectedAttention(null)} />}
+      {selectedAttention && <ReportExecutionModal item={selectedAttention} execution={selectedExecution} loading={executionLoading} error={executionError} onClose={() => setSelectedAttention(null)} onOpenTestRun={(runId, executionId) => onOpenTestRun?.(runId, executionId)} />}
     </>
   );
 };
