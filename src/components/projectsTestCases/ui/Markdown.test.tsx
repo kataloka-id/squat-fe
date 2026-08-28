@@ -362,6 +362,17 @@ describe('Markdown authoring', () => {
     );
   });
 
+  it('keeps inline code aligned with normal sentence spacing', () => {
+    const { container } = render(
+      <MarkdownContent value="The display should show `px`; the canvas remains visible." />,
+    );
+
+    const code = container.querySelector('code');
+    expect(code?.textContent).toBe('px');
+    expect(code?.className).not.toContain('px-');
+    expect(container.textContent).toBe('The display should show px; the canvas remains visible.');
+  });
+
   it('switches independently between accessible Write and Preview tabs', () => {
     render(
       <>

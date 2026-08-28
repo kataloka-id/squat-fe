@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 interface ModalProps {
@@ -31,7 +32,8 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, title, description, labell
   }, [closeDisabled, isOpen, onClose]);
 
   if (!isOpen) return null;
-  return (
+  return createPortal(
+    (
     <div className="fixed inset-0 z-[100] flex min-h-dvh items-center justify-center bg-slate-950/40 p-4 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby={titleId}>
       <div ref={contentRef} tabIndex={-1} className={`w-full ${maxWidth} overflow-hidden rounded-xl border border-slate-100 bg-white shadow-2xl focus:outline-none ${contentClassName}`}>
         <div className="flex shrink-0 items-start justify-between border-b border-slate-100 p-5">
@@ -44,5 +46,7 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, title, description, labell
         {children}
       </div>
     </div>
+    ),
+    document.body,
   );
 };

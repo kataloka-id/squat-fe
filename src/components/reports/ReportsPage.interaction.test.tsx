@@ -132,7 +132,7 @@ describe('Reports dashboard interactions', () => {
         notes: 'Investigate the [checkout docs](https://example.com). ![Failure screenshot](attachment://123e4567-e89b-12d3-a456-426614174000)',
         updatedAt: '2026-08-26T10:00:00.000Z',
         snapshot: { projectKey: 'KAT', tcNumber: 42, title: 'Checkout succeeds', expectedResult: 'Order is created' },
-        steps: [{ id: 'step-1', position: 1, action: 'Submit the [order form](https://example.com/order). ![Action screenshot](attachment://123e4567-e89b-12d3-a456-426614174000)', expectedResult: 'Order is created; see [confirmation](https://example.com/confirmation). ![Expected screenshot](attachment://123e4567-e89b-12d3-a456-426614174001)', result: 'Failed', notes: 'API returned 500. ![Error screenshot](https://example.com/error.png)' }],
+        steps: [{ id: 'step-1', position: 1, action: 'Submit the [order form](https://example.com/order). ![Action screenshot](attachment://123e4567-e89b-12d3-a456-426614174000)', expectedResult: 'Order is created; show `px`; the canvas. [confirmation](https://example.com/confirmation). ![Expected screenshot](attachment://123e4567-e89b-12d3-a456-426614174001)', result: 'Blocked', notes: 'API returned 500. ![Error screenshot](https://example.com/error.png)' }],
       }],
     });
     const user = userEvent.setup();
@@ -141,11 +141,16 @@ describe('Reports dashboard interactions', () => {
     await user.click(screen.getByRole('button', { name: 'Lihat detail hasil Checkout succeeds' }));
 
     expect(await screen.findByRole('link', { name: 'checkout docs' })).toBeTruthy();
+    expect(screen.getAllByLabelText('Result: Failed')).toHaveLength(1);
+    expect(screen.getByLabelText('Result: Failed').className).toContain('bg-red-50');
+    expect(screen.getByLabelText('Result: Blocked').className).toContain('bg-amber-50');
     expect(screen.getByText(/API returned 500\./)).toBeTruthy();
     expect(screen.getByRole('img', { name: 'Error screenshot' }).getAttribute('src')).toBe('https://example.com/error.png');
     expect((await screen.findByRole('img', { name: 'Failure screenshot' })).getAttribute('src')).toBe('https://cdn.example.com/error.png');
     expect(screen.getByRole('link', { name: 'order form' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'confirmation' })).toBeTruthy();
+    expect(screen.getByText('px').tagName).toBe('CODE');
+    expect(screen.getByText('px').className).not.toContain('px-');
     expect(screen.getByRole('img', { name: 'Action screenshot' })).toBeTruthy();
     expect(screen.getByRole('img', { name: 'Expected screenshot' })).toBeTruthy();
     expect(serviceMocks.listExecutions).toHaveBeenCalledWith('project-1', 'run-1');
