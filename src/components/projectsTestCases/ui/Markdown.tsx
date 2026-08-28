@@ -155,7 +155,7 @@ const InlineMarkdown = ({ value }: { value: string }) => (
     {inlineParts(value).map((part, index) => {
       if (part.type === 'code')
         return (
-          <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[0.9em]" key={index}>
+          <code className="rounded bg-slate-100 py-0.5 font-mono text-[0.9em]" key={index}>
             {part.value}
           </code>
         );
