@@ -192,10 +192,6 @@ export const TestRunsPage = ({
   const [deletingRun, setDeletingRun] = useState<TestRunRecord | null>(null);
   const [deleting, setDeleting] = useState(false);
   const canManage = canManageTestRuns(sessionUser?.roleSlug);
-  const onRunChangeRef = useRef(onRunChange);
-  useEffect(() => {
-    onRunChangeRef.current = onRunChange;
-  }, [onRunChange]);
   const load = useCallback(async () => {
     if (!projectId) {
       setRuns([]);
@@ -253,7 +249,6 @@ export const TestRunsPage = ({
   };
   useEffect(() => {
     setFilters({});
-    onRunChangeRef.current();
   }, [projectId]);
   if (runId && projectId)
     return (
