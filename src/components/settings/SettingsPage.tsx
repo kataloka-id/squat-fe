@@ -1322,7 +1322,7 @@ export const SettingsPage = () => {
                     *
                   </span>
                   <span className="sr-only"> (wajib)</span>
-                  <Select aria-label="Business type (wajib)" className="mt-1.5" required value={newCompany.businessType} onChange={(value) => setNewCompany({ ...newCompany, businessType: String(value) })} options={activeTypes.map((type) => ({ value: type.id, label: type.businessType }))} placeholder="Pilih tipe" />
+                  <Select aria-label="Business type (wajib)" className="mt-1.5" required value={newCompany.businessType} onChange={(value) => setNewCompany({ ...newCompany, businessType: String(value) })} options={activeTypes.map((type) => ({ value: String(type.id), label: type.businessType }))} placeholder="Pilih tipe" />
                 </label>
                 <label className="block text-sm font-medium text-slate-700">
                   Category
@@ -1330,7 +1330,7 @@ export const SettingsPage = () => {
                     *
                   </span>
                   <span className="sr-only"> (wajib)</span>
-                  <Select aria-label="Category (wajib)" className="mt-1.5" required value={newCompany.category} onChange={(value) => setNewCompany({ ...newCompany, category: String(value) })} options={activeCategories.map((category) => ({ value: category.id, label: category.name }))} placeholder="Pilih kategori" />
+                  <Select aria-label="Category (wajib)" className="mt-1.5" required value={newCompany.category} onChange={(value) => setNewCompany({ ...newCompany, category: String(value) })} options={activeCategories.map((category) => ({ value: String(category.id), label: category.name }))} placeholder="Pilih kategori" />
                 </label>
                 <div className="md:col-span-2">
                   <Button type="submit" disabled={saving} icon={<Plus size={16} />}>

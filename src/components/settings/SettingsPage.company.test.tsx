@@ -473,6 +473,8 @@ describe('SettingsPage Company Profile', () => {
     await user.type(screen.getByLabelText(/Postal code/), '40100');
     await selectCustomOption(user, 'Business type (wajib)', '1');
     await selectCustomOption(user, 'Category (wajib)', '1');
+    expect(screen.getByLabelText('Business type (wajib)').textContent).toContain('PT');
+    expect(screen.getByLabelText('Category (wajib)').textContent).toContain('Micro');
     await user.click(screen.getByRole('button', { name: 'Buat company' }));
     await waitFor(() => expect(companies.createManaged).toHaveBeenCalledWith(expect.objectContaining({ name: 'New Co', businessType: 1, category: 1, address: 'Bandung', phone: '0813', field: 'Retail', postalCode: '40100' })));
   });
